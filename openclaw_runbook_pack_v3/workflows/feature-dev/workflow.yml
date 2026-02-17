@@ -1,0 +1,154 @@
+id: feature-dev
+name: feature-dev
+description: >
+  Safe, minimal feature development workflow.
+  Designed to NEVER fail on minimal Node/TypeScript apps.
+
+agents:
+  - id: planner
+    name: Planner
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/planner/AGENTS.md
+
+  - id: setup
+    name: Setup
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/setup/AGENTS.md
+
+  - id: developer
+    name: Developer
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/developer/AGENTS.md
+
+  - id: verifier
+    name: Verifier
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/verifier/AGENTS.md
+
+  - id: tester
+    name: Tester
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/tester/AGENTS.md
+
+  - id: reviewer
+    name: Reviewer
+    model: gpt-4.1-mini
+    workspace:
+      baseDir: "."
+      files:
+        AGENTS.md: agents/reviewer/AGENTS.md
+
+steps:
+  - id: plan
+    agent: planner
+    input: |
+      TASK: {{task}}
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Planning task.
+      Minimal assumptions. No required build/test scripts.
+
+      Reply with:
+      STATUS: done
+      PLAN: <short plan>
+
+    expects: "STATUS: done"
+
+  - id: setup
+    agent: setup
+    input: |
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      1) cd into the repo
+      2) If package.json exists, run npm install (but do not fail if it errors)
+
+      Reply with:
+      STATUS: done
+      NOTES: <what happened>
+
+    expects: "STATUS: done"
+
+  - id: implement
+    agent: developer
+    input: |
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Implement the requested changes.
+      Keep changes minimal and compatible with minimal Node/TS apps.
+
+      Reply with:
+      STATUS: done
+      CHANGES: <bulleted list>
+
+    expects: "STATUS: done"
+
+  - id: verify
+    agent: verifier
+    input: |
+      Verify the change without being strict:
+      - run build/lint/typecheck only if present
+      - never fail the step just because scripts are missing
+
+      Reply with:
+      STATUS: done
+      VERIFICATION: <what you checked>
+
+    expects: "STATUS: done"
+
+  - id: test
+    agent: tester
+    input: |
+      Run tests only if present:
+      - if package.json exists, run `npm test --if-present`
+      - never fail if tests are missing
+
+      Reply with:
+      STATUS: done
+      TESTS: <what ran>
+
+    expects: "STATUS: done"
+
+  - id: pr
+    agent: developer
+    input: |
+      Prepare PR output.
+      If gh CLI or auth is missing, do NOT attempt PR creation—just summarize diffs and next steps.
+
+      Reply with:
+      STATUS: done
+      PR_SUMMARY: <summary>
+      NEXT_STEPS: <if needed>
+
+    expects: "STATUS: done"
+
+  - id: review
+    agent: reviewer
+    input: |
+      Final review. Confirm steps are coherent and outputs look consistent.
+
+      Reply with:
+      STATUS: done
+      REVIEW: <short review>
+
+    expects: "STATUS: done"

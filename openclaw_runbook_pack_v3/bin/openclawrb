@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ROOT_DIR}/runbook.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+
+GATEWAY_HOST="${GATEWAY_HOST:-127.0.0.1}"
+GATEWAY_PORT="${GATEWAY_PORT:-18789}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-3333}"
+NGINX_PORT="${NGINX_PORT:-8443}"
+
+ANTFARM_STATE_DIR="${ANTFARM_STATE_DIR:-/root/.openclaw/antfarm}"
+ANTFARM_WRAPPER="${ANTFARM_WRAPPER:-/root/smartfunds/bin/antfarm}"
+OPENCLAW_BIN="${OPENCLAW_BIN:-/usr/bin/openclaw}"
+
+log(){ echo -e "[openclawrb] $*"; }
+err(){ echo -e "[openclawrb][ERROR] $*" >&2; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+
+usage(){
+  cat <<'USAGE'
+Usage: openclawrb <command>
+
+Commands:
+  status [--verbose]   Show gateway + antfarm dashboard status
+  restart              Restart gateway + antfarm dashboard
+  logs                 Show gateway logs + tail dashboard.log
+  ports                Show listeners for gateway/dashboard/nginx
+  smoke                Fast checks: ports + dashboard HTTP + gateway status
+  help
+USAGE
+}
+
+_ports(){
+  local p="$1"
+  if have ss; then
+    ss -ltnp | grep -E ":${p}\b" || true
+  elif have lsof; then
+    lsof -iTCP -sTCP:LISTEN -P | grep -E ":${p}\b" || true
+  else
+    err "Neither ss nor lsof available."
+    return 2
+  fi
+}
+
+cmd_status(){
+  local verbose="${1:-}"
+  log "Gateway status:"
+  "$OPENCLAW_BIN" gateway status || true
+
+  log "Antfarm dashboard status:"
+  "$ANTFARM_WRAPPER" dashboard status || true
+
+  if [[ "$verbose" == "--verbose" ]]; then
+    log "dashboard.pid:"
+    [[ -f "${ANTFARM_STATE_DIR}/dashboard.pid" ]] && cat "${ANTFARM_STATE_DIR}/dashboard.pid" || true
+  fi
+}
+
+cmd_restart(){
+  log "Restarting OpenClaw gateway..."
+  "$OPENCLAW_BIN" gateway restart
+
+  log "Restarting Antfarm dashboard..."
+  "$ANTFARM_WRAPPER" dashboard stop || true
+  "$ANTFARM_WRAPPER" dashboard start --port "$DASHBOARD_PORT"
+
+  log "Done."
+}
+
+cmd_logs(){
+  log "Gateway logs:"
+  "$OPENCLAW_BIN" gateway logs || true
+
+  log "Dashboard log tail:"
+  if [[ -f "${ANTFARM_STATE_DIR}/dashboard.log" ]]; then
+    tail -n 250 "${ANTFARM_STATE_DIR}/dashboard.log" || true
+  else
+    err "dashboard.log not found at ${ANTFARM_STATE_DIR}/dashboard.log"
+  fi
+}
+
+cmd_ports(){
+  echo "---- gateway port ${GATEWAY_PORT} ----"
+  _ports "$GATEWAY_PORT" || true
+  echo "---- dashboard port ${DASHBOARD_PORT} ----"
+  _ports "$DASHBOARD_PORT" || true
+  echo "---- nginx port ${NGINX_PORT} ----"
+  _ports "$NGINX_PORT" || true
+}
+
+cmd_smoke(){
+  local fails=0
+
+  log "1) Port listeners"
+  for p in "$GATEWAY_PORT" "$DASHBOARD_PORT"; do
+    if have ss && ss -ltn | grep -qE ":${p}\b"; then
+      echo "  ✅ port $p listening"
+    else
+      echo "  ❌ port $p NOT listening"
+      fails=$((fails+1))
+    fi
+  done
+
+  log "2) Gateway status (must be OK)"
+  if "$OPENCLAW_BIN" gateway status >/dev/null 2>&1; then
+    echo "  ✅ openclaw gateway status OK"
+  else
+    echo "  ❌ openclaw gateway status NOT OK"
+    fails=$((fails+1))
+  fi
+
+  if have curl; then
+    log "3) Dashboard HTTP probe"
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${DASHBOARD_PORT}/" || true)"
+    if [[ "$code" == "200" || "$code" == "302" || "$code" == "401" || "$code" == "404" ]]; then
+      echo "  ✅ dashboard http://127.0.0.1:${DASHBOARD_PORT}/ ($code)"
+    else
+      echo "  ❌ dashboard http://127.0.0.1:${DASHBOARD_PORT}/ ($code)"
+      fails=$((fails+1))
+    fi
+  else
+    log "curl not installed; skipping dashboard HTTP probe"
+  fi
+
+  if [[ $fails -eq 0 ]]; then
+    log "SMOKE: ✅ PASS"
+    exit 0
+  else
+    err "SMOKE: ❌ FAIL ($fails)"
+    exit 1
+  fi
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  help|-h|--help) usage ;;
+  status) cmd_status "${1:-}" ;;
+  restart) cmd_restart ;;
+  logs) cmd_logs ;;
+  ports) cmd_ports ;;
+  smoke) cmd_smoke ;;
+  *) err "Unknown command: $cmd"; usage; exit 2 ;;
+esac

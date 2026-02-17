@@ -617,7 +617,21 @@ if [ -d "$MAIN_DIR" ] && [ ! -f "$MAIN_DIR/SOUL.md" ]; then
     echo "   ✅ main (personal bot)"
 fi
 
-# ── 6. Summary ──
+
+# ── 6. Install Antfarm feature-dev workflow schema fix ──
+WORKFLOW_SRC="$(cd "$(dirname "$0")" && pwd)/openclaw_runbook_pack_v3/workflows/feature-dev/workflow.yml"
+WORKFLOW_DST_DIR="/root/.openclaw/antfarm/workflows/feature-dev"
+WORKFLOW_DST="$WORKFLOW_DST_DIR/workflow.yml"
+
+if [ -f "$WORKFLOW_SRC" ]; then
+    mkdir -p "$WORKFLOW_DST_DIR"
+    cp "$WORKFLOW_SRC" "$WORKFLOW_DST"
+    echo "✅ Installed workflow schema fix at $WORKFLOW_DST"
+else
+    echo "⚠️  Skipped workflow install: template not found at $WORKFLOW_SRC"
+fi
+
+# ── 7. Summary ──
 echo ""
 echo "============================================"
 echo "✅ Deployment Complete"
@@ -633,10 +647,10 @@ echo "    • developer (Platform + Web App Engineer)"
 echo "    • verifier (QA Gatekeeper)"
 echo "    • tester (Integration testing)"
 echo "    • reviewer (Final review + PR)"
+echo "  - Updated /root/.openclaw/antfarm/workflows/feature-dev/workflow.yml schema"
 echo ""
 echo "What was NOT changed:"
 echo "  - openclaw.json (no config changes)"
-echo "  - workflow.yml files (no workflow changes)"
 echo "  - bug-fix and security-audit workflows (untouched)"
 echo ""
 echo "Next steps:"

@@ -62,3 +62,24 @@ Rejection loops: VERIFICATION -> IMPLEMENTATION, HUMAN_CHECKPOINT -> IMPLEMENTAT
 - Do not use any ORM
 - Do not add features not in the current task prompt
 - Do not use Jest (use Vitest)
+
+## Canonical Working Directory Rule
+- Canonical repository path: `/srv/repos/smartfunds-agent-sandbox`.
+- All git + Codex work must be performed from that directory.
+- Start every session with:
+  - `cdsf`
+  - `pwd`
+  - `git status`
+
+## Codex Operating Contract
+- Operate only inside the canonical repository directory.
+- Do not work in legacy `/root` SmartFunds workspace paths.
+- Do not work in any `*.nongit*` folder.
+- For ops workflows, use:
+  - `bash ops/install/install_openclaw_paths.sh`
+  - `bash ops/install/install_wrappers.sh`
+
+## Explicit Prohibition on Writing Outside Repo
+- Never write to `/root/openclaw`, `/usr/local/bin`, `/etc/profile.d`, or any system-level path.
+- If system-level changes are required, implement repo-local installer logic in `ops/install/` and document usage in `ops/README.md`.
+- Do not execute system-level installers from Codex sessions.

@@ -1,0 +1,16 @@
+{
+  "name": "@smartfunds/api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@smartfunds/mission-engine": "0.1.0",
+    "@smartfunds/shared": "0.1.0",
+    "hono": "^4.6.10"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false"
+  }
+}

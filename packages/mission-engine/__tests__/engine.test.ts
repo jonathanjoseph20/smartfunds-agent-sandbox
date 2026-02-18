@@ -1,4 +1,8 @@
 import { describe, expect, test, beforeEach } from "vitest";
+import { createFakeDb } from "../src/testkit/fakeDb";
+import { storeFromDbLike } from "../src/store";
+import { createFakeDb } from "../src/testkit/fakeDb";
+import { storeFromDbLike } from "../src/store";
 import { MissionStatus } from "@smartfunds/shared";
 import {
   InvalidTransitionError,
@@ -14,9 +18,9 @@ const ISO_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 beforeEach(() => {
-  const db = getDb(DB_PATH);
-  db.exec("DELETE FROM audit_log;");
-  db.exec("DELETE FROM missions;");
+  const fakeDb = createFakeDb();
+  const store = storeFromDbLike(fakeDb);
+  store.clearAll();
 });
 
 describe("mission engine", () => {

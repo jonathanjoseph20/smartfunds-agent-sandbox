@@ -1,9 +1,23 @@
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
+
+// Vite/Vitest can rewrite `import ... from "node:sqlite"` into bare `sqlite` during transform.
+// Loading via `createRequire()` avoids that static import rewrite while still using native Node sqlite.
+const require = createRequire(import.meta.url);
+
+type NodeSqliteModule = typeof import("node:sqlite");
+
+function loadNodeSqlite(): NodeSqliteModule {
+  // Using require here is intentional (see note above).
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-var-requires
+  return require("node:sqlite");
+}
+
+type DatabaseSyncInstance = InstanceType<NodeSqliteModule["DatabaseSync"]>;
 
 const DEFAULT_DB_PATH = "./smartfunds.db";
-const dbRegistry = new Map<string, DatabaseSync>();
+const dbRegistry = new Map<string, DatabaseSyncInstance>();
 
-export function getDb(dbPath?: string): DatabaseSync {
+export function getDb(dbPath?: string): DatabaseSyncInstance {
   const resolvedPath = dbPath ?? process.env.SMARTFUNDS_DB_PATH ?? DEFAULT_DB_PATH;
 
   const existing = dbRegistry.get(resolvedPath);
@@ -11,6 +25,7 @@ export function getDb(dbPath?: string): DatabaseSync {
     return existing;
   }
 
+  const { DatabaseSync } = loadNodeSqlite();
   const db = new DatabaseSync(resolvedPath);
 
   db.exec(`

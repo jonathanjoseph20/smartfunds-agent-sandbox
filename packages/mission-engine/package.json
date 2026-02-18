@@ -1,0 +1,18 @@
+{
+  "name": "@smartfunds/mission-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@smartfunds/shared": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

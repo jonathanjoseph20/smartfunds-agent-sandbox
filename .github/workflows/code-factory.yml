@@ -199,7 +199,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
       - name: Run schema/type checks when doc/export paths are touched
         if: needs.policy.outputs.run_schema == 'true'

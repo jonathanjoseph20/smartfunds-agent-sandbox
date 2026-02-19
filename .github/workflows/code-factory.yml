@@ -125,7 +125,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
       - name: Run unit test command for impacted workspaces
         env:
@@ -159,7 +158,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
       - name: Run integration tests for impacted workspaces
         env:

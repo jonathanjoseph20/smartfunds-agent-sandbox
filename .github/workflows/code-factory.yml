@@ -97,7 +97,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - name: Tier 0 lint/typecheck for impacted workspaces
         env:
           WORKSPACES: ${{ needs.policy.outputs.workspaces }}
@@ -125,7 +125,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - name: Run unit test command for impacted workspaces
         env:
           WORKSPACES: ${{ needs.policy.outputs.workspaces }}
@@ -158,7 +158,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - name: Run integration tests for impacted workspaces
         env:
           WORKSPACES: ${{ needs.policy.outputs.workspaces }}
@@ -197,7 +197,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm install
       - name: Run schema/type checks when doc/export paths are touched
         if: needs.policy.outputs.run_schema == 'true'
         run: |

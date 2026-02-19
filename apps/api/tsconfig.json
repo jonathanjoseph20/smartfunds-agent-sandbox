@@ -5,9 +5,18 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/mission-engine" }
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/mission-engine"
+    },
+    {
+      "path": "../../packages/doc-factory"
+    }
   ]
 }

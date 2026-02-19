@@ -1,8 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/shared" },
-    { "path": "packages/mission-engine" },
-    { "path": "apps/api" }
+    {
+      "path": "packages/shared"
+    },
+    {
+      "path": "packages/mission-engine"
+    },
+    {
+      "path": "packages/doc-factory"
+    },
+    {
+      "path": "apps/api"
+    }
   ]
 }

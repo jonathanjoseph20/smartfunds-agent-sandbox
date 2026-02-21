@@ -88,3 +88,4 @@ Determinism Statement: Pure parser/inference logic with mocked PR payload data.
 5. Confirm declared tier is not lower than changed-path tier from `control-plane/risk-contract.json`.
 6. Run relevant tests/type checks and include what you ran in `Tests Added`.
 7. If a rerun still shows old labels/body, push a new commit and rerun.
+

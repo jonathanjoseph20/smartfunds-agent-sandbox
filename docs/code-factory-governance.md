@@ -1,80 +1,90 @@
-# Code Factory Governance Upgrade (Operational Hardening v1)
+# Code Factory Governance (Machine-Readable Contract)
 
-This document defines the minimum governance controls for SmartFunds Phase 1 shipping.
+## Single source of truth
 
-## Push Preflight
+PR risk governance is defined in `control-plane/risk-contract.json`.
 
-Run this preflight in every **new Codex environment** before starting feature work.
+- `tiers`: descriptive metadata and documentation-only `required_checks`
+- `paths`: glob-to-tier mappings used to infer minimum required tier from changed files
 
-1. Verify remotes and authentication.
-   - `git remote -v`
-   - `git fetch origin`
-   - Optional auth check: `gh auth status` (if GitHub CLI is installed)
-2. Create and push a tiny preflight branch.
-   - `git checkout -b preflight/<initials>-<date>`
-   - `git commit --allow-empty -m "chore: push preflight"`
-   - `git push -u origin HEAD`
-3. Confirm branch is present on origin.
-   - `git ls-remote --heads origin "preflight/<initials>-<date>"`
-4. Open a PR and confirm visibility on GitHub.
-   - `gh pr create --fill --base main --head preflight/<initials>-<date>`
-   - Verify the PR appears in GitHub UI and is visible to maintainers.
-5. On the VPS, verify branch fetchability and commit presence.
-   - `git fetch origin preflight/<initials>-<date>`
-   - `git rev-parse FETCH_HEAD`
-   - `git branch --contains <commit_sha>`
+All CI risk-tier validation must read this contract.
 
-If any step fails, stop feature delivery and fix transport/auth reliability first.
+## Labels are authoritative
 
-## PR Template Requirements
+Canonical labels:
 
-Every PR must include:
+- `tier-0`
+- `tier-1`
+- `tier-2`
+- `tier-3`
+- `tier-3-approved` (required when tier is 3)
 
-- **Risk tier declaration (Tier 0–3)** and rationale.
-- **Evidence checklist** for commands/results (tests, typecheck/schema validation, policy checks).
-- **Bug fix regression evidence** when applicable:
-  - Link to regression test file and test name.
-  - Proof that regression failed before the fix (or reproduction notes).
+CI fails if the PR body evidence tier differs from the tier label. Update the PR body to match the label.
 
-## Merge Gate Checklist
+## Stale payload rule
 
-Before merge:
+GitHub Actions re-runs may use stale PR payload data for labels/body. If governance checks still show old labels/body after edits, push a new commit to refresh what CI reads.
 
-- Working tree is clean (`git status --porcelain` empty).
-- No untracked debug/build artifacts.
-- Required CI checks are green for the declared risk tier.
-- **Tier 2 and Tier 3** require verifier approval.
-- **Tier 3** additionally requires human merge approval (maintainer) before merge.
+## Required Evidence block format
 
-## Workspace-Scoped CI Policy
+Every PR body must include this fenced block exactly:
 
-SmartFunds CI runs checks based on impacted workspaces from changed paths.
+```evidence
+Risk Tier: <0|1|2|3>
+Justification: <why this tier>
+Affected Paths: <comma-separated globs or file list>
+Tests Added: <what you ran/added, or "N/A" with reason>
+Determinism Statement: <why this change is deterministic and reproducible>
+```
 
-- Always run policy checks (risk tier validation).
-- Run checks only for changed workspaces where possible.
-- If no workspaces are impacted, run policy checks plus a lightweight sanity command.
-- Tier requirements:
-  - **Tier 0**: lint/typecheck + unit tests for impacted workspaces.
-  - **Tier 1**: unit tests for impacted workspaces.
-  - **Tier 2**: unit + integration tests for impacted workspaces + schema checks when doc/export paths change.
-  - **Tier 3**: Tier 2 checks + `tier-3-approved` label gate and branch protection requiring human approval.
+## Tier examples
 
-## Hygiene
+### Tier 0 (docs-only)
 
-Mandatory cleanup before handoff:
+```evidence
+Risk Tier: 0
+Justification: Updates governance documentation only.
+Affected Paths: docs/code-factory-governance.md
+Tests Added: N/A (docs-only change)
+Determinism Statement: No runtime behavior changed.
+```
 
-- `git restore .`
-- `git clean -fd`
+### Tier 1 (low-risk app surface)
 
-Debug artifact policy:
+```evidence
+Risk Tier: 1
+Justification: API route validation refinement without control-plane impact.
+Affected Paths: apps/api/src/index.ts
+Tests Added: npm --workspace @smartfunds/api run test
+Determinism Statement: Assertions are deterministic and do not depend on external services.
+```
 
-- Do not commit temporary databases, scratch backups, tsbuildinfo, or ad hoc logs.
-- Keep debug output local and clean workspace before commit.
+### Tier 2 (core package)
 
-## Related Files
+```evidence
+Risk Tier: 2
+Justification: Mission-engine transition guard update.
+Affected Paths: packages/mission-engine/src/transitions.ts
+Tests Added: npm --workspace @smartfunds/mission-engine run test
+Determinism Statement: In-memory SQLite fixtures and deterministic state assertions.
+```
 
-- PR template: `.github/pull_request_template.md`
-- CI policy enforcement: `.github/workflows/code-factory.yml`
-- Helper scripts:
-  - `scripts/push-preflight.sh`
-  - `scripts/validate-clean-tree.sh`
+### Tier 3 (control-plane/policy/shared)
+
+```evidence
+Risk Tier: 3
+Justification: Governance validator update under control-plane.
+Affected Paths: control-plane/validate-pr.ts, control-plane/risk-contract.json
+Tests Added: npx vitest run control-plane/validate-pr.test.ts
+Determinism Statement: Pure parser/inference logic with mocked PR payload data.
+```
+
+## Beginner-friendly preflight checklist
+
+1. Add exactly one risk tier label (`tier-0`..`tier-3`).
+2. If Tier 3, add `tier-3-approved`.
+3. Paste the required `evidence` block and fill every field.
+4. Ensure the `Risk Tier` value in the evidence block equals the tier label.
+5. Confirm declared tier is not lower than changed-path tier from `control-plane/risk-contract.json`.
+6. Run relevant tests/type checks and include what you ran in `Tests Added`.
+7. If a rerun still shows old labels/body, push a new commit and rerun.

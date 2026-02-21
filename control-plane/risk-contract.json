@@ -1,0 +1,30 @@
+{
+  "tiers": {
+    "0": {
+      "description": "Docs-only and non-executable changes.",
+      "required_checks": []
+    },
+    "1": {
+      "description": "Low-risk product changes.",
+      "required_checks": []
+    },
+    "2": {
+      "description": "Medium-risk changes to core packages/integrations.",
+      "required_checks": []
+    },
+    "3": {
+      "description": "High-risk control-plane, policy, security, shared libraries.",
+      "required_checks": []
+    }
+  },
+  "paths": {
+    "control-plane/**": 3,
+    "policies/**": 3,
+    "packages/shared/**": 3,
+    "packages/mission-engine/**": 2,
+    "packages/doc-factory/**": 2,
+    "apps/**": 1,
+    "docs/**": 0,
+    "*.md": 0
+  }
+}

@@ -8,7 +8,7 @@ jobs:
   policy:
     runs-on: ubuntu-latest
     outputs:
-      tier: ${{ steps.tier.outputs.tier }}
+      tier: ${{ steps.validate_pr.outputs.tier }}
       workspaces: ${{ steps.impact.outputs.workspaces }}
       run_schema: ${{ steps.impact.outputs.run_schema }}
     steps:
@@ -16,29 +16,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate risk tier from PR body or labels
-        id: tier
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate PR governance contract
+        id: validate_pr
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: |
-          set -euo pipefail
-          tier=""
-
-          if [[ "$PR_LABELS" =~ (^|,)tier-([0-3])($|,) ]]; then
-            tier="${BASH_REMATCH[2]}"
-          elif [[ "$PR_BODY" =~ [Tt]ier[[:space:]]*([0-3]) ]]; then
-            tier="${BASH_REMATCH[1]}"
-          elif [[ "$PR_BODY" =~ [Rr]isk[[:space:]_-]*[Tt]ier[^0-9]*([0-3]) ]]; then
-            tier="${BASH_REMATCH[1]}"
-          fi
-
-          if [[ -z "$tier" ]]; then
-            echo "Risk tier is missing. Add tier-0..tier-3 label or include Tier N in PR body." >&2
-            exit 1
-          fi
-
-          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types control-plane/validate-pr.ts
 
       - name: Detect impacted workspaces
         id: impact
@@ -84,7 +70,7 @@ jobs:
 
       - name: Report policy resolution
         run: |
-          echo "Tier: ${{ steps.tier.outputs.tier }}"
+          echo "Tier: ${{ steps.validate_pr.outputs.tier }}"
           echo "Impacted workspaces: ${{ steps.impact.outputs.workspaces }}"
           echo "Run schema checks: ${{ steps.impact.outputs.run_schema }}"
 
@@ -207,19 +193,4 @@ jobs:
           fi
           if [[ -d packages/exports ]]; then
             npm --workspace @smartfunds/exports run typecheck
-          fi
-
-  tier3_label_gate:
-    needs: policy
-    if: needs.policy.outputs.tier == '3'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require tier-3-approved label
-        env:
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: |
-          set -euo pipefail
-          if [[ ",$PR_LABELS," != *",tier-3-approved,"* ]]; then
-            echo "Tier 3 PRs require 'tier-3-approved' label from maintainers." >&2
-            exit 1
           fi

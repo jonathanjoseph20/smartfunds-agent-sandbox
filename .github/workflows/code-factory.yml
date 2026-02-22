@@ -9,6 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tier: ${{ steps.validate_pr.outputs.tier }}
+      detected_tier: ${{ steps.validate_pr.outputs.detected_tier }}
+      implied_tier: ${{ steps.validate_pr.outputs.implied_tier }}
+      required_checks: ${{ steps.validate_pr.outputs.required_checks }}
       workspaces: ${{ steps.impact.outputs.workspaces }}
       run_schema: ${{ steps.impact.outputs.run_schema }}
     steps:
@@ -70,13 +73,15 @@ jobs:
 
       - name: Report policy resolution
         run: |
-          echo "Tier: ${{ steps.validate_pr.outputs.tier }}"
+          echo "Detected tier: ${{ steps.validate_pr.outputs.detected_tier }}"
+          echo "Implied tier: ${{ steps.validate_pr.outputs.implied_tier }}"
+          echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
           echo "Impacted workspaces: ${{ steps.impact.outputs.workspaces }}"
           echo "Run schema checks: ${{ steps.impact.outputs.run_schema }}"
 
   lint_tier0:
     needs: policy
-    if: needs.policy.outputs.tier == '0'
+    if: contains(needs.policy.outputs.required_checks, 'lint_tier0')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,6 +110,7 @@ jobs:
 
   unit_tests:
     needs: policy
+    if: contains(needs.policy.outputs.required_checks, 'unit_tests')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -137,7 +143,7 @@ jobs:
 
   integration_tests:
     needs: policy
-    if: needs.policy.outputs.tier == '2' || needs.policy.outputs.tier == '3'
+    if: contains(needs.policy.outputs.required_checks, 'integration_tests')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,7 +182,7 @@ jobs:
 
   schema_checks:
     needs: policy
-    if: needs.policy.outputs.tier == '2' || needs.policy.outputs.tier == '3'
+    if: contains(needs.policy.outputs.required_checks, 'schema_checks')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,3 +200,12 @@ jobs:
           if [[ -d packages/exports ]]; then
             npm --workspace @smartfunds/exports run typecheck
           fi
+
+  tier3_label_gate:
+    needs: policy
+    if: contains(needs.policy.outputs.required_checks, 'tier3_label_gate')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm tier-3 label gate requirement
+        run: |
+          echo "Tier 3 label gate required and enforced by control-plane/validate-pr.ts"

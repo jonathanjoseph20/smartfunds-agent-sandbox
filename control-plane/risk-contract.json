@@ -2,19 +2,25 @@
   "tiers": {
     "0": {
       "description": "Docs-only and non-executable changes.",
-      "required_checks": []
+      "required_checks": ["lint_tier0"]
     },
     "1": {
       "description": "Low-risk product changes.",
-      "required_checks": []
+      "required_checks": ["lint_tier0", "unit_tests"]
     },
     "2": {
-      "description": "Medium-risk changes to core packages/integrations.",
-      "required_checks": []
+      "description": "Medium-risk changes to core packages and integrations.",
+      "required_checks": ["lint_tier0", "unit_tests", "integration_tests", "schema_checks"]
     },
     "3": {
       "description": "High-risk control-plane, policy, security, shared libraries.",
-      "required_checks": []
+      "required_checks": [
+        "lint_tier0",
+        "unit_tests",
+        "integration_tests",
+        "schema_checks",
+        "tier3_label_gate"
+      ]
     }
   },
   "paths": {
@@ -23,8 +29,11 @@
     "packages/shared/**": 3,
     "packages/mission-engine/**": 2,
     "packages/doc-factory/**": 2,
+    "packages/compliance/**": 2,
+    "packages/exports/**": 2,
     "apps/**": 1,
     "docs/**": 0,
     "*.md": 0
-  }
+  },
+  "default_tier": 1
 }

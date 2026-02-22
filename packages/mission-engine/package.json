@@ -10,9 +10,12 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest run --config vitest.config.ts --pool=forks --no-file-parallelism"
+    "test": "vitest run --passWithNoTests --config vitest.config.ts --pool=forks --no-file-parallelism"
   },
   "exports": {
     ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0"
   }
 }

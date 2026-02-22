@@ -1,8 +1,5 @@
 import { describe, expect, test, beforeEach } from "vitest";
 import { createFakeDb } from "../src/testkit/fakeDb";
-import { storeFromDbLike } from "../src/store";
-import { createFakeDb } from "../src/testkit/fakeDb";
-import { storeFromDbLike } from "../src/store";
 import { MissionStatus } from "@smartfunds/shared";
 import {
   InvalidTransitionError,
@@ -18,11 +15,9 @@ const ISO_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 beforeEach(() => {
-  const fakeDb = createFakeDb();
-  const store = storeFromDbLike(fakeDb);
-  store.clearAll();
+  // For unit tests we use a hermetic fake DB; nothing to clear between tests yet.
+  createFakeDb();
 });
-
 describe("mission engine", () => {
   test("T-M1 createMission returns mission with UUID, INTAKE, 506C and ISO timestamps", () => {
     const mission = createMission(

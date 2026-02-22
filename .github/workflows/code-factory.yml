@@ -170,7 +170,7 @@ jobs:
             esac
             [[ -z "$pkg_path" || ! -d "$pkg_path" ]] && continue
             if compgen -G "$pkg_path/**/*.integration.test.ts" > /dev/null; then
-              npm --workspace "$ws" run test -- "**/*.integration.test.ts"
+              npm --workspace "$ws" run test -- "integration"
             fi
           done
 

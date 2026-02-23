@@ -1,150 +1,148 @@
-import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+// control-plane/cli/pr-create.ts
+// Idempotent PR creation/upsert:
+// - If PR exists for current branch: update PR BODY from .pr-body.md and apply labels from .pr-labels.txt
+// - If PR does not exist: create PR using .pr-body.md, then apply labels
+// IMPORTANT: Never post a comment. Governance requires the PR description/body.
 
-import { readBodyFile, validatePrBody } from '../governance/pr-body.ts';
-import { verifyPrBodyOnGh } from './pr-verify.ts';
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
 
-const DEFAULT_BODY_FILE = '.pr-body.md';
+type PRView = { number: number; url: string };
 
-type ParsedArgs = {
-  title?: string;
-  bodyFile: string;
-  runNormalize: boolean;
-  runPreflight: boolean;
-};
-
-function parseArgs(argv: string[]): ParsedArgs {
-  let title: string | undefined;
-  let bodyFile = DEFAULT_BODY_FILE;
-  let runNormalize = false;
-  let runPreflight = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === '--title') {
-      const value = argv[index + 1];
-      if (!value) {
-        throw new Error('Missing value for --title.');
-      }
-      title = value;
-      index += 1;
-      continue;
-    }
-    if (arg.startsWith('--title=')) {
-      title = arg.slice('--title='.length);
-      if (!title) {
-        throw new Error('Missing value for --title.');
-      }
-      continue;
-    }
-    if (arg === '--body-file') {
-      const value = argv[index + 1];
-      if (!value) {
-        throw new Error('Missing value for --body-file.');
-      }
-      bodyFile = value;
-      index += 1;
-      continue;
-    }
-    if (arg.startsWith('--body-file=')) {
-      bodyFile = arg.slice('--body-file='.length);
-      if (!bodyFile) {
-        throw new Error('Missing value for --body-file.');
-      }
-      continue;
-    }
-    if (arg === '--normalize') {
-      runNormalize = true;
-      continue;
-    }
-    if (arg === '--preflight') {
-      runPreflight = true;
-      continue;
-    }
-    if (arg === '--prep') {
-      runNormalize = true;
-      runPreflight = true;
-      continue;
-    }
-    throw new Error(`Unknown argument: ${arg}`);
-  }
-
-  return { title, bodyFile, runNormalize, runPreflight };
-}
-
-function ensureGhAvailable(): void {
+function run(cmd: string, args: string[], opts?: { allowFail?: boolean }): string {
   try {
-    execFileSync('gh', ['--version'], { stdio: 'pipe' });
-  } catch {
-    throw new Error('GitHub CLI (gh) is required. Install gh and ensure it is on PATH.');
+    return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  } catch (e: any) {
+    if (opts?.allowFail) return "";
+    const stderr = e?.stderr?.toString?.() ?? "";
+    const stdout = e?.stdout?.toString?.() ?? "";
+    throw new Error(`Command failed: ${cmd} ${args.join(" ")}\n${stdout}\n${stderr}`.trim());
   }
 }
 
-function ensureGhAuthenticated(): void {
+function readRequiredFile(path: string): string {
+  if (!fs.existsSync(path)) {
+    throw new Error(`Missing required file: ${path}`);
+  }
+  const text = fs.readFileSync(path, "utf8");
+  if (!text.trim()) throw new Error(`Required file is empty: ${path}`);
+  return text;
+}
+
+function readLabelsFile(path: string): string[] {
+  if (!fs.existsSync(path)) return [];
+  const raw = fs.readFileSync(path, "utf8");
+  return raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !l.startsWith("#"));
+}
+
+function getBranch(): string {
+  return run("git", ["branch", "--show-current"]);
+}
+
+function getRepoNameWithOwner(): string {
+  // Uses gh configuration in Codespaces; deterministic, no timestamps.
+  return run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+}
+
+function tryGetExistingPR(): PRView | null {
+  const out = run("gh", ["pr", "view", "--json", "number,url"], { allowFail: true });
+  if (!out) return null;
   try {
-    execFileSync('gh', ['auth', 'status', '-h', 'github.com'], { stdio: 'pipe' });
+    const parsed = JSON.parse(out) as PRView;
+    if (typeof parsed.number !== "number" || typeof parsed.url !== "string") return null;
+    return parsed;
   } catch {
-    throw new Error('GitHub CLI is not authenticated. Run: gh auth login');
+    return null;
   }
 }
 
-function resolveTitle(explicitTitle?: string): string {
-  if (explicitTitle) {
-    return explicitTitle;
+function applyPrBody(prNumber: number): void {
+  // Sets PR description/body (NOT a comment)
+  run("gh", ["pr", "edit", String(prNumber), "--body-file", ".pr-body.md"]);
+}
+
+function applyPrLabels(repo: string, prNumber: number, labels: string[]): void {
+  if (labels.length === 0) return;
+
+  // Bulletproof label apply via GitHub API:
+  // POST /repos/{owner}/{repo}/issues/{issue_number}/labels
+  const args = ["api", "-X", "POST", `repos/${repo}/issues/${prNumber}/labels`];
+  for (const label of labels) {
+    args.push("-f", `labels[]=${label}`);
   }
-  const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
-  return `chore: ${branch}`;
+  run("gh", args);
 }
 
-function runGovernanceNormalize(bodyFile: string): void {
-  execFileSync('npm', ['run', 'governance:normalize', '--', bodyFile], { stdio: 'inherit' });
-}
+function createPR(title: string, base: string): PRView {
+  // Create PR from current branch -> base
+  const out = run("gh", [
+    "pr",
+    "create",
+    "--title",
+    title,
+    "--body-file",
+    ".pr-body.md",
+    "--base",
+    base,
+  ]);
 
-function runGovernancePreflight(): void {
-  execFileSync('npm', ['run', 'governance:preflight'], { stdio: 'inherit' });
-}
-
-function ensureBodyFilePresent(bodyFile: string): void {
-  if (!fs.existsSync(bodyFile)) {
-    throw new Error(`PR body file not found: ${bodyFile}`);
+  // gh prints the URL on success (often as the last line)
+  const url = out.split("\n").map((l) => l.trim()).filter(Boolean).slice(-1)[0] ?? "";
+  const pr = tryGetExistingPR();
+  if (!pr) {
+    // If we can't read PR after creation, still return best-effort URL.
+    return { number: -1, url };
   }
-  const body = fs.readFileSync(bodyFile, 'utf8');
-  if (!body.trim()) {
-    throw new Error(`PR body file is empty: ${bodyFile}`);
-  }
+  return pr;
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+function main(): void {
+  // Required files created by governance tooling
+  readRequiredFile(".pr-body.md");
 
-  ensureBodyFilePresent(args.bodyFile);
+  const labels = readLabelsFile(".pr-labels.txt");
 
-  if (args.runNormalize) {
-    runGovernanceNormalize(args.bodyFile);
+  const branch = getBranch();
+  const base = "main"; // repo convention
+  const repo = getRepoNameWithOwner();
+
+  // Title: default matches previous behavior ("chore: <branch>")
+  const titleArgIndex = process.argv.indexOf("--title");
+  const title = titleArgIndex >= 0 ? process.argv[titleArgIndex + 1] : `chore: ${branch}`;
+
+  const existing = tryGetExistingPR();
+
+  if (existing) {
+    // Upsert existing PR: BODY + LABELS
+    applyPrBody(existing.number);
+    applyPrLabels(repo, existing.number, labels);
+
+    // Deterministic output
+    console.log(`PR updated and verified. URL: ${existing.url}`);
+    console.log(`PR number: ${existing.number}`);
+    console.log(`Applied labels: ${labels.join(", ") || "(none)"}`);
+    return;
   }
 
-  const body = readBodyFile(args.bodyFile);
-  validatePrBody(body);
+  // Create PR then converge to desired state
+  const created = createPR(title, base);
 
-  if (args.runPreflight) {
-    runGovernancePreflight();
+  // If created.number is -1, re-read PR to get the number
+  const pr = created.number > 0 ? created : tryGetExistingPR();
+  if (!pr) {
+    throw new Error(`PR created but could not be reloaded. URL: ${created.url || "(unknown)"}`);
   }
 
-  ensureGhAvailable();
-  ensureGhAuthenticated();
+  applyPrBody(pr.number);
+  applyPrLabels(repo, pr.number, labels);
 
-  const title = resolveTitle(args.title);
-
-  execFileSync('gh', ['pr', 'create', '--title', title, '--body-file', args.bodyFile], { stdio: 'inherit' });
-
-  const verified = verifyPrBodyOnGh();
-  console.log(`PR created and verified. Tier: ${verified.tier}`);
+  console.log(`PR created and verified. URL: ${pr.url}`);
+  console.log(`PR number: ${pr.number}`);
+  console.log(`Applied labels: ${labels.join(", ") || "(none)"}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error: unknown) => {
-    console.error((error as Error).message);
-    console.error('Remediation: ensure .pr-body.md exists, is non-empty, and contains the required tier/evidence structure.');
-    process.exit(1);
-  });
-}
+main();

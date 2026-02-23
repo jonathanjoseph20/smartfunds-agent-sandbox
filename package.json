@@ -11,6 +11,9 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "governance:check": "node --experimental-strip-types control-plane/governance-check.ts",
+    "governance:preflight": "node --experimental-strip-types control-plane/cli/governance-preflight.ts",
+    "governance:generate": "node --experimental-strip-types control-plane/cli/governance-generate.ts",
+    "governance:normalize": "node --experimental-strip-types control-plane/cli/governance-normalize.ts",
     "bootstrap:labels": "npx tsc --target ES2022 --module ES2022 --moduleResolution node --lib ES2022,DOM --outDir control-plane/dist control-plane/bootstrap-labels.ts && node control-plane/dist/bootstrap-labels.js"
   },
   "devDependencies": {

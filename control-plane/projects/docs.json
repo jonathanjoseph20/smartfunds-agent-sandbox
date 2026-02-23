@@ -1,9 +1,9 @@
 {
+  "projectId": "docs",
   "name": "docs",
   "globs": [
     "docs/**"
   ],
-  "tier": 1,
   "owners": [
     "core"
   ]

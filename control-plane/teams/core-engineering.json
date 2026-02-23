@@ -1,0 +1,7 @@
+{
+  "teamId": "core-engineering",
+  "projectId": "core-app",
+  "ownedPaths": ["control-plane/**"],
+  "roles": ["planner", "implementer", "verifier"],
+  "capabilities": ["governance"]
+}

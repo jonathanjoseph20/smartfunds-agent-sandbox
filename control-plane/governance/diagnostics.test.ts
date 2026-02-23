@@ -15,6 +15,10 @@ describe('governance diagnostics', () => {
       missingLabels: ['tier-2', 'tier-1', 'tier-2'],
       missingEvidenceFields: ['Tests Added', 'Affected Paths'],
       requiredChecks: ['unit_tests', 'lint_tier0'],
+      projectsTouched: ['project-b', 'project-a'],
+      teamsTouched: ['team-b', 'team-a'],
+      unownedFiles: ['z.md', 'a.md'],
+      ownershipStatus: 'multi_project',
       nextActions: ['Run: git push', 'Add label: tier-3-approved.'],
       warnings: ['b', 'a']
     });
@@ -28,6 +32,10 @@ describe('governance diagnostics', () => {
         missingLabels: ['tier-1', 'tier-2'],
         missingEvidenceFields: ['Affected Paths', 'Tests Added'],
         requiredChecks: ['lint_tier0', 'unit_tests'],
+        projectsTouched: ['project-a', 'project-b'],
+        teamsTouched: ['team-a', 'team-b'],
+        unownedFiles: ['a.md', 'z.md'],
+        ownershipStatus: 'multi_project',
         nextActions: ['Add label: tier-3-approved.', 'Run: git push'],
         warnings: ['a', 'b']
       })

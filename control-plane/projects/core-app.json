@@ -1,0 +1,6 @@
+{
+  "projectId": "core-app",
+  "ownedPaths": ["**"],
+  "description": "Default project boundary",
+  "tags": ["seed"]
+}

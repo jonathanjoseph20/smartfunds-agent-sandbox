@@ -1,10 +1,6 @@
 {
   "projectId": "docs",
-  "name": "docs",
-  "globs": [
+  "ownedPaths": [
     "docs/**"
-  ],
-  "owners": [
-    "core"
   ]
 }

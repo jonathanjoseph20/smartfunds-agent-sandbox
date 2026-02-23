@@ -29,6 +29,10 @@ GitHub Actions re-runs may use stale PR payload data for labels/body. If governa
 
 If a required label is missing (for example `tier-3`), run the label bootstrap runbook to create or update labels before re-running governance checks. See `docs/runbooks/label-bootstrap.md`.
 
+## Governance failure recovery
+
+Use `docs/runbooks/governance-failure-recovery.md` for step-by-step recovery, including PR body verification, label checks, bootstrap commands, and stale payload refresh guidance.
+
 ## Required Evidence block format
 
 Every PR body must include this fenced block exactly:
@@ -92,4 +96,3 @@ Determinism Statement: Pure parser/inference logic with mocked PR payload data.
 5. Confirm declared tier is not lower than changed-path tier from `control-plane/risk-contract.json`.
 6. Run relevant tests/type checks and include what you ran in `Tests Added`.
 7. If a rerun still shows old labels/body, push a new commit and rerun.
-

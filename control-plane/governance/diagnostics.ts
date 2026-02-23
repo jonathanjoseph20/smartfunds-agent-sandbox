@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 
+import type { OwnershipStatus } from '../studio/ownership';
+
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
 
@@ -46,6 +48,10 @@ export type GovernanceReport = {
   missingLabels: string[];
   missingEvidenceFields: string[];
   requiredChecks: string[];
+  projectsTouched: string[];
+  teamsTouched: string[];
+  unownedFiles: string[];
+  ownershipStatus: OwnershipStatus;
   nextActions: string[];
   warnings: string[];
 };
@@ -401,6 +407,10 @@ export function buildGovernanceReport(input: {
   missingLabels: string[];
   missingEvidenceFields: string[];
   requiredChecks: string[];
+  projectsTouched: string[];
+  teamsTouched: string[];
+  unownedFiles: string[];
+  ownershipStatus: OwnershipStatus;
   nextActions: string[];
   warnings: string[];
 }): GovernanceReport {
@@ -411,6 +421,10 @@ export function buildGovernanceReport(input: {
     missingLabels: sortedUnique(input.missingLabels),
     missingEvidenceFields: sortedUnique(input.missingEvidenceFields),
     requiredChecks: sortedUnique(input.requiredChecks),
+    projectsTouched: sortedUnique(input.projectsTouched),
+    teamsTouched: sortedUnique(input.teamsTouched),
+    unownedFiles: sortedUnique(input.unownedFiles),
+    ownershipStatus: input.ownershipStatus,
     nextActions: sortedUnique(input.nextActions),
     warnings: sortedUnique(input.warnings)
   };

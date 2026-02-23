@@ -17,6 +17,8 @@ import {
   type PullRequestData,
   type RiskContract
 } from './governance/diagnostics.ts';
+import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry.ts';
+import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
   const required = new Set(['tier-0', 'tier-1', 'tier-2', 'tier-3', 'tier-3-approved', 'codex']);
@@ -168,6 +170,17 @@ function buildReport(
   repo?: string
 ): { report: GovernanceReport; errors: string[] } {
   const result = validatePrData(prData, contract);
+  let ownershipResult: OwnershipResult;
+  const errors: string[] = [...result.errors];
+  try {
+    const projects = loadProjectsFromDir('control-plane/projects');
+    const teams = loadTeamsFromDir('control-plane/teams', projects);
+    ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects, teams });
+  } catch (error) {
+    errors.push((error as Error).message);
+    ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects: [], teams: [] });
+  }
+  errors.push(...buildOwnershipErrors(ownershipResult));
   const declaredTier = resolveDeclaredTier({ tierBody: result.tierBody, tierBodyLabel: result.tierBodyLabel });
   const labelTier = result.tierLabel ?? null;
   const impliedTier = result.impliedTier;
@@ -178,6 +191,7 @@ function buildReport(
 
   const warnings = buildWarnings(result.errors);
   const nextActions = buildNextActions(result, prData, repo);
+  nextActions.push(...ownershipResult.nextActions);
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
   }
@@ -190,10 +204,14 @@ function buildReport(
       missingLabels,
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
+      projectsTouched: ownershipResult.projectsTouched,
+      teamsTouched: ownershipResult.teamsTouched,
+      unownedFiles: ownershipResult.unownedFiles,
+      ownershipStatus: ownershipResult.ownershipStatus,
       nextActions,
       warnings
     }),
-    errors: result.errors
+    errors
   };
 }
 

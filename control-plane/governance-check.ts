@@ -20,6 +20,8 @@ import {
   type Tier
 } from './governance/diagnostics';
 import { REQUIRED_LABELS } from './bootstrap-labels';
+import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry';
+import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership';
 
 type GitExec = (args: string[]) => string;
 
@@ -203,6 +205,18 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const missingEvidenceFields = evidenceValidation.missingFields;
   const errors: string[] = [...evidenceErrors];
 
+  let ownershipResult: OwnershipResult;
+  try {
+    const projects = loadProjectsFromDir('control-plane/projects');
+    const teams = loadTeamsFromDir('control-plane/teams', projects);
+    ownershipResult = resolveOwnership({ changedFiles, projects, teams });
+  } catch (error) {
+    errors.push((error as Error).message);
+    ownershipResult = resolveOwnership({ changedFiles, projects: [], teams: [] });
+  }
+
+  errors.push(...buildOwnershipErrors(ownershipResult));
+
   let tierBodyLabel: Tier | undefined;
   try {
     tierBodyLabel = extractTierLabelFromBody(body);
@@ -256,6 +270,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     repo,
     missingRepoLabels
   );
+  nextActions.push(...ownershipResult.nextActions);
 
   if (errors.length > 0) {
     warnings.push(
@@ -271,6 +286,10 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     missingLabels: missingRepoLabels,
     missingEvidenceFields,
     requiredChecks,
+    projectsTouched: ownershipResult.projectsTouched,
+    teamsTouched: ownershipResult.teamsTouched,
+    unownedFiles: ownershipResult.unownedFiles,
+    ownershipStatus: ownershipResult.ownershipStatus,
     nextActions,
     warnings
   });

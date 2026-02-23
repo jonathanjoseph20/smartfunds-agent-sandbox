@@ -27,6 +27,7 @@ jobs:
         id: validate_pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GOVERNANCE_SUMMARY: 'true'
         run: node --experimental-strip-types control-plane/validate-pr.ts
 
       - name: Detect impacted workspaces

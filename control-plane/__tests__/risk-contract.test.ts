@@ -6,7 +6,7 @@ import {
   inferImpliedTier,
   loadRiskContract,
   type RiskContract
-} from '../validate-pr';
+} from '../governance/diagnostics';
 
 describe('risk contract', () => {
   const contract = loadRiskContract(new URL('../risk-contract.json', import.meta.url).pathname);

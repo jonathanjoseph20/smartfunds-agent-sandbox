@@ -14,6 +14,10 @@
     "governance:preflight": "node --experimental-strip-types control-plane/cli/governance-preflight.ts",
     "governance:generate": "node --experimental-strip-types control-plane/cli/governance-generate.ts",
     "governance:normalize": "node --experimental-strip-types control-plane/cli/governance-normalize.ts",
+    "pr:body:check": "node --experimental-strip-types control-plane/cli/pr-body-check.ts",
+    "pr:verify": "node --experimental-strip-types control-plane/cli/pr-verify.ts",
+    "pr:create": "node --experimental-strip-types control-plane/cli/pr-create.ts",
+    "pr:refresh-metadata": "node --experimental-strip-types control-plane/cli/pr-refresh-metadata.ts",
     "bootstrap:labels": "npx tsc --target ES2022 --module ES2022 --moduleResolution node --lib ES2022,DOM --outDir control-plane/dist control-plane/bootstrap-labels.ts && node control-plane/dist/bootstrap-labels.js"
   },
   "devDependencies": {

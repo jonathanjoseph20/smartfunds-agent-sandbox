@@ -9,7 +9,7 @@ import {
   validatePrData,
   type PullRequestData,
   type RiskContract
-} from './governance/diagnostics';
+} from './governance/diagnostics.ts';
 
 const contract: RiskContract = {
   tiers: {

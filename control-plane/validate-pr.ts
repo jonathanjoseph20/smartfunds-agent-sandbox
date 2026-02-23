@@ -16,7 +16,7 @@ import {
   type GovernanceReport,
   type PullRequestData,
   type RiskContract
-} from './governance/diagnostics';
+} from './governance/diagnostics.ts';
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
   const required = new Set(['tier-0', 'tier-1', 'tier-2', 'tier-3', 'tier-3-approved', 'codex']);

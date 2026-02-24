@@ -51,6 +51,21 @@ describe('governance:preflight', () => {
     expect(result.errors.join('\n')).toContain('Missing fenced evidence block');
   });
 
+  it('fails structured-mode changes declared below tier-2', () => {
+    const result = buildPreflightReport(baseBody, ['governance/policy.ts'], [], {
+      loadProjects: () => [],
+      loadTeams: () => [],
+      resolveOwnership: () => makeOwnership()
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.report.executionModesTouched).toEqual(['structured']);
+    expect(result.report.modeEnforcementStatus).toBe('failed');
+    expect(result.report.modeViolation).toBe('structured_min_tier_violation');
+    expect(result.report.requiredMinimumTier).toBe(2);
+    expect(result.errors.join('\n')).toContain('structured execution mode requires declared tier-2 or tier-3');
+  });
+
   it('enforces tier-3 approval via local convention', () => {
     const body = `tier-3
 
@@ -104,6 +119,6 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"nextActions\":[],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[]}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"nextActions\":[],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
   });
 });

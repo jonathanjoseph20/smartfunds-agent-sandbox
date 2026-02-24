@@ -17,6 +17,7 @@ import {
   type PullRequestData,
   type RiskContract
 } from './governance/diagnostics.ts';
+import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
@@ -192,7 +193,15 @@ function buildReport(
 
   const warnings = buildWarnings(result.errors);
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
+  const modePolicy = evaluateModePolicy({
+    executionModesTouched: teamResolution.executionModesTouched,
+    declaredTier
+  });
+  if (modePolicy.status === 'failed' && modePolicy.message) {
+    errors.push(modePolicy.message);
+  }
   const nextActions = buildNextActions(result, prData, repo);
+  nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
@@ -226,12 +235,13 @@ async function main(): Promise<void> {
   const prData = await fetchPrDataFromGitHub();
   const repo = process.env.GITHUB_REPOSITORY;
   const { report, errors } = buildReport(prData, contract, repo);
-  const status: 'PASS' | 'FAIL' = errors.length === 0 ? 'PASS' : 'FAIL';
+  const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
+  const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);
 
   writeStepSummary(report, status, primaryAction);
 
-  if (errors.length > 0) {
+  if (!ok) {
     console.error('Governance validation failed.');
     console.error(
       `Declared Tier: ${report.declaredTier ?? 'n/a'} | Label Tier: ${report.labelTier ?? 'n/a'} | Implied Tier: ${report.impliedTier ?? 'n/a'}`

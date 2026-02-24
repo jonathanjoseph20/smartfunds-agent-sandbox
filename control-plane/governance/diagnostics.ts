@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import type { OwnershipStatus } from '../studio/ownership';
 import type { ExecutionMode } from '../teams/types';
+import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -59,6 +60,9 @@ export type GovernanceReport = {
   modeWarnings: string[];
   unownedPaths: string[];
   ambiguousPaths: string[];
+  modeEnforcementStatus: ModeEnforcementStatus;
+  modeViolation: ModeViolation;
+  requiredMinimumTier: number | null;
 };
 
 export function isTier(value: unknown): value is Tier {
@@ -423,6 +427,11 @@ export function buildGovernanceReport(input: {
   unownedPaths: string[];
   ambiguousPaths: string[];
 }): GovernanceReport {
+  const modePolicy = evaluateModePolicy({
+    executionModesTouched: input.executionModesTouched,
+    declaredTier: input.declaredTier
+  });
+
   return {
     declaredTier: input.declaredTier,
     impliedTier: input.impliedTier,
@@ -439,7 +448,10 @@ export function buildGovernanceReport(input: {
     executionModesTouched: sortedUnique(input.executionModesTouched),
     modeWarnings: sortedUnique(input.modeWarnings),
     unownedPaths: sortedUnique(input.unownedPaths),
-    ambiguousPaths: sortedUnique(input.ambiguousPaths)
+    ambiguousPaths: sortedUnique(input.ambiguousPaths),
+    modeEnforcementStatus: modePolicy.status,
+    modeViolation: modePolicy.violation,
+    requiredMinimumTier: modePolicy.requiredMinimumTier
   };
 }
 

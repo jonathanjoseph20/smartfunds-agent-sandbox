@@ -2,7 +2,7 @@ import fs from 'node:fs';
 
 import type { OwnershipStatus } from '../studio/ownership';
 import type { ExecutionMode } from '../teams/types';
-import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy';
+import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';

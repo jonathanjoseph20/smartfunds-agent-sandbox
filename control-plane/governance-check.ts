@@ -22,6 +22,7 @@ import {
 import { REQUIRED_LABELS } from './bootstrap-labels';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership';
+import { resolveTeamsForChangedFiles } from './teams/team-resolver';
 
 type GitExec = (args: string[]) => string;
 
@@ -260,6 +261,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   const warnings = buildWarnings(hasLabelCheck);
+  const teamResolution = resolveTeamsForChangedFiles(changedFiles);
   const nextActions = buildNextActions(
     declaredTier,
     impliedTier,
@@ -287,11 +289,15 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     missingEvidenceFields,
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
-    teamsTouched: ownershipResult.teamsTouched,
+    teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
     nextActions,
-    warnings
+    warnings,
+    executionModesTouched: teamResolution.executionModesTouched,
+    modeWarnings: teamResolution.modeWarnings,
+    unownedPaths: teamResolution.unownedPaths,
+    ambiguousPaths: teamResolution.ambiguousPaths
   });
 
   return {

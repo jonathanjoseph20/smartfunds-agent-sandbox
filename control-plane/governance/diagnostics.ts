@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 import type { OwnershipStatus } from '../studio/ownership';
+import type { ExecutionMode } from '../teams/types';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -54,6 +55,10 @@ export type GovernanceReport = {
   ownershipStatus: OwnershipStatus;
   nextActions: string[];
   warnings: string[];
+  executionModesTouched: ExecutionMode[];
+  modeWarnings: string[];
+  unownedPaths: string[];
+  ambiguousPaths: string[];
 };
 
 export function isTier(value: unknown): value is Tier {
@@ -396,8 +401,8 @@ export function loadRiskContract(contractPath = new URL('../risk-contract.json',
   return parsed;
 }
 
-function sortedUnique(values: string[]): string[] {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+function sortedUnique<T extends string>(values: T[]): T[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b)) as T[];
 }
 
 export function buildGovernanceReport(input: {
@@ -413,6 +418,10 @@ export function buildGovernanceReport(input: {
   ownershipStatus: OwnershipStatus;
   nextActions: string[];
   warnings: string[];
+  executionModesTouched: ExecutionMode[];
+  modeWarnings: string[];
+  unownedPaths: string[];
+  ambiguousPaths: string[];
 }): GovernanceReport {
   return {
     declaredTier: input.declaredTier,
@@ -426,7 +435,11 @@ export function buildGovernanceReport(input: {
     unownedFiles: sortedUnique(input.unownedFiles),
     ownershipStatus: input.ownershipStatus,
     nextActions: sortedUnique(input.nextActions),
-    warnings: sortedUnique(input.warnings)
+    warnings: sortedUnique(input.warnings),
+    executionModesTouched: sortedUnique(input.executionModesTouched),
+    modeWarnings: sortedUnique(input.modeWarnings),
+    unownedPaths: sortedUnique(input.unownedPaths),
+    ambiguousPaths: sortedUnique(input.ambiguousPaths)
   };
 }
 

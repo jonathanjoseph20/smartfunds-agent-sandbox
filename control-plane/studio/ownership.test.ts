@@ -165,7 +165,11 @@ describe('ownership resolution', () => {
       unownedFiles: [],
       ownershipStatus: 'ok',
       nextActions: [],
-      warnings: []
+      warnings: [],
+      executionModesTouched: [],
+      modeWarnings: [],
+      unownedPaths: [],
+      ambiguousPaths: []
     });
 
     const json = stringifyGovernanceReport(report);

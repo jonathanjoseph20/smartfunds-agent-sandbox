@@ -20,6 +20,7 @@ import {
 } from '../governance/diagnostics.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
+import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 
 type GitExec = (args: string[]) => string;
 
@@ -244,6 +245,7 @@ export function buildPreflightReport(
   );
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
+  const teamResolution = resolveTeamsForChangedFiles(changedFiles);
 
   const warnings = shouldWarnStalePayload(errors)
     ? ['GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.']
@@ -273,11 +275,15 @@ export function buildPreflightReport(
     missingEvidenceFields,
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
-    teamsTouched: ownershipResult.teamsTouched,
+    teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
     nextActions,
-    warnings
+    warnings,
+    executionModesTouched: teamResolution.executionModesTouched,
+    modeWarnings: teamResolution.modeWarnings,
+    unownedPaths: teamResolution.unownedPaths,
+    ambiguousPaths: teamResolution.ambiguousPaths
   });
 
   return {
@@ -314,6 +320,9 @@ function renderSummary(result: PreflightResult, branch: string): string {
   lines.push(`Declared Tier: ${result.declaredTier ?? 'n/a'}`);
   lines.push(`Implied Tier: ${result.impliedTier ?? 'n/a'}`);
   lines.push(`Projects Touched: ${result.report.projectsTouched.join(', ') || 'none'}`);
+  lines.push(`Teams Touched: ${result.report.teamsTouched.join(', ') || 'none'}`);
+  lines.push(`Execution Modes: ${result.report.executionModesTouched.join(', ') || 'none'}`);
+  lines.push(`Mode Warnings: ${result.report.modeWarnings.join(', ') || 'none'}`);
   lines.push(`Ownership Status: ${result.report.ownershipStatus}`);
 
   if (result.evidenceMissingFields.length > 0) {

@@ -19,6 +19,7 @@ import {
 } from './governance/diagnostics.ts';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
+import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
   const required = new Set(['tier-0', 'tier-1', 'tier-2', 'tier-3', 'tier-3-approved', 'codex']);
@@ -190,6 +191,7 @@ function buildReport(
   ];
 
   const warnings = buildWarnings(result.errors);
+  const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
   const nextActions = buildNextActions(result, prData, repo);
   nextActions.push(...ownershipResult.nextActions);
   if (warnings.length > 0) {
@@ -205,11 +207,15 @@ function buildReport(
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
       projectsTouched: ownershipResult.projectsTouched,
-      teamsTouched: ownershipResult.teamsTouched,
+      teamsTouched: teamResolution.teamsTouched,
       unownedFiles: ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
       nextActions,
-      warnings
+      warnings,
+      executionModesTouched: teamResolution.executionModesTouched,
+      modeWarnings: teamResolution.modeWarnings,
+      unownedPaths: teamResolution.unownedPaths,
+      ambiguousPaths: teamResolution.ambiguousPaths
     }),
     errors
   };

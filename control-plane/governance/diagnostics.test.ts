@@ -20,7 +20,11 @@ describe('governance diagnostics', () => {
       unownedFiles: ['z.md', 'a.md'],
       ownershipStatus: 'multi_project',
       nextActions: ['Run: git push', 'Add label: tier-3-approved.'],
-      warnings: ['b', 'a']
+      warnings: ['b', 'a'],
+      executionModesTouched: ['structured', 'autonomous'],
+      modeWarnings: ['UNOWNED_PATHS', 'MIXED_MODE_PR'],
+      unownedPaths: ['scripts/z.ts', 'scripts/a.ts'],
+      ambiguousPaths: ['x.ts', 'a.ts']
     });
 
     const json = stringifyGovernanceReport(report);
@@ -37,7 +41,11 @@ describe('governance diagnostics', () => {
         unownedFiles: ['a.md', 'z.md'],
         ownershipStatus: 'multi_project',
         nextActions: ['Add label: tier-3-approved.', 'Run: git push'],
-        warnings: ['a', 'b']
+        warnings: ['a', 'b'],
+        executionModesTouched: ['autonomous', 'structured'],
+        modeWarnings: ['MIXED_MODE_PR', 'UNOWNED_PATHS'],
+        unownedPaths: ['scripts/a.ts', 'scripts/z.ts'],
+        ambiguousPaths: ['a.ts', 'x.ts']
       })
     );
   });

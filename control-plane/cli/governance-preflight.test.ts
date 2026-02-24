@@ -35,6 +35,8 @@ describe('governance:preflight', () => {
     expect(result.ok).toBe(true);
     expect(result.report.labelTier).toBe(1);
     expect(result.report.missingEvidenceFields.length).toBe(0);
+    expect(result.report.teamsTouched).toEqual(['product-app']);
+    expect(result.report.executionModesTouched).toEqual(['autonomous']);
   });
 
   it('fails when evidence block is missing', () => {
@@ -102,6 +104,6 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"team-a\",\"team-b\"],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"nextActions\":[],\"warnings\":[]}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"nextActions\":[],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[]}"`);
   });
 });

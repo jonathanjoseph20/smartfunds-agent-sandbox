@@ -19,6 +19,7 @@ import {
   type GovernanceReport,
   type Tier
 } from './governance/diagnostics';
+import { evaluateModePolicy } from './governance/mode-policy';
 import { REQUIRED_LABELS } from './bootstrap-labels';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership';
@@ -262,6 +263,13 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 
   const warnings = buildWarnings(hasLabelCheck);
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
+  const modePolicy = evaluateModePolicy({
+    executionModesTouched: teamResolution.executionModesTouched,
+    declaredTier
+  });
+  if (modePolicy.status === 'failed' && modePolicy.message) {
+    errors.push(modePolicy.message);
+  }
   const nextActions = buildNextActions(
     declaredTier,
     impliedTier,
@@ -272,6 +280,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     repo,
     missingRepoLabels
   );
+  nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
 
   if (errors.length > 0) {
@@ -301,7 +310,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   });
 
   return {
-    ok: errors.length === 0,
+    ok: errors.length === 0 && report.modeEnforcementStatus === 'ok',
     report,
     errors
   };

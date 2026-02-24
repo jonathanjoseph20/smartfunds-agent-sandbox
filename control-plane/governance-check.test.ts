@@ -82,4 +82,21 @@ describe('governance:check', () => {
     expect(result.report.missingLabels).toContain('tier-3');
     expect(result.report.nextActions.join('\n')).toContain('npm run bootstrap:labels');
   });
+
+  it('fails mixed execution modes with mode enforcement diagnostics', async () => {
+    const tier2Body = body.replace('tier-1', 'tier-2').replace('Risk Tier: 1', 'Risk Tier: 2');
+
+    const result = await runGovernanceCheck({
+      bodyFile: 'pr-body.md',
+      readFile: () => tier2Body,
+      gitExec: makeGitExec(['apps/api/src/index.ts', 'governance/policy.ts']),
+      token: '',
+      repo: ''
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.report.modeEnforcementStatus).toBe('failed');
+    expect(result.report.modeViolation).toBe('mixed_execution_modes');
+    expect(result.errors.join('\n')).toContain('mixed execution modes detected');
+  });
 });

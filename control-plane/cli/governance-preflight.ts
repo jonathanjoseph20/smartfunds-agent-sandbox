@@ -18,6 +18,7 @@ import {
   type GovernanceReport,
   type Tier
 } from '../governance/diagnostics.ts';
+import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
@@ -246,6 +247,13 @@ export function buildPreflightReport(
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
+  const modePolicy = evaluateModePolicy({
+    executionModesTouched: teamResolution.executionModesTouched,
+    declaredTier
+  });
+  if (modePolicy.status === 'failed' && modePolicy.message) {
+    errors.push(modePolicy.message);
+  }
 
   const warnings = shouldWarnStalePayload(errors)
     ? ['GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.']
@@ -262,6 +270,7 @@ export function buildPreflightReport(
     tier3ApprovalSatisfied,
     ownershipActions: ownershipResult.nextActions
   });
+  nextActions.push(...modePolicy.nextActions);
 
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
@@ -287,7 +296,7 @@ export function buildPreflightReport(
   });
 
   return {
-    ok: errors.length === 0,
+    ok: errors.length === 0 && report.modeEnforcementStatus === 'ok',
     report,
     errors,
     changedFiles,
@@ -323,6 +332,12 @@ function renderSummary(result: PreflightResult, branch: string): string {
   lines.push(`Teams Touched: ${result.report.teamsTouched.join(', ') || 'none'}`);
   lines.push(`Execution Modes: ${result.report.executionModesTouched.join(', ') || 'none'}`);
   lines.push(`Mode Warnings: ${result.report.modeWarnings.join(', ') || 'none'}`);
+  lines.push(
+    `Mode Enforcement: ${result.report.modeEnforcementStatus}${result.report.modeViolation ? ` (${result.report.modeViolation})` : ''}`
+  );
+  if (result.report.requiredMinimumTier !== null) {
+    lines.push(`Mode Required Minimum Tier: ${result.report.requiredMinimumTier}`);
+  }
   lines.push(`Ownership Status: ${result.report.ownershipStatus}`);
 
   if (result.evidenceMissingFields.length > 0) {

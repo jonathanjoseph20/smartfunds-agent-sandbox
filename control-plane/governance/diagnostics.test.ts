@@ -45,7 +45,10 @@ describe('governance diagnostics', () => {
         executionModesTouched: ['autonomous', 'structured'],
         modeWarnings: ['MIXED_MODE_PR', 'UNOWNED_PATHS'],
         unownedPaths: ['scripts/a.ts', 'scripts/z.ts'],
-        ambiguousPaths: ['a.ts', 'x.ts']
+        ambiguousPaths: ['a.ts', 'x.ts'],
+        modeEnforcementStatus: 'failed',
+        modeViolation: 'mixed_execution_modes',
+        requiredMinimumTier: null
       })
     );
   });

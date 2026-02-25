@@ -1,6 +1,6 @@
 {
   "projectId": "core-app",
-  "paths": [
+  "ownedPaths": [
     "control-plane/**",
     "packages/**",
     "docs/**"

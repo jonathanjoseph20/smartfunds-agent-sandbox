@@ -3,6 +3,7 @@ import { buildReceiptRef, buildSettlementResult, type SettlementAdapter } from '
 
 export const StripeMockAdapter: SettlementAdapter = {
   adapterId: 'stripe_mock',
+  allowedModes: ['structured'],
   execute(intent: ChargeIntent) {
     const receiptRef = buildReceiptRef(intent.determinismHash, 'stripe_mock');
     if (intent.currency !== 'USD') {

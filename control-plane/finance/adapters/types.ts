@@ -1,5 +1,6 @@
 import { canonicalStringify, sha256 } from '../determinism.ts';
 import type { ChargeIntent } from '../charge-intent.ts';
+import type { SwarmMode } from '../../swarm/types.ts';
 
 export type SettlementOutcome = 'EXECUTED' | 'FAILED';
 
@@ -17,6 +18,7 @@ export type SettlementResult = {
 
 export interface SettlementAdapter {
   adapterId: SettlementAdapterId;
+  allowedModes: SwarmMode[];
   execute(intent: ChargeIntent): SettlementResult;
 }
 

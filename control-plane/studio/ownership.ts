@@ -15,7 +15,7 @@ export type OwnershipResult = {
   nextActions: string[];
 };
 
-const ALLOWLIST = ['docs/**', '.github/**'];
+const ALLOWLIST = ['.github/**'];
 
 function escapeRegex(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');

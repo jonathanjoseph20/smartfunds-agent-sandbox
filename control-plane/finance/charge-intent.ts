@@ -1,5 +1,5 @@
-import { getRailProfile, loadRailsRegistry, type RailProfile } from '../entities/rails.ts';
-import { loadEntityRegistry } from '../studio/entity-registry.ts';
+import { getRailProfile, loadRailsRegistry, type RailProfile, type RailProfileEntry } from '../entities/rails.ts';
+import { loadEntityRegistry, type EntityRegistryEntry } from '../studio/entity-registry.ts';
 import { canonicalStringify, sha256 } from './determinism.ts';
 import type { SettlementAdapter, SettlementResult } from './adapters/types.ts';
 import type { SettlementLogEntry, SettlementLogStore } from './settlement-log.ts';
@@ -44,6 +44,8 @@ type ChargeIntentValidationOptions = {
   entityRegistryPath?: string;
   projectsDir?: string;
   railsRegistryPath?: string;
+  entityRegistry?: EntityRegistryEntry[];
+  railsRegistry?: { version: 1; entities: RailProfileEntry[] };
 };
 
 function buildIntentCore(input: ChargeIntentInput): ChargeIntentCore {
@@ -63,15 +65,33 @@ export function buildChargeIntentHash(core: ChargeIntentCore): string {
 }
 
 function requireEntity(entityId: string, options: ChargeIntentValidationOptions): void {
-  const registry = loadEntityRegistry({ registryPath: options.entityRegistryPath, projectsDir: options.projectsDir });
+  const registry = options.entityRegistry
+    ? { entities: options.entityRegistry }
+    : loadEntityRegistry({ registryPath: options.entityRegistryPath, projectsDir: options.projectsDir });
   const hasEntity = registry.entities.some((entity) => entity.entityId === entityId);
   if (!hasEntity) {
     throw new Error(`ERR_ENTITY_NOT_FOUND: ${entityId}`);
   }
 }
 
+function buildRailsRegistrySnapshot(input: { version: 1; entities: RailProfileEntry[] }) {
+  const ids = input.entities.map((entry) => entry.entityId);
+  const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+  if (duplicates.length > 0) {
+    throw new Error(`Duplicate entityId: ${Array.from(new Set(duplicates)).join(', ')}`);
+  }
+  const railProfileByEntity = new Map<string, RailProfile>();
+  for (const entry of input.entities) {
+    railProfileByEntity.set(entry.entityId, entry.railProfile);
+  }
+  const entities = [...input.entities].sort((a, b) => a.entityId.localeCompare(b.entityId));
+  return { version: 1 as const, entities, railProfileByEntity };
+}
+
 function requireRailProfile(entityId: string, railProfileId: RailProfile, options: ChargeIntentValidationOptions): void {
-  const registry = loadRailsRegistry({ registryPath: options.railsRegistryPath });
+  const registry = options.railsRegistry
+    ? buildRailsRegistrySnapshot(options.railsRegistry)
+    : loadRailsRegistry({ registryPath: options.railsRegistryPath });
   const mappedProfile = getRailProfile(entityId, registry);
   if (!mappedProfile) {
     throw new Error(`ERR_RAIL_PROFILE_MISSING: ${entityId}`);

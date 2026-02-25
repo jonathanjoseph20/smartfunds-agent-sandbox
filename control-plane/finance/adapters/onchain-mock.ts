@@ -5,6 +5,7 @@ const ONCHAIN_COUNTERPARTY = /^0x[a-fA-F0-9]{40}$/;
 
 export const OnchainMockAdapter: SettlementAdapter = {
   adapterId: 'onchain_mock',
+  allowedModes: ['autonomous'],
   execute(intent: ChargeIntent) {
     const receiptRef = buildReceiptRef(intent.determinismHash, 'onchain_mock');
     if (intent.currency !== 'USDC') {

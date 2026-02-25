@@ -3,6 +3,7 @@ import { buildReceiptRef, buildSettlementResult, type SettlementAdapter } from '
 
 export const WireMockAdapter: SettlementAdapter = {
   adapterId: 'wire_mock',
+  allowedModes: ['structured', 'autonomous'],
   execute(intent: ChargeIntent) {
     const receiptRef = buildReceiptRef(intent.determinismHash, 'wire_mock');
     if (!intent.counterparty.startsWith('wire:')) {

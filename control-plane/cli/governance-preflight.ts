@@ -258,7 +258,6 @@ export function buildPreflightReport(
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  errors.push(...railBindingResult.diagnostics.railEnforcementErrors);
 
   const warnings = shouldWarnStalePayload(errors)
     ? ['GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.']

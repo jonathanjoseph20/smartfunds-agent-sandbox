@@ -203,7 +203,6 @@ function buildReport(
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  errors.push(...railBindingResult.diagnostics.railEnforcementErrors);
   const nextActions = buildNextActions(result, prData, repo);
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);

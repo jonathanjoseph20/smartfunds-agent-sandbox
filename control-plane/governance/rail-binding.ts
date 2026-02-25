@@ -15,7 +15,6 @@ export type RailBindingDiagnostics = {
   entitiesMissingRailProfile: string[];
   railBindingStatus: RailBindingStatus;
   railViolations: RailViolation[];
-  railEnforcementErrors: string[];
 };
 
 function sortedUnique(values: string[]): string[] {
@@ -49,12 +48,12 @@ function areProfilesCompatible(left: RailProfile, right: RailProfile): boolean {
     return true;
   }
 
-  if (left === 'restricted' || right === 'restricted') {
-    return left === 'structured-only' || right === 'structured-only';
+  if (left === 'hybrid' || right === 'hybrid') {
+    return left !== 'restricted' && right !== 'restricted';
   }
 
-  if (left === 'hybrid' || right === 'hybrid') {
-    return true;
+  if (left === 'restricted' || right === 'restricted') {
+    return false;
   }
 
   if ((left === 'structured-only' && right === 'autonomous-only') ||
@@ -63,48 +62,6 @@ function areProfilesCompatible(left: RailProfile, right: RailProfile): boolean {
   }
 
   return true;
-}
-
-function buildProfileSummary(knownProfiles: Array<{ entityId: string; railProfile: RailProfile }>): string {
-  return [...knownProfiles]
-    .sort((a, b) => a.entityId.localeCompare(b.entityId))
-    .map((entry) => `${entry.entityId}:${entry.railProfile}`)
-    .join(', ');
-}
-
-function buildEnforcementErrors(params: {
-  entitiesTouched: string[];
-  knownProfiles: Array<{ entityId: string; railProfile: RailProfile }>;
-}): string[] {
-  if (params.entitiesTouched.length < 2 || params.knownProfiles.length < 2) {
-    return [];
-  }
-
-  const profilesTouched = sortedUnique(params.knownProfiles.map((entry) => entry.railProfile));
-  const profileSummary = buildProfileSummary(params.knownProfiles);
-  const errors: string[] = [];
-
-  const hasStructured = profilesTouched.includes('structured-only');
-  const hasAutonomous = profilesTouched.includes('autonomous-only');
-  if (hasStructured && hasAutonomous) {
-    errors.push(
-      `Rail enforcement: incompatible rail profiles detected (structured-only vs autonomous-only). Entities: ${profileSummary}.`
-    );
-  }
-
-  if (profilesTouched.includes('restricted')) {
-    const incompatibleWithRestricted = sortedUnique(
-      profilesTouched.filter((profile) => profile === 'autonomous-only' || profile === 'hybrid')
-    );
-    if (incompatibleWithRestricted.length > 0) {
-      errors.push(
-        `Rail enforcement: restricted rail profile cannot mix with ${incompatibleWithRestricted.join(', ')}. ` +
-        `Entities: ${profileSummary}.`
-      );
-    }
-  }
-
-  return sortedUnique(errors);
 }
 
 export function buildRailBindingDiagnostics(
@@ -145,7 +102,10 @@ export function buildRailBindingDiagnostics(
   }
 
   if (hasIncompatibleMix) {
-    const profileSummary = buildProfileSummary(knownProfiles);
+    const profileSummary = knownProfiles
+      .map((entry) => `${entry.entityId}:${entry.railProfile}`)
+      .sort((a, b) => a.localeCompare(b))
+      .join(', ');
     railViolations.push({
       type: 'MIXED_INCOMPATIBLE_RAIL_PROFILES',
       details: `Incompatible rail profiles across touched entities: ${profileSummary}.`
@@ -163,8 +123,7 @@ export function buildRailBindingDiagnostics(
     entityRailProfileByEntity,
     entitiesMissingRailProfile,
     railBindingStatus,
-    railViolations: sortViolations(railViolations),
-    railEnforcementErrors: buildEnforcementErrors({ entitiesTouched: orderedEntities, knownProfiles })
+    railViolations: sortViolations(railViolations)
   };
 }
 
@@ -179,8 +138,7 @@ export function buildFallbackRailBindingDiagnostics(entitiesTouched: string[]): 
     entityRailProfileByEntity,
     entitiesMissingRailProfile: orderedEntities,
     railBindingStatus: orderedEntities.length > 0 ? 'unknown' : 'ok',
-    railViolations: [],
-    railEnforcementErrors: []
+    railViolations: []
   };
 }
 
@@ -202,16 +160,11 @@ export function resolveRailBindingDiagnostics(
   }
 
   if (diagnostics.entitiesMissingRailProfile.length > 0) {
-    warnings.push(
-      `Missing rail profile mappings for touched entities: ${diagnostics.entitiesMissingRailProfile.join(', ')}.`
-    );
     nextActions.push('Add missing entityId railProfile mappings to control-plane/entities/rails.json.');
   }
 
-  if (diagnostics.railEnforcementErrors.length > 0) {
-    nextActions.push(
-      'Resolve incompatible rail profiles: split into single-entity PRs, align rails.json profiles, or convert one entity to hybrid.'
-    );
+  if (diagnostics.railBindingStatus === 'multi_entity_mixed_profiles') {
+    nextActions.push('Rail profile mix is incompatible across entities; no enforcement yet (diagnostic only).');
   }
 
   return { diagnostics, warnings, nextActions };

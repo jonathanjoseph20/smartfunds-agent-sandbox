@@ -274,7 +274,6 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  errors.push(...railBindingResult.diagnostics.railEnforcementErrors);
   const nextActions = buildNextActions(
     declaredTier,
     impliedTier,

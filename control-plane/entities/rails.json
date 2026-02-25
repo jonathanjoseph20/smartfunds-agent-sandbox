@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "entityId": "core-entity",
+      "railProfile": "hybrid",
+      "description": "Initial rail profile for the core entity."
+    }
+  ]
+}

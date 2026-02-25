@@ -18,6 +18,8 @@ import {
   type RiskContract
 } from './governance/diagnostics.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
+import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
+import { resolveEntityTelemetry } from './studio/entity-registry.ts';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
@@ -183,6 +185,7 @@ function buildReport(
     ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects: [], teams: [] });
   }
   errors.push(...buildOwnershipErrors(ownershipResult));
+  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
   const declaredTier = resolveDeclaredTier({ tierBody: result.tierBody, tierBodyLabel: result.tierBodyLabel });
   const labelTier = result.tierLabel ?? null;
   const impliedTier = result.impliedTier;
@@ -191,7 +194,6 @@ function buildReport(
     ...(labelTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
   ];
 
-  const warnings = buildWarnings(result.errors);
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
@@ -200,9 +202,17 @@ function buildReport(
   if (modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
+  const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const nextActions = buildNextActions(result, prData, repo);
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
+  nextActions.push(...entityTelemetryResult.nextActions);
+  nextActions.push(...railBindingResult.nextActions);
+  const warnings = [
+    ...buildWarnings(result.errors),
+    ...entityTelemetryResult.warnings,
+    ...railBindingResult.warnings
+  ];
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
   }
@@ -219,6 +229,14 @@ function buildReport(
       teamsTouched: teamResolution.teamsTouched,
       unownedFiles: ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
+      entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
+      entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
+      unmappedProjects: entityTelemetryResult.telemetry.unmappedProjects,
+      entityByProject: entityTelemetryResult.telemetry.entityByProject,
+      entityRailProfileByEntity: railBindingResult.diagnostics.entityRailProfileByEntity,
+      entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
+      railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
+      railViolations: railBindingResult.diagnostics.railViolations,
       nextActions,
       warnings,
       executionModesTouched: teamResolution.executionModesTouched,

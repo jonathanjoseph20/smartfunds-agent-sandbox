@@ -1,7 +1,6 @@
 {
   "projectId": "core-app",
   "ownedPaths": [
-    "**",
     "control-plane/**"
   ],
   "description": "Default project boundary including governance",

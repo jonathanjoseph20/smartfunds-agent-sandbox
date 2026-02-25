@@ -33,6 +33,17 @@ If a required label is missing (for example `tier-3`), run the label bootstrap r
 
 Use `docs/runbooks/governance-failure-recovery.md` for step-by-step recovery, including PR body verification, label checks, bootstrap commands, and stale payload refresh guidance.
 
+## Rail Binding Enforcement (Sprint 22+)
+
+When a PR touches two or more entities with incompatible rail profiles, governance fails. Missing rail profile entries never block, but will emit warnings and next actions.
+
+Remediation options:
+- Split changes into single-entity PRs.
+- Align entity rail profiles in `control-plane/entities/rails.json`.
+- Convert one entity to `hybrid` if appropriate.
+
+Do not bypass this check; it is a controlled enforcement layer for safe multi-entity changes.
+
 ## Required Evidence block format
 
 Every PR body must include this fenced block exactly:

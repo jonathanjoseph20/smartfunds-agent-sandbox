@@ -1,8 +1,7 @@
 {
   "projectId": "core-app",
   "ownedPaths": [
-    "control-plane/**",
-    "docs/**"
+    "control-plane/**"
   ],
   "description": "Default project boundary including governance",
   "tags": ["seed"]

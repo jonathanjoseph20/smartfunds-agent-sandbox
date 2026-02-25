@@ -19,6 +19,8 @@ import {
   type Tier
 } from '../governance/diagnostics.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
+import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
+import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
@@ -244,6 +246,7 @@ export function buildPreflightReport(
     },
     errors
   );
+  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
@@ -254,6 +257,7 @@ export function buildPreflightReport(
   if (modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
+  const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
 
   const warnings = shouldWarnStalePayload(errors)
     ? ['GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.']
@@ -271,6 +275,8 @@ export function buildPreflightReport(
     ownershipActions: ownershipResult.nextActions
   });
   nextActions.push(...modePolicy.nextActions);
+  nextActions.push(...entityTelemetryResult.nextActions);
+  nextActions.push(...railBindingResult.nextActions);
 
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
@@ -287,8 +293,16 @@ export function buildPreflightReport(
     teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
+    entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
+    entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
+    unmappedProjects: entityTelemetryResult.telemetry.unmappedProjects,
+    entityByProject: entityTelemetryResult.telemetry.entityByProject,
+    entityRailProfileByEntity: railBindingResult.diagnostics.entityRailProfileByEntity,
+    entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
+    railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
+    railViolations: railBindingResult.diagnostics.railViolations,
     nextActions,
-    warnings,
+    warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,

@@ -20,7 +20,9 @@ import {
   type Tier
 } from './governance/diagnostics';
 import { evaluateModePolicy } from './governance/mode-policy';
+import { resolveRailBindingDiagnostics } from './governance/rail-binding';
 import { REQUIRED_LABELS } from './bootstrap-labels';
+import { resolveEntityTelemetry } from './studio/entity-registry';
 import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver';
@@ -218,6 +220,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   errors.push(...buildOwnershipErrors(ownershipResult));
+  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   let tierBodyLabel: Tier | undefined;
   try {
@@ -270,6 +273,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   if (modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
+  const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const nextActions = buildNextActions(
     declaredTier,
     impliedTier,
@@ -282,6 +286,8 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   );
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
+  nextActions.push(...entityTelemetryResult.nextActions);
+  nextActions.push(...railBindingResult.nextActions);
 
   if (errors.length > 0) {
     warnings.push(
@@ -301,8 +307,16 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
+    entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
+    entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
+    unmappedProjects: entityTelemetryResult.telemetry.unmappedProjects,
+    entityByProject: entityTelemetryResult.telemetry.entityByProject,
+    entityRailProfileByEntity: railBindingResult.diagnostics.entityRailProfileByEntity,
+    entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
+    railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
+    railViolations: railBindingResult.diagnostics.railViolations,
     nextActions,
-    warnings,
+    warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,

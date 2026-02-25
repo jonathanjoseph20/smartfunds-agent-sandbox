@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 
+import type { RailProfile } from '../entities/rails.ts';
+import type { EntityOwnershipStatus } from '../studio/entity-registry.ts';
 import type { OwnershipStatus } from '../studio/ownership';
 import type { ExecutionMode } from '../teams/types';
+import type { RailBindingStatus, RailViolation } from './rail-binding.ts';
 import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
@@ -54,6 +57,14 @@ export type GovernanceReport = {
   teamsTouched: string[];
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
+  entitiesTouched: string[];
+  entityOwnershipStatus: EntityOwnershipStatus;
+  unmappedProjects: string[];
+  entityByProject: Record<string, string | null>;
+  entityRailProfileByEntity: Record<string, RailProfile | null>;
+  entitiesMissingRailProfile: string[];
+  railBindingStatus: RailBindingStatus;
+  railViolations: RailViolation[];
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
@@ -63,6 +74,7 @@ export type GovernanceReport = {
   modeEnforcementStatus: ModeEnforcementStatus;
   modeViolation: ModeViolation;
   requiredMinimumTier: number | null;
+  railProfilesTouched?: string[];
 };
 
 export function isTier(value: unknown): value is Tier {
@@ -409,6 +421,33 @@ function sortedUnique<T extends string>(values: T[]): T[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b)) as T[];
 }
 
+function sortRecordByKey<T>(value: Record<string, T>): Record<string, T> {
+  const sortedEntries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+  return Object.fromEntries(sortedEntries) as Record<string, T>;
+}
+
+function sortRailViolations(values: RailViolation[]): RailViolation[] {
+  return [...values].sort((a, b) => {
+    const typeCompare = a.type.localeCompare(b.type);
+    if (typeCompare !== 0) {
+      return typeCompare;
+    }
+
+    if (a.entityId && b.entityId) {
+      const entityCompare = a.entityId.localeCompare(b.entityId);
+      if (entityCompare !== 0) {
+        return entityCompare;
+      }
+    } else if (a.entityId && !b.entityId) {
+      return -1;
+    } else if (!a.entityId && b.entityId) {
+      return 1;
+    }
+
+    return a.details.localeCompare(b.details);
+  });
+}
+
 export function buildGovernanceReport(input: {
   declaredTier: number | null;
   impliedTier: number | null;
@@ -420,6 +459,15 @@ export function buildGovernanceReport(input: {
   teamsTouched: string[];
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
+  entitiesTouched?: string[];
+  entityOwnershipStatus?: EntityOwnershipStatus;
+  unmappedProjects?: string[];
+  entityByProject?: Record<string, string | null>;
+  entityRailProfileByEntity?: Record<string, RailProfile | null>;
+  entitiesMissingRailProfile?: string[];
+  railBindingStatus?: RailBindingStatus;
+  railViolations?: RailViolation[];
+  railProfilesTouched?: string[];
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
@@ -443,6 +491,14 @@ export function buildGovernanceReport(input: {
     teamsTouched: sortedUnique(input.teamsTouched),
     unownedFiles: sortedUnique(input.unownedFiles),
     ownershipStatus: input.ownershipStatus,
+    entitiesTouched: sortedUnique(input.entitiesTouched ?? []),
+    entityOwnershipStatus: input.entityOwnershipStatus ?? 'ok',
+    unmappedProjects: sortedUnique(input.unmappedProjects ?? []),
+    entityByProject: sortRecordByKey(input.entityByProject ?? {}),
+    entityRailProfileByEntity: sortRecordByKey(input.entityRailProfileByEntity ?? {}),
+    entitiesMissingRailProfile: sortedUnique(input.entitiesMissingRailProfile ?? []),
+    railBindingStatus: input.railBindingStatus ?? 'ok',
+    railViolations: sortRailViolations(input.railViolations ?? []),
     nextActions: sortedUnique(input.nextActions),
     warnings: sortedUnique(input.warnings),
     executionModesTouched: sortedUnique(input.executionModesTouched),
@@ -451,7 +507,10 @@ export function buildGovernanceReport(input: {
     ambiguousPaths: sortedUnique(input.ambiguousPaths),
     modeEnforcementStatus: modePolicy.status,
     modeViolation: modePolicy.violation,
-    requiredMinimumTier: modePolicy.requiredMinimumTier
+    requiredMinimumTier: modePolicy.requiredMinimumTier,
+    ...(input.railProfilesTouched && input.railProfilesTouched.length > 0
+      ? { railProfilesTouched: sortedUnique(input.railProfilesTouched) }
+      : {})
   };
 }
 

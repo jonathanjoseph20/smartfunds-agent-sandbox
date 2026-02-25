@@ -19,6 +19,24 @@ describe('governance diagnostics', () => {
       teamsTouched: ['team-b', 'team-a'],
       unownedFiles: ['z.md', 'a.md'],
       ownershipStatus: 'multi_project',
+      entitiesTouched: ['entity-b', 'entity-a'],
+      entityOwnershipStatus: 'multi_entity',
+      unmappedProjects: ['project-z', 'project-y'],
+      entityByProject: { 'project-z': null, 'project-a': 'entity-a' },
+      entityRailProfileByEntity: { 'entity-b': 'hybrid', 'entity-a': null },
+      entitiesMissingRailProfile: ['entity-a'],
+      railBindingStatus: 'missing_rail_profile',
+      railViolations: [
+        {
+          type: 'MIXED_INCOMPATIBLE_RAIL_PROFILES',
+          details: 'z'
+        },
+        {
+          type: 'ENTITY_MISSING_RAIL_PROFILE',
+          entityId: 'entity-a',
+          details: 'a'
+        }
+      ],
       nextActions: ['Run: git push', 'Add label: tier-3-approved.'],
       warnings: ['b', 'a'],
       executionModesTouched: ['structured', 'autonomous'],
@@ -40,6 +58,24 @@ describe('governance diagnostics', () => {
         teamsTouched: ['team-a', 'team-b'],
         unownedFiles: ['a.md', 'z.md'],
         ownershipStatus: 'multi_project',
+        entitiesTouched: ['entity-a', 'entity-b'],
+        entityOwnershipStatus: 'multi_entity',
+        unmappedProjects: ['project-y', 'project-z'],
+        entityByProject: { 'project-a': 'entity-a', 'project-z': null },
+        entityRailProfileByEntity: { 'entity-a': null, 'entity-b': 'hybrid' },
+        entitiesMissingRailProfile: ['entity-a'],
+        railBindingStatus: 'missing_rail_profile',
+        railViolations: [
+          {
+            type: 'ENTITY_MISSING_RAIL_PROFILE',
+            entityId: 'entity-a',
+            details: 'a'
+          },
+          {
+            type: 'MIXED_INCOMPATIBLE_RAIL_PROFILES',
+            details: 'z'
+          }
+        ],
         nextActions: ['Add label: tier-3-approved.', 'Run: git push'],
         warnings: ['a', 'b'],
         executionModesTouched: ['autonomous', 'structured'],

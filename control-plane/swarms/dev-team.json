@@ -1,0 +1,11 @@
+{
+  "swarmId": "dev-team",
+  "project": "docs",
+  "team": "docs",
+  "executionMode": "structured",
+  "parentSwarm": "executive-team",
+  "members": [
+    { "role": "planner", "capabilities": ["plan", "analyze"] },
+    { "role": "implementer", "capabilities": ["code"] }
+  ]
+}

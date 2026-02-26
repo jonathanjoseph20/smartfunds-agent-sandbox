@@ -20,8 +20,11 @@ import {
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { resolveEntityTelemetry } from './studio/entity-registry.ts';
-import { loadProjectsFromDir, loadTeamsFromDir } from './studio/registry.ts';
+import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
+import { loadSwarmsFromDir } from './swarms/registry.ts';
+import { resolveSwarmsForProjects } from './swarms/resolution.ts';
+import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
@@ -175,14 +178,25 @@ function buildReport(
 ): { report: GovernanceReport; errors: string[] } {
   const result = validatePrData(prData, contract);
   let ownershipResult: OwnershipResult;
+  let projects: Project[] = [];
+  let teams: Team[] = [];
+  let swarms: SwarmDefinition[] = [];
   const errors: string[] = [...result.errors];
   try {
-    const projects = loadProjectsFromDir('control-plane/projects');
-    const teams = loadTeamsFromDir('control-plane/teams', projects);
+    projects = loadProjectsFromDir('control-plane/projects');
+    teams = loadTeamsFromDir('control-plane/teams', projects);
     ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects, teams });
   } catch (error) {
     errors.push((error as Error).message);
     ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects: [], teams: [] });
+  }
+  if (projects.length > 0) {
+    try {
+      swarms = loadSwarmsFromDir('control-plane/swarms', projects);
+    } catch (error) {
+      errors.push((error as Error).message);
+      swarms = [];
+    }
   }
   errors.push(...buildOwnershipErrors(ownershipResult));
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
@@ -217,6 +231,8 @@ function buildReport(
     nextActions.push(...buildStalePayloadActions());
   }
 
+  const swarmResolution = resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms);
+
   return {
     report: buildGovernanceReport({
       declaredTier,
@@ -227,6 +243,7 @@ function buildReport(
       requiredChecks: result.requiredChecks,
       projectsTouched: ownershipResult.projectsTouched,
       teamsTouched: teamResolution.teamsTouched,
+      swarmsTouched: swarmResolution.swarmsTouched,
       unownedFiles: ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
       entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
@@ -240,6 +257,7 @@ function buildReport(
       nextActions,
       warnings,
       executionModesTouched: teamResolution.executionModesTouched,
+      swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
       modeWarnings: teamResolution.modeWarnings,
       unownedPaths: teamResolution.unownedPaths,
       ambiguousPaths: teamResolution.ambiguousPaths

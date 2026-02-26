@@ -119,6 +119,16 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsTouched\":[],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
+  });
+
+  it('reports swarms touched for project-level mappings', () => {
+    const result = buildPreflightReport(baseBody, ['docs/swarm-v1.md'], [], {
+      readFile: () => baseBody
+    });
+
+    expect(result.report.projectsTouched).toEqual(['docs']);
+    expect(result.report.swarmsTouched).toEqual(['dev-team', 'example-research', 'executive-team']);
+    expect(result.report.swarmExecutionModesTouched).toEqual(['autonomous', 'structured']);
   });
 });

@@ -181,7 +181,7 @@ export async function fetchPrDataFromGitHub(): Promise<PullRequestData> {
       break;
     }
 
-    changedFiles.push(...(files ?? []).map((file) => file.filename));
+    changedFiles.push(...(Array.isArray(files) ? files : []).map((file) => file.filename));
     if (files.length < 100) {
       break;
     }
@@ -190,7 +190,7 @@ export async function fetchPrDataFromGitHub(): Promise<PullRequestData> {
 
   return {
     body: pr.body ?? '',
-    labels: (pr.labels ?? []).map((label) => label.name),
+    labels: (Array.isArray(pr.labels) ? pr.labels : []).map((label) => label.name),
     changedFiles
   };
 }

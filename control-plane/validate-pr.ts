@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
 
 // Defensive helper: certain report fields may be null/undefined/non-arrays at runtime.
-function arrayOrEmpty(v) {
+function (Array.isArray(v) ? v : []) {
   return Array.isArray(v) ? v : [];
 }
 
@@ -250,10 +250,10 @@ function buildReport(
       requiredChecks: result.requiredChecks,
 
       // array-typed report fields (defensive)
-      projectsTouched: arrayOrEmpty(ownershipResult.projectsTouched),
-      teamsTouched: arrayOrEmpty(teamOwnership.teamsTouched),
-      swarmsTouched: arrayOrEmpty(swarmResolution.swarmsTouched),
-      unownedFiles: arrayOrEmpty(ownershipResult.unownedFiles),
+      projectsTouched: (Array.isArray(ownershipResult.projectsTouched) ? ownershipResult.projectsTouched : []),
+      teamsTouched: (Array.isArray(teamOwnership.teamsTouched) ? teamOwnership.teamsTouched : []),
+      swarmsTouched: (Array.isArray(swarmResolution.swarmsTouched) ? swarmResolution.swarmsTouched : []),
+      unownedFiles: (Array.isArray(ownershipResult.unownedFiles) ? ownershipResult.unownedFiles : []),
 
       ownershipStatus: ownershipResult.ownershipStatus,
 
@@ -273,11 +273,11 @@ function buildReport(
       executionModesTouched,
 
       modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
-      conflictingTeams: arrayOrEmpty((modeBoundaryStatus.conflictingTeams ?? [])),
-      conflictingPaths: arrayOrEmpty((modeBoundaryStatus.conflictingPaths ?? [])),
+      conflictingTeams: (Array.isArray((modeBoundaryStatus.conflictingTeams ?? []) ? (modeBoundaryStatus.conflictingTeams ?? [] : [])),
+      conflictingPaths: (Array.isArray((modeBoundaryStatus.conflictingPaths ?? []) ? (modeBoundaryStatus.conflictingPaths ?? [] : [])),
 
-      swarmExecutionModesTouched: arrayOrEmpty(swarmResolution.swarmExecutionModesTouched),
-      modeWarnings: arrayOrEmpty(teamResolution.modeWarnings),
+      swarmExecutionModesTouched: (Array.isArray(swarmResolution.swarmExecutionModesTouched) ? swarmResolution.swarmExecutionModesTouched : []),
+      modeWarnings: (Array.isArray(teamResolution.modeWarnings) ? teamResolution.modeWarnings : []),
 
       unownedPaths: teamResolution.unownedPaths,
       ambiguousPaths: teamResolution.ambiguousPaths,

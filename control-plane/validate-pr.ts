@@ -13,10 +13,11 @@ import path from 'node:path';
 
 import {
 
-function asArray<T>(v: unknown): T[] {
-  return Array.isArray(v) ? (v as T[]) : [];
+function asArray(v) {
+  return Array.isArray(v) ? v : [];
 }
-  buildBootstrapActions,
+
+buildBootstrapActions,
   buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,

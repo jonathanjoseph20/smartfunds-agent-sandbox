@@ -45,10 +45,10 @@ export function resolveOwnership(params: {
   teams: Team[];
 }): OwnershipResult {
   const orderedFiles = sortedUnique((params.changedFiles ?? []).map(normalizePath));
-  const orderedProjects = [...params.projects].sort((a, b) =>
+  const orderedProjects = [...(params.projects ?? [])].sort((a, b) =>
     a.projectId.localeCompare(b.projectId)
   );
-  const orderedTeams = [...params.teams].sort((a, b) =>
+  const orderedTeams = [...(params.teams ?? [])].sort((a, b) =>
     a.teamId.localeCompare(b.teamId)
   );
 

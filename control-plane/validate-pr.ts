@@ -245,26 +245,39 @@ function buildReport(
       missingLabels,
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
+
+      // array-typed report fields (defensive)
       projectsTouched: asArraySafe(ownershipResult.projectsTouched),
-      teamsTouched: teamResolution.teamsTouched,
+      teamsTouched: asArraySafe(teamOwnership.teamsTouched),
       swarmsTouched: asArraySafe(swarmResolution.swarmsTouched),
       unownedFiles: asArraySafe(ownershipResult.unownedFiles),
+
       ownershipStatus: ownershipResult.ownershipStatus,
+
       entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
       entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
       unmappedProjects: entityTelemetryResult.telemetry.unmappedProjects,
       entityByProject: entityTelemetryResult.telemetry.entityByProject,
+
       entityRailProfileByEntity: railBindingResult.diagnostics.entityRailProfileByEntity,
       entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
       railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
       railViolations: railBindingResult.diagnostics.railViolations,
+
       nextActions,
       warnings,
-      executionModesTouched: teamResolution.executionModesTouched,
+
+      executionModesTouched,
+
+      modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
+      conflictingTeams: asArraySafe((modeBoundaryStatus.conflictingTeams ?? [])),
+      conflictingPaths: asArraySafe((modeBoundaryStatus.conflictingPaths ?? [])),
+
       swarmExecutionModesTouched: asArraySafe(swarmResolution.swarmExecutionModesTouched),
       modeWarnings: asArraySafe(teamResolution.modeWarnings),
+
       unownedPaths: teamResolution.unownedPaths,
-      ambiguousPaths: teamResolution.ambiguousPaths
+      ambiguousPaths: teamResolution.ambiguousPaths,
     }),
     errors
   };

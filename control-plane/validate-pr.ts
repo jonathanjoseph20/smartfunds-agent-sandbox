@@ -12,6 +12,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+
+function asArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
   buildBootstrapActions,
   buildEvidenceBlockAction,
   buildGovernanceReport,

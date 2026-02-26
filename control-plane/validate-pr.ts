@@ -2,12 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-
-// Defensive helper: certain report fields may be null/undefined/non-arrays at runtime.
-function (Array.isArray(v) ? v : []) {
-  return Array.isArray(v) ? v : [];
-}
-
   buildBootstrapActions,
   buildEvidenceBlockAction,
   buildGovernanceReport,
@@ -99,7 +93,6 @@ function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primar
 
 function writeStepSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): void {
   if (process.env.GOVERNANCE_SUMMARY === 'false') {
-
     return;
   }
   const outputPath = process.env.GITHUB_STEP_SUMMARY;
@@ -248,39 +241,26 @@ function buildReport(
       missingLabels,
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
-
-      // array-typed report fields (defensive)
-      projectsTouched: (Array.isArray(ownershipResult.projectsTouched) ? ownershipResult.projectsTouched : []),
-      teamsTouched: (Array.isArray(teamOwnership.teamsTouched) ? teamOwnership.teamsTouched : []),
-      swarmsTouched: (Array.isArray(swarmResolution.swarmsTouched) ? swarmResolution.swarmsTouched : []),
-      unownedFiles: (Array.isArray(ownershipResult.unownedFiles) ? ownershipResult.unownedFiles : []),
-
+      projectsTouched: ownershipResult.projectsTouched,
+      teamsTouched: teamResolution.teamsTouched,
+      swarmsTouched: swarmResolution.swarmsTouched,
+      unownedFiles: ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
-
       entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
       entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
       unmappedProjects: entityTelemetryResult.telemetry.unmappedProjects,
       entityByProject: entityTelemetryResult.telemetry.entityByProject,
-
       entityRailProfileByEntity: railBindingResult.diagnostics.entityRailProfileByEntity,
       entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
       railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
       railViolations: railBindingResult.diagnostics.railViolations,
-
       nextActions,
       warnings,
-
-      executionModesTouched,
-
-      modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
-      conflictingTeams: (Array.isArray((modeBoundaryStatus.conflictingTeams ?? []) ? (modeBoundaryStatus.conflictingTeams ?? [] : [])),
-      conflictingPaths: (Array.isArray((modeBoundaryStatus.conflictingPaths ?? []) ? (modeBoundaryStatus.conflictingPaths ?? [] : [])),
-
-      swarmExecutionModesTouched: (Array.isArray(swarmResolution.swarmExecutionModesTouched) ? swarmResolution.swarmExecutionModesTouched : []),
-      modeWarnings: (Array.isArray(teamResolution.modeWarnings) ? teamResolution.modeWarnings : []),
-
+      executionModesTouched: teamResolution.executionModesTouched,
+      swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
+      modeWarnings: teamResolution.modeWarnings,
       unownedPaths: teamResolution.unownedPaths,
-      ambiguousPaths: teamResolution.ambiguousPaths,
+      ambiguousPaths: teamResolution.ambiguousPaths
     }),
     errors
   };
@@ -329,7 +309,7 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error) => {
+  main().catch((error: unknown) => {
     console.error((error as Error).message);
     process.exit(1);
   });

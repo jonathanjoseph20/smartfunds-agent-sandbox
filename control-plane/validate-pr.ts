@@ -4,8 +4,8 @@ import path from 'node:path';
 import {
 
 // Defensive helper: certain report fields may be null/undefined/non-arrays at runtime.
-function arrayOrEmpty<T = unknown>(v: unknown): T[] {
-  return Array.isArray(v) ? (v as T[]) : [];
+function arrayOrEmpty(v) {
+  return Array.isArray(v) ? v : [];
 }
 
   buildBootstrapActions,
@@ -100,9 +100,6 @@ function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primar
 function writeStepSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): void {
   if (process.env.GOVERNANCE_SUMMARY === 'false') {
 
-function arrayOrEmpty(v: unknown): string[] {
-  return Array.isArray(v) ? (v as string[]) : [];
-}
     return;
   }
   const outputPath = process.env.GITHUB_STEP_SUMMARY;
@@ -332,7 +329,7 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error: unknown) => {
+  main().catch((error) => {
     console.error((error as Error).message);
     process.exit(1);
   });

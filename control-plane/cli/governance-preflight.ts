@@ -23,6 +23,9 @@ import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
+import { loadSwarmsFromDir } from '../swarms/registry.ts';
+import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
+import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 
 type GitExec = (args: string[]) => string;
@@ -247,6 +250,16 @@ export function buildPreflightReport(
     errors
   );
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
+  let swarms: SwarmDefinition[] = [];
+  try {
+    const projects = (deps.loadProjects ?? (() => loadProjectsFromDir('control-plane/projects')))();
+    if (projects.length > 0) {
+      swarms = loadSwarmsFromDir('control-plane/swarms', projects);
+    }
+  } catch (error) {
+    errors.push((error as Error).message);
+    swarms = [];
+  }
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
@@ -282,6 +295,8 @@ export function buildPreflightReport(
     nextActions.push(...buildStalePayloadActions());
   }
 
+  const swarmResolution = resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms);
+
   const report = buildGovernanceReport({
     declaredTier,
     impliedTier,
@@ -291,6 +306,7 @@ export function buildPreflightReport(
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
     teamsTouched: teamResolution.teamsTouched,
+    swarmsTouched: swarmResolution.swarmsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
     entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
@@ -304,6 +320,7 @@ export function buildPreflightReport(
     nextActions,
     warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
+    swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
     ambiguousPaths: teamResolution.ambiguousPaths

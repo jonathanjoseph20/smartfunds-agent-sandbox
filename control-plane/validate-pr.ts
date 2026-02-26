@@ -13,9 +13,6 @@ import path from 'node:path';
 
 import {
 
-function asArray(v) {
-  return Array.isArray(v) ? v : [];
-}
 
 
 buildBootstrapActions,

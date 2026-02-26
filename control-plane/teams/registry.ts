@@ -1,14 +1,11 @@
 import type { TeamDefinition } from './types.ts';
+import { validateTeamRegistry } from './schema.ts';
 
 function sortOwnedPaths(paths: string[]): string[] {
   return [...paths].sort((a, b) => a.localeCompare(b));
 }
 
-function sortTeams(teams: TeamDefinition[]): TeamDefinition[] {
-  return [...teams].sort((a, b) => a.teamId.localeCompare(b.teamId));
-}
-
-export const TEAM_REGISTRY: TeamDefinition[] = sortTeams([
+export const TEAM_REGISTRY: TeamDefinition[] = validateTeamRegistry([
   {
     teamId: 'governance',
     executionMode: 'structured',

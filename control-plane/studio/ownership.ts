@@ -1,6 +1,6 @@
 import type { Project, Team } from './registry';
 
-const ALLOWLIST = ['.github/**'];
+export const OWNERSHIP_ALLOWLIST = ['.github/**','docs/**','governance/**'];
 
 export type OwnershipStatus =
   | 'ok'
@@ -21,7 +21,7 @@ function escapeRegex(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 }
 
-function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string): RegExp {
   const escaped = escapeRegex(glob);
   const pattern = escaped
     .replace(/\*\*/g, '__DOUBLE_STAR__')
@@ -35,79 +35,8 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-function buildNextActions(status: OwnershipStatus): string[] {
-  switch (status) {
-    case 'multi_project':
-      return [
-        'Ensure all changed paths belong to a single registered project.',
-        'Split changes by project or update project ownership definitions.'
-      ];
-    case 'ambiguous_project_ownership':
-      return [
-        'Resolve overlapping project ownership definitions in control-plane/projects/*.json.',
-        'Ensure each path maps to exactly one project.'
-      ];
-    case 'unowned_files':
-      return [
-        'Ensure every changed path is owned by a registered project.',
-        'Update control-plane/projects/*.json if a new project is intended.'
-      ];
-    case 'no_project_detected':
-      return [
-        'Ensure at least one changed path belongs to a registered project.',
-        'Update control-plane/projects/*.json if a new project is intended.'
-      ];
-    default:
-      return [];
-  }
-}
-
-export function buildOwnershipErrors(result: OwnershipResult): string[] {
-  switch (result.ownershipStatus) {
-    case 'multi_project':
-      return ['Ownership violation: changes span multiple projects.'];
-    case 'ambiguous_project_ownership':
-      return ['Ownership violation: ambiguous project ownership detected.'];
-    case 'unowned_files':
-      return ['Ownership violation: unowned files detected.'];
-    case 'no_project_detected':
-      return ['Ownership violation: no project detected for changed files.'];
-    default:
-      return [];
-  }
-}
-
-function buildOwnershipStatus(
-  hasAmbiguous: boolean,
-  projectsTouched: Set<string>,
-  unownedFiles: string[]
-): OwnershipStatus {
-  if (hasAmbiguous) {
-    return 'ambiguous_project_ownership';
-  }
-
-  if (projectsTouched.size === 0) {
-    return 'no_project_detected';
-  }
-
-  if (projectsTouched.size > 1) {
-    return 'multi_project';
-  }
-
-  if (unownedFiles.length > 0) {
-    return 'unowned_files';
-  }
-
-  return 'ok';
-}
-
-function matchAny(globs: string[], file: string): boolean {
-  for (const glob of globs) {
-    if (globToRegExp(glob).test(file)) {
-      return true;
-    }
-  }
-  return false;
+function normalizePath(p: string): string {
+  return p.replace(/^\.\//, '').replace(/^\/+/, '');
 }
 
 export function resolveOwnership(params: {
@@ -115,15 +44,21 @@ export function resolveOwnership(params: {
   projects: Project[];
   teams: Team[];
 }): OwnershipResult {
-  const orderedFiles = [...params.changedFiles].sort((a, b) => a.localeCompare(b));
-  const orderedProjects = [...params.projects].sort((a, b) => a.projectId.localeCompare(b.projectId));
-  const orderedTeams = [...params.teams].sort((a, b) => a.teamId.localeCompare(b.teamId));
+  const orderedFiles = sortedUnique(params.changedFiles.map(normalizePath));
+  const orderedProjects = [...params.projects].sort((a, b) =>
+    a.projectId.localeCompare(b.projectId)
+  );
+  const orderedTeams = [...params.teams].sort((a, b) =>
+    a.teamId.localeCompare(b.teamId)
+  );
+
+  const allowlistRegexes = OWNERSHIP_ALLOWLIST.map(globToRegExp);
+
   const projectMatchers = orderedProjects.map((project) => ({
     project,
-    regexes: project.ownedPaths.map((glob) => globToRegExp(glob))
+    regexes: project.ownedPaths.map(globToRegExp),
   }));
 
-  const allowlistRegexes = ALLOWLIST.map((glob) => globToRegExp(glob));
   const projectsTouched = new Set<string>();
   const unownedFiles: string[] = [];
   let hasAmbiguous = false;
@@ -134,7 +69,9 @@ export function resolveOwnership(params: {
     }
 
     const matchedProjects = projectMatchers
-      .filter((matcher) => matcher.regexes.some((regex) => regex.test(file)))
+      .filter((matcher) =>
+        matcher.regexes.some((regex) => regex.test(file))
+      )
       .map((matcher) => matcher.project.projectId);
 
     if (matchedProjects.length === 1) {
@@ -150,18 +87,43 @@ export function resolveOwnership(params: {
     unownedFiles.push(file);
   }
 
-  const ownershipStatus = buildOwnershipStatus(hasAmbiguous, projectsTouched, unownedFiles);
-  const resolvedProject = projectsTouched.size === 1 ? Array.from(projectsTouched)[0] : null;
+  let ownershipStatus: OwnershipStatus;
+
+  if (hasAmbiguous) {
+    ownershipStatus = 'ambiguous_project_ownership';
+  } else if (projectsTouched.size > 1) {
+    ownershipStatus = 'multi_project';
+  } else if (unownedFiles.length > 0) {
+    ownershipStatus = 'unowned_files';
+  } else if (projectsTouched.size === 0) {
+    ownershipStatus = 'no_project_detected';
+  } else {
+    ownershipStatus = 'ok';
+  }
+
+  const resolvedProject =
+    projectsTouched.size === 1
+      ? Array.from(projectsTouched)[0]
+      : null;
 
   const teamsTouched = new Set<string>();
+
   if (resolvedProject) {
-    const relevantTeams = orderedTeams.filter((team) => team.projectId === resolvedProject);
+    const relevantTeams = orderedTeams.filter(
+      (team) => team.projectId === resolvedProject
+    );
+
     for (const file of orderedFiles) {
       if (allowlistRegexes.some((regex) => regex.test(file))) {
         continue;
       }
+
       for (const team of relevantTeams) {
-        if (matchAny(team.ownedPaths, file)) {
+        if (
+          team.ownedPaths.some((glob) =>
+            globToRegExp(glob).test(file)
+          )
+        ) {
           teamsTouched.add(team.teamId);
         }
       }
@@ -173,6 +135,41 @@ export function resolveOwnership(params: {
     teamsTouched: sortedUnique(Array.from(teamsTouched)),
     unownedFiles: sortedUnique(unownedFiles),
     ownershipStatus,
-    nextActions: buildNextActions(ownershipStatus)
+    nextActions: [],
   };
+}
+
+export function buildOwnershipErrors(result: OwnershipResult): string[] {
+  const status = result.ownershipStatus;
+
+  if (status === 'ok') return [];
+
+  if (status === 'no_project_detected') {
+    return ['Ownership violation: no project detected for changed files.'];
+  }
+
+  if (status === 'unowned_files') {
+    const files = (result.unownedFiles ?? []).slice().sort();
+    return [
+      files.length
+        ? `Ownership violation: unowned files detected: ${files.join(', ')}`
+        : 'Ownership violation: unowned files detected.'
+    ];
+  }
+
+  if (status === 'ambiguous_project_ownership') {
+    return ['Ownership violation: ambiguous project ownership (multiple projects match changed files).'];
+  }
+
+  if (status === 'multi_project') {
+    const projects = (result.projectsTouched ?? []).slice().sort();
+    return [
+      projects.length
+        ? `Ownership violation: multiple projects touched: ${projects.join(', ')}`
+        : 'Ownership violation: multiple projects touched.'
+    ];
+  }
+
+  // Fallback (shouldn’t happen)
+  return [`Ownership violation: ${String(status)}`];
 }

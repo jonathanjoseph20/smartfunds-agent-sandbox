@@ -20,11 +20,14 @@ import {
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { resolveEntityTelemetry } from './studio/entity-registry.ts';
+import { computeExecutionModesTouched, enforceModeBoundary } from './studio/mode-boundary.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
+import { resolveTeamsTouched } from './studio/team-ownership.ts';
 import { loadSwarmsFromDir } from './swarms/registry.ts';
 import { resolveSwarmsForProjects } from './swarms/resolution.ts';
 import type { SwarmDefinition } from './swarms/types.ts';
+import { TEAM_REGISTRY } from './teams/registry.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
@@ -79,6 +82,17 @@ function buildWarnings(errors: string[]): string[] {
     );
   }
   return warnings;
+}
+
+function buildTeamOwnershipErrors(status: ReturnType<typeof resolveTeamsTouched>['teamOwnershipStatus']): string[] {
+  switch (status) {
+    case 'ambiguous_team_ownership':
+      return ['Team ownership violation: ambiguous team ownership detected.'];
+    case 'unowned_files':
+      return ['Team ownership violation: unowned files detected.'];
+    default:
+      return [];
+  }
 }
 
 function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): string {
@@ -209,8 +223,25 @@ function buildReport(
   ];
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
+  const teamOwnership = resolveTeamsTouched(prData.changedFiles, TEAM_REGISTRY);
+  errors.push(...buildTeamOwnershipErrors(teamOwnership.teamOwnershipStatus));
+
+  let executionModesTouched: ReturnType<typeof computeExecutionModesTouched> = [];
+  let modeBoundaryStatus: ReturnType<typeof enforceModeBoundary>;
+  try {
+    executionModesTouched = computeExecutionModesTouched(teamOwnership.teamsTouched, TEAM_REGISTRY);
+    modeBoundaryStatus = enforceModeBoundary(
+      executionModesTouched,
+      teamOwnership.teamsTouched,
+      prData.changedFiles
+    );
+  } catch (error) {
+    errors.push((error as Error).message);
+    modeBoundaryStatus = { modeBoundaryStatus: 'ok' };
+  }
+
   const modePolicy = evaluateModePolicy({
-    executionModesTouched: teamResolution.executionModesTouched,
+    executionModesTouched,
     declaredTier
   });
   if (modePolicy.status === 'failed' && modePolicy.message) {
@@ -218,6 +249,7 @@ function buildReport(
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const nextActions = buildNextActions(result, prData, repo);
+  nextActions.push(...(modeBoundaryStatus.nextActions ?? []));
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
@@ -242,7 +274,6 @@ function buildReport(
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
       projectsTouched: ownershipResult.projectsTouched,
-      teamsTouched: teamResolution.teamsTouched,
       swarmsTouched: swarmResolution.swarmsTouched,
       unownedFiles: ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
@@ -256,7 +287,11 @@ function buildReport(
       railViolations: railBindingResult.diagnostics.railViolations,
       nextActions,
       warnings,
-      executionModesTouched: teamResolution.executionModesTouched,
+      teamsTouched: teamOwnership.teamsTouched,
+      executionModesTouched,
+      modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
+      conflictingTeams: modeBoundaryStatus.conflictingTeams ?? [],
+      conflictingPaths: modeBoundaryStatus.conflictingPaths ?? [],
       swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
       modeWarnings: teamResolution.modeWarnings,
       unownedPaths: teamResolution.unownedPaths,
@@ -271,7 +306,8 @@ async function main(): Promise<void> {
   const prData = await fetchPrDataFromGitHub();
   const repo = process.env.GITHUB_REPOSITORY;
   const { report, errors } = buildReport(prData, contract, repo);
-  const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
+  const ok =
+    errors.length === 0 && report.modeEnforcementStatus === 'ok' && report.modeBoundaryStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);
 
@@ -279,6 +315,12 @@ async function main(): Promise<void> {
 
   if (!ok) {
     console.error('Governance validation failed.');
+    if (report.modeBoundaryStatus === 'multi_mode_conflict') {
+      console.error(
+        `Mode boundary violation: PR touches multiple execution modes (${report.executionModesTouched.join(' + ')}).`
+      );
+      console.error('Split this PR into separate mode-specific changes.');
+    }
     console.error(
       `Declared Tier: ${report.declaredTier ?? 'n/a'} | Label Tier: ${report.labelTier ?? 'n/a'} | Implied Tier: ${report.impliedTier ?? 'n/a'}`
     );

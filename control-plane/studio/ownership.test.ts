@@ -162,11 +162,13 @@ describe('ownership resolution', () => {
       requiredChecks: ['lint_tier0'],
       projectsTouched: ['project'],
       teamsTouched: ['team'],
+      swarmsTouched: [],
       unownedFiles: [],
       ownershipStatus: 'ok',
       nextActions: [],
       warnings: [],
       executionModesTouched: [],
+      swarmExecutionModesTouched: [],
       modeWarnings: [],
       unownedPaths: [],
       ambiguousPaths: []

@@ -1,0 +1,10 @@
+{
+  "swarmId": "executive-team",
+  "project": "docs",
+  "team": "docs",
+  "executionMode": "structured",
+  "members": [
+    { "role": "lead", "capabilities": ["plan", "review"] },
+    { "role": "compliance", "capabilities": ["analyze"] }
+  ]
+}

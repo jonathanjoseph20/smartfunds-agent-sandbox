@@ -55,6 +55,7 @@ export type GovernanceReport = {
   requiredChecks: string[];
   projectsTouched: string[];
   teamsTouched: string[];
+  swarmsTouched: string[];
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
   entitiesTouched: string[];
@@ -68,6 +69,7 @@ export type GovernanceReport = {
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
+  swarmExecutionModesTouched: ExecutionMode[];
   modeWarnings: string[];
   unownedPaths: string[];
   ambiguousPaths: string[];
@@ -457,6 +459,7 @@ export function buildGovernanceReport(input: {
   requiredChecks: string[];
   projectsTouched: string[];
   teamsTouched: string[];
+  swarmsTouched: string[];
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
   entitiesTouched?: string[];
@@ -471,6 +474,7 @@ export function buildGovernanceReport(input: {
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
+  swarmExecutionModesTouched: ExecutionMode[];
   modeWarnings: string[];
   unownedPaths: string[];
   ambiguousPaths: string[];
@@ -489,6 +493,7 @@ export function buildGovernanceReport(input: {
     requiredChecks: sortedUnique(input.requiredChecks),
     projectsTouched: sortedUnique(input.projectsTouched),
     teamsTouched: sortedUnique(input.teamsTouched),
+    swarmsTouched: sortedUnique(input.swarmsTouched),
     unownedFiles: sortedUnique(input.unownedFiles),
     ownershipStatus: input.ownershipStatus,
     entitiesTouched: sortedUnique(input.entitiesTouched ?? []),
@@ -502,6 +507,7 @@ export function buildGovernanceReport(input: {
     nextActions: sortedUnique(input.nextActions),
     warnings: sortedUnique(input.warnings),
     executionModesTouched: sortedUnique(input.executionModesTouched),
+    swarmExecutionModesTouched: sortedUnique(input.swarmExecutionModesTouched),
     modeWarnings: sortedUnique(input.modeWarnings),
     unownedPaths: sortedUnique(input.unownedPaths),
     ambiguousPaths: sortedUnique(input.ambiguousPaths),

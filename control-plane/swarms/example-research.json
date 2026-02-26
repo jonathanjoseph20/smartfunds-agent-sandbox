@@ -1,0 +1,9 @@
+{
+  "swarmId": "example-research",
+  "project": "docs",
+  "team": "docs",
+  "executionMode": "autonomous",
+  "members": [
+    { "role": "researcher", "capabilities": ["analyze", "summarize"] }
+  ]
+}

@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+
+// Defensive helper: certain report fields may be null/undefined/non-arrays at runtime.
+function arrayOrEmpty<T = unknown>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
   buildBootstrapActions,
   buildEvidenceBlockAction,
   buildGovernanceReport,
@@ -94,7 +100,7 @@ function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primar
 function writeStepSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): void {
   if (process.env.GOVERNANCE_SUMMARY === 'false') {
 
-function asArraySafe(v: unknown): string[] {
+function arrayOrEmpty(v: unknown): string[] {
   return Array.isArray(v) ? (v as string[]) : [];
 }
     return;
@@ -247,10 +253,10 @@ function buildReport(
       requiredChecks: result.requiredChecks,
 
       // array-typed report fields (defensive)
-      projectsTouched: asArraySafe(ownershipResult.projectsTouched),
-      teamsTouched: asArraySafe(teamOwnership.teamsTouched),
-      swarmsTouched: asArraySafe(swarmResolution.swarmsTouched),
-      unownedFiles: asArraySafe(ownershipResult.unownedFiles),
+      projectsTouched: arrayOrEmpty(ownershipResult.projectsTouched),
+      teamsTouched: arrayOrEmpty(teamOwnership.teamsTouched),
+      swarmsTouched: arrayOrEmpty(swarmResolution.swarmsTouched),
+      unownedFiles: arrayOrEmpty(ownershipResult.unownedFiles),
 
       ownershipStatus: ownershipResult.ownershipStatus,
 
@@ -270,11 +276,11 @@ function buildReport(
       executionModesTouched,
 
       modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
-      conflictingTeams: asArraySafe((modeBoundaryStatus.conflictingTeams ?? [])),
-      conflictingPaths: asArraySafe((modeBoundaryStatus.conflictingPaths ?? [])),
+      conflictingTeams: arrayOrEmpty((modeBoundaryStatus.conflictingTeams ?? [])),
+      conflictingPaths: arrayOrEmpty((modeBoundaryStatus.conflictingPaths ?? [])),
 
-      swarmExecutionModesTouched: asArraySafe(swarmResolution.swarmExecutionModesTouched),
-      modeWarnings: asArraySafe(teamResolution.modeWarnings),
+      swarmExecutionModesTouched: arrayOrEmpty(swarmResolution.swarmExecutionModesTouched),
+      modeWarnings: arrayOrEmpty(teamResolution.modeWarnings),
 
       unownedPaths: teamResolution.unownedPaths,
       ambiguousPaths: teamResolution.ambiguousPaths,

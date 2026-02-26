@@ -88,7 +88,7 @@ function buildNextActions(
 }
 
 function buildWarnings(errors: string[]): string[] {
-  const warnings: string[] = [];
+  const warnings: asArraySafe( string[] = [];
   if (shouldWarnStalePayload(errors)) {
     warnings.push(
       'GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.'
@@ -120,6 +120,11 @@ function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primar
 
 function writeStepSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): void {
   if (process.env.GOVERNANCE_SUMMARY === 'false') {
+
+
+function asArraySafe(v) {
+  return Array.isArray(v) ? v : [];
+}
     return;
   }
   const outputPath = process.env.GITHUB_STEP_SUMMARY;
@@ -239,7 +244,7 @@ function buildReport(
   const teamOwnership = resolveTeamsTouched(prData.changedFiles, TEAM_REGISTRY);
   errors.push(...buildTeamOwnershipErrors(teamOwnership.teamOwnershipStatus));
 
-  let executionModesTouched: ReturnType<typeof computeExecutionModesTouched> = [];
+  let executionModesTouched: asArraySafe( ReturnType<typeof computeExecutionModesTouched> = [];
   let modeBoundaryStatus: ReturnType<typeof enforceModeBoundary>;
   try {
     executionModesTouched = computeExecutionModesTouched(teamOwnership.teamsTouched, TEAM_REGISTRY);
@@ -286,9 +291,9 @@ function buildReport(
       missingLabels,
       missingEvidenceFields: result.missingEvidenceFields,
       requiredChecks: result.requiredChecks,
-      projectsTouched: ownershipResult.projectsTouched,
-      swarmsTouched: swarmResolution.swarmsTouched,
-      unownedFiles: ownershipResult.unownedFiles,
+      projectsTouched: asArraySafe( ownershipResult.projectsTouched,
+      swarmsTouched: asArraySafe( swarmResolution.swarmsTouched,
+      unownedFiles: asArraySafe( ownershipResult.unownedFiles,
       ownershipStatus: ownershipResult.ownershipStatus,
       entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
       entityOwnershipStatus: entityTelemetryResult.telemetry.entityOwnershipStatus,
@@ -300,13 +305,13 @@ function buildReport(
       railViolations: railBindingResult.diagnostics.railViolations,
       nextActions,
       warnings,
-      teamsTouched: teamOwnership.teamsTouched,
+      teamsTouched: asArraySafe( teamOwnership.teamsTouched,
       executionModesTouched,
       modeBoundaryStatus: modeBoundaryStatus.modeBoundaryStatus,
-      conflictingTeams: modeBoundaryStatus.conflictingTeams ?? [],
-      conflictingPaths: modeBoundaryStatus.conflictingPaths ?? [],
-      swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
-      modeWarnings: teamResolution.modeWarnings,
+      conflictingTeams: asArraySafe( modeBoundaryStatus.conflictingTeams ?? [],
+      conflictingPaths: asArraySafe( modeBoundaryStatus.conflictingPaths ?? [],
+      swarmExecutionModesTouched: asArraySafe( swarmResolution.swarmExecutionModesTouched,
+      modeWarnings: asArraySafe( teamResolution.modeWarnings,
       unownedPaths: teamResolution.unownedPaths,
       ambiguousPaths: teamResolution.ambiguousPaths
     }),

@@ -1,3 +1,13 @@
+// DEBUG: ensure CI prints a real stack trace
+process.on("uncaughtException", (err) => {
+  console.error(err && (err.stack || err));
+  process.exit(1);
+});
+process.on("unhandledRejection", (err) => {
+  console.error(err && (err.stack || err));
+  process.exit(1);
+});
+
 import fs from 'node:fs';
 import path from 'node:path';
 

@@ -1,6 +1,8 @@
 {
   "projectId": "docs",
-  "ownedPaths": ["docs/**"],
-  "description": "Documentation project",
-  "tags": ["seed"]
+  "ownedPaths": [
+    "docs/**"
+  ],
+  "description": "Documentation and reference materials",
+  "tags": ["docs"]
 }

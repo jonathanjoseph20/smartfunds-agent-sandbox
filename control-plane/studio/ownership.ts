@@ -1,5 +1,7 @@
 import type { Project, Team } from './registry';
 
+const ALLOWLIST = ['.github/**'];
+
 export type OwnershipStatus =
   | 'ok'
   | 'multi_project'
@@ -14,8 +16,6 @@ export type OwnershipResult = {
   ownershipStatus: OwnershipStatus;
   nextActions: string[];
 };
-
-const ALLOWLIST = ['.github/**'];
 
 function escapeRegex(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');

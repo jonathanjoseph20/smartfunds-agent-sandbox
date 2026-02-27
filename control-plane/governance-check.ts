@@ -18,17 +18,19 @@ import {
   validateEvidenceBlockSchema,
   type GovernanceReport,
   type Tier
-} from './governance/diagnostics';
-import { evaluateModePolicy } from './governance/mode-policy';
-import { resolveRailBindingDiagnostics } from './governance/rail-binding';
-import { REQUIRED_LABELS } from './bootstrap-labels';
-import { resolveEntityTelemetry } from './studio/entity-registry';
-import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry';
-import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership';
-import { loadSwarmsFromDir } from './swarms/registry';
-import { resolveSwarmsForProjects } from './swarms/resolution';
-import type { SwarmDefinition } from './swarms/types';
-import { resolveTeamsForChangedFiles } from './teams/team-resolver';
+} from './governance/diagnostics.ts';
+import { evaluateModePolicy } from './governance/mode-policy.ts';
+import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
+import { REQUIRED_LABELS } from './bootstrap-labels.ts';
+import { resolveEntityTelemetry } from './studio/entity-registry.ts';
+import { parseSwarmEvidenceMetadata } from './swarm/parser.ts';
+import { evaluateSwarmPolicy } from './swarm/validator.ts';
+import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
+import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
+import { loadSwarmsFromDir } from './swarms/registry.ts';
+import { resolveSwarmsForProjects } from './swarms/resolution.ts';
+import type { SwarmDefinition } from './swarms/types.ts';
+import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 
 type GitExec = (args: string[]) => string;
 
@@ -281,6 +283,17 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 
   const warnings = buildWarnings(hasLabelCheck);
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
+  const swarmMetadata = parseSwarmEvidenceMetadata(body);
+  const swarmPolicy = evaluateSwarmPolicy({
+    swarmsDeclared: swarmMetadata.swarmsDeclared,
+    swarmMode: swarmMetadata.swarmMode,
+    swarmTeamId: swarmMetadata.swarmTeamId,
+    hasSwarmModeField: swarmMetadata.hasSwarmModeField,
+    hasSwarmTeamField: swarmMetadata.hasSwarmTeamField,
+    swarmWarnings: swarmMetadata.swarmWarnings,
+    executionModesTouched: teamResolution.executionModesTouched
+  });
+  errors.push(...swarmPolicy.swarmErrors);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
@@ -322,7 +335,6 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
     teamsTouched: teamResolution.teamsTouched,
-    swarmsTouched: swarmResolution.swarmsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
     entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
@@ -334,9 +346,14 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
     railViolations: railBindingResult.diagnostics.railViolations,
     nextActions,
-    warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
+    warnings: [...warnings, ...swarmPolicy.swarmWarnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
+    swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
+    swarmsTouched: [...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched],
+    swarmWarnings: swarmPolicy.swarmWarnings,
+    swarmMode: swarmMetadata.swarmMode,
+    swarmTeamId: swarmMetadata.swarmTeamId,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
     ambiguousPaths: teamResolution.ambiguousPaths

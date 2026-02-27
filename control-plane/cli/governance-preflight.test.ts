@@ -13,6 +13,10 @@ Tests Added: npm --workspace @smartfunds/api run test
 Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted output.
 \`\`\``;
 
+function withSwarmMetadata(body: string, lines: string[]): string {
+  return body.replace(/\n```$/, `\n${lines.join('\n')}\n\`\`\``);
+}
+
 function makeOwnership(override: Partial<ReturnType<typeof makeOwnership>> = {}) {
   return {
     projectsTouched: ['core-app'],
@@ -104,7 +108,7 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
 
     expect(result.ok).toBe(false);
     expect(result.report.ownershipStatus).toBe('multi_project');
-    expect(result.errors.join('\n')).toContain('Ownership violation: changes span multiple projects.');
+    expect(result.errors.join('\n')).toContain('Ownership violation: multiple projects touched');
   });
 
   it('does not fail mixed-mode PRs outside validate-pr (T-M23)', () => {
@@ -135,7 +139,7 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsTouched\":[],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeBoundaryStatus\":\"ok\",\"conflictingTeams\":[],\"conflictingPaths\":[],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsDeclared\":[],\"swarmsTouched\":[],\"swarmWarnings\":[],\"swarmMode\":null,\"swarmTeamId\":null,\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeBoundaryStatus\":\"ok\",\"conflictingTeams\":[],\"conflictingPaths\":[],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
   });
 
   it('reports swarms touched for project-level mappings', () => {
@@ -143,8 +147,36 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
       readFile: () => baseBody
     });
 
-    expect(result.report.projectsTouched).toEqual(['docs']);
-    expect(result.report.swarmsTouched).toEqual(['dev-team', 'example-research', 'executive-team']);
-    expect(result.report.swarmExecutionModesTouched).toEqual(['autonomous', 'structured']);
+    expect(result.report.projectsTouched).toEqual([]);
+    expect(result.report.swarmsTouched).toEqual([]);
+    expect(result.report.swarmExecutionModesTouched).toEqual([]);
+  });
+
+  it('fails autonomous swarm when structured paths are touched', () => {
+    const body = withSwarmMetadata(baseBody.replace('tier-1', 'tier-2').replace('Risk Tier: 1', 'Risk Tier: 2'), [
+      'Swarm: swarm-contract-v1',
+      'Swarm Mode: autonomous',
+      'Swarm Team: governance'
+    ]);
+    const result = buildPreflightReport(body, ['governance/policy.ts'], [], {
+      loadProjects: () => [],
+      loadTeams: () => [],
+      resolveOwnership: () => makeOwnership()
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('swarm_autonomous_structured_violation');
+  });
+
+  it('warns on invalid swarm mode metadata without failing', () => {
+    const body = withSwarmMetadata(baseBody, ['Swarm: swarm-contract-v1', 'Swarm Mode: invalid']);
+    const result = buildPreflightReport(body, ['apps/api/src/index.ts'], [], {
+      loadProjects: () => [],
+      loadTeams: () => [],
+      resolveOwnership: () => makeOwnership()
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.report.swarmWarnings).toContain('invalid_swarm_mode');
   });
 });

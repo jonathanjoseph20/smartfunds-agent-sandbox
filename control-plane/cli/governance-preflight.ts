@@ -21,6 +21,7 @@ import {
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
+import { enforceModeBoundary } from '../studio/mode-boundary.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
@@ -267,7 +268,8 @@ export function buildPreflightReport(
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
-  if (modePolicy.status === 'failed' && modePolicy.message) {
+  const enforceModePolicy = modePolicy.violation !== 'mixed_execution_modes';
+  if (modePolicy.status === 'failed' && modePolicy.message && enforceModePolicy) {
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
@@ -287,6 +289,12 @@ export function buildPreflightReport(
     tier3ApprovalSatisfied,
     ownershipActions: ownershipResult.nextActions
   });
+  const modeBoundary = enforceModeBoundary(
+    teamResolution.executionModesTouched,
+    teamResolution.teamsTouched,
+    changedFiles
+  );
+  nextActions.push(...(modeBoundary.nextActions ?? []));
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
@@ -320,6 +328,9 @@ export function buildPreflightReport(
     nextActions,
     warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
+    modeBoundaryStatus: modeBoundary.modeBoundaryStatus,
+    conflictingTeams: modeBoundary.conflictingTeams ?? [],
+    conflictingPaths: modeBoundary.conflictingPaths ?? [],
     swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
@@ -327,7 +338,9 @@ export function buildPreflightReport(
   });
 
   return {
-    ok: errors.length === 0 && report.modeEnforcementStatus === 'ok',
+    ok:
+      errors.length === 0 &&
+      (report.modeEnforcementStatus === 'ok' || report.modeViolation === 'mixed_execution_modes'),
     report,
     errors,
     changedFiles,

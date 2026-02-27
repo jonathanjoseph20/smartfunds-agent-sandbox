@@ -28,8 +28,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
-        run: node --experimental-strip-types control-plane/validate-pr.ts
-
+        run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts
       - name: Detect impacted workspaces
         id: impact
         env:

@@ -7,6 +7,8 @@ export interface TeamDefinition {
   description?: string;
 }
 
+export type TeamRegistry = TeamDefinition[];
+
 export interface TeamResolutionResult {
   teamsTouched: string[];
   executionModesTouched: ExecutionMode[];
@@ -14,4 +16,3 @@ export interface TeamResolutionResult {
   ambiguousPaths: string[];
   modeWarnings: string[];
 }
-

@@ -6,6 +6,7 @@ import type { OwnershipStatus } from '../studio/ownership';
 import type { ExecutionMode } from '../teams/types';
 import type { RailBindingStatus, RailViolation } from './rail-binding.ts';
 import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
+import type { ModeBoundaryStatus } from '../studio/mode-boundary.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -69,6 +70,9 @@ export type GovernanceReport = {
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
+  modeBoundaryStatus: ModeBoundaryStatus;
+  conflictingTeams: string[];
+  conflictingPaths: string[];
   swarmExecutionModesTouched: ExecutionMode[];
   modeWarnings: string[];
   unownedPaths: string[];
@@ -474,6 +478,9 @@ export function buildGovernanceReport(input: {
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
+  modeBoundaryStatus: ModeBoundaryStatus;
+  conflictingTeams: string[];
+  conflictingPaths: string[];
   swarmExecutionModesTouched: ExecutionMode[];
   modeWarnings: string[];
   unownedPaths: string[];
@@ -507,6 +514,9 @@ export function buildGovernanceReport(input: {
     nextActions: sortedUnique(input.nextActions),
     warnings: sortedUnique(input.warnings),
     executionModesTouched: sortedUnique(input.executionModesTouched),
+    modeBoundaryStatus: input.modeBoundaryStatus,
+    conflictingTeams: sortedUnique(input.conflictingTeams),
+    conflictingPaths: sortedUnique(input.conflictingPaths),
     swarmExecutionModesTouched: sortedUnique(input.swarmExecutionModesTouched),
     modeWarnings: sortedUnique(input.modeWarnings),
     unownedPaths: sortedUnique(input.unownedPaths),

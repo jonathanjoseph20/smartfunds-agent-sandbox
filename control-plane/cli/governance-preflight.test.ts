@@ -107,6 +107,22 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     expect(result.errors.join('\n')).toContain('Ownership violation: changes span multiple projects.');
   });
 
+  it('does not fail mixed-mode PRs outside validate-pr (T-M23)', () => {
+    const result = buildPreflightReport(
+      baseBody,
+      ['apps/api/src/index.ts', '.github/workflows/ci.yml'],
+      [],
+      {
+        loadProjects: () => [],
+        loadTeams: () => [],
+        resolveOwnership: () => makeOwnership()
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.report.modeViolation).toBe('mixed_execution_modes');
+  });
+
   it('stringifies governance report deterministically', () => {
     const result = buildPreflightReport(baseBody, ['apps/api/src/index.ts'], ['tier-3-approved'], {
       loadProjects: () => [],
@@ -119,7 +135,7 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsTouched\":[],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsTouched\":[],\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeBoundaryStatus\":\"ok\",\"conflictingTeams\":[],\"conflictingPaths\":[],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null}"`);
   });
 
   it('reports swarms touched for project-level mappings', () => {

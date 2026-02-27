@@ -29,6 +29,7 @@ import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
 import { loadSwarmsFromDir } from './swarms/registry.ts';
 import { resolveSwarmsForProjects } from './swarms/resolution.ts';
+import { evaluateSwarmOrchestration } from './swarms/orchestration.ts';
 import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 
@@ -46,6 +47,10 @@ type GovernanceCheckOptions = {
 type LabelInfo = {
   name: string;
 };
+
+function sortedUnique(values: string[]): string[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
 
 const DEFAULT_BODY_FILE = '.github/pull_request_template.md';
 
@@ -325,6 +330,15 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   const swarmResolution = resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms);
+  const swarmsTouched = sortedUnique([...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched]);
+  const orchestrationResult = evaluateSwarmOrchestration({
+    swarmsTouched,
+    swarms,
+    registryPath: 'control-plane/swarms/orchestration.json'
+  });
+  if (orchestrationResult.status !== 'ok') {
+    errors.push(...orchestrationResult.violations);
+  }
 
   const report = buildGovernanceReport({
     declaredTier,
@@ -350,7 +364,13 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     executionModesTouched: teamResolution.executionModesTouched,
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
-    swarmsTouched: [...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched],
+    swarmsTouched,
+    swarmOrchestrationStatus: orchestrationResult.status,
+    swarmOrchestrationViolations: orchestrationResult.violations,
+    swarmDependencyEdges: orchestrationResult.edges,
+    swarmTopologicalOrder: orchestrationResult.topologicalOrder,
+    swarmPhaseBySwarm: orchestrationResult.phaseBySwarm,
+    ...(orchestrationResult.cycleDetected ? { swarmCycleDetected: orchestrationResult.cycleDetected } : {}),
     swarmWarnings: swarmPolicy.swarmWarnings,
     swarmMode: swarmMetadata.swarmMode,
     swarmTeamId: swarmMetadata.swarmTeamId,

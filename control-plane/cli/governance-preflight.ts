@@ -28,6 +28,7 @@ import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
 import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
+import { evaluateSwarmOrchestration } from '../swarms/orchestration.ts';
 import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 
@@ -62,6 +63,10 @@ type PreflightResult = {
 const BODY_FILE = '.pr-body.md';
 const LABELS_FILE = '.pr-labels.txt';
 const METADATA_MARKER = '.governance-metadata-changed';
+
+function sortedUnique(values: string[]): string[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
 
 function defaultGitExec(args: string[]): string {
   try {
@@ -317,6 +322,15 @@ export function buildPreflightReport(
   }
 
   const swarmResolution = resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms);
+  const swarmsTouched = sortedUnique([...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched]);
+  const orchestrationResult = evaluateSwarmOrchestration({
+    swarmsTouched,
+    swarms,
+    registryPath: 'control-plane/swarms/orchestration.json'
+  });
+  if (orchestrationResult.status !== 'ok') {
+    errors.push(...orchestrationResult.violations);
+  }
 
   const report = buildGovernanceReport({
     declaredTier,
@@ -345,7 +359,13 @@ export function buildPreflightReport(
     conflictingPaths: modeBoundary.conflictingPaths ?? [],
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
-    swarmsTouched: [...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched],
+    swarmsTouched,
+    swarmOrchestrationStatus: orchestrationResult.status,
+    swarmOrchestrationViolations: orchestrationResult.violations,
+    swarmDependencyEdges: orchestrationResult.edges,
+    swarmTopologicalOrder: orchestrationResult.topologicalOrder,
+    swarmPhaseBySwarm: orchestrationResult.phaseBySwarm,
+    ...(orchestrationResult.cycleDetected ? { swarmCycleDetected: orchestrationResult.cycleDetected } : {}),
     swarmWarnings: swarmPolicy.swarmWarnings,
     swarmMode: swarmMetadata.swarmMode,
     swarmTeamId: swarmMetadata.swarmTeamId,
@@ -392,6 +412,14 @@ function renderSummary(result: PreflightResult, branch: string): string {
   lines.push(`Projects Touched: ${result.report.projectsTouched.join(', ') || 'none'}`);
   lines.push(`Teams Touched: ${result.report.teamsTouched.join(', ') || 'none'}`);
   lines.push(`Execution Modes: ${result.report.executionModesTouched.join(', ') || 'none'}`);
+  lines.push(`Swarm Orchestration: ${result.report.swarmOrchestrationStatus}`);
+  lines.push(`Swarm Orchestration Topo: ${result.report.swarmTopologicalOrder.join(', ') || 'none'}`);
+  lines.push(
+    `Swarm Orchestration Edges: ${
+      result.report.swarmDependencyEdges.map((edge) => `${edge.from}->${edge.to}`).join(', ') || 'none'
+    }`
+  );
+  lines.push(`Swarm Orchestration Violations: ${result.report.swarmOrchestrationViolations.join(', ') || 'none'}`);
   lines.push(`Mode Warnings: ${result.report.modeWarnings.join(', ') || 'none'}`);
   lines.push(
     `Mode Enforcement: ${result.report.modeEnforcementStatus}${result.report.modeViolation ? ` (${result.report.modeViolation})` : ''}`

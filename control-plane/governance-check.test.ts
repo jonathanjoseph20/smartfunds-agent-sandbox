@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+
+import { describe, expect, it, vi } from 'vitest';
 
 import { runGovernanceCheck } from './governance-check';
 
@@ -40,6 +42,8 @@ describe('governance:check', () => {
     expect(result.ok).toBe(true);
     expect(result.report.labelTier).toBe(1);
     expect(result.report.requiredChecks).toContain('unit_tests');
+    expect(result.report.swarmOrchestrationStatus).toBe('ok');
+    expect(result.report.swarmOrchestrationViolations).toEqual([]);
   });
 
   it('fails when evidence block is missing', async () => {
@@ -185,5 +189,33 @@ describe('governance:check', () => {
     expect(result.report.swarmWarnings).toEqual([]);
     expect(result.report.swarmMode).toBeNull();
     expect(result.report.swarmTeamId).toBeNull();
+  });
+
+  it('fails when swarms are touched and orchestration registry is missing', async () => {
+    const existsSync = fs.existsSync.bind(fs);
+    const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
+      const normalized = String(filePath);
+      if (normalized === 'control-plane/swarms/orchestration.json') {
+        return false;
+      }
+      return existsSync(filePath);
+    });
+
+    try {
+      const result = await runGovernanceCheck({
+        bodyFile: 'pr-body.md',
+        readFile: () => makeBody(1, ['Swarm: dev-team']),
+        gitExec: makeGitExec(['docs/architecture.md']),
+        token: '',
+        repo: ''
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.report.swarmsTouched.length).toBeGreaterThan(0);
+      expect(result.report.swarmOrchestrationStatus).toBe('missing_registry');
+      expect(result.errors).toContain('orchestration.missing_registry: control-plane/swarms/orchestration.json');
+    } finally {
+      existsSpy.mockRestore();
+    }
   });
 });

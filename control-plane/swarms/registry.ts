@@ -37,7 +37,10 @@ function loadJsonFiles<T>(dir: string): Array<{ file: string; data: T }> {
   if (!fs.existsSync(dir)) {
     return [];
   }
-  const entries = fs.readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort((a, b) => a.localeCompare(b));
+  const entries = fs.readdirSync(dir)
+    .filter((entry) => entry.endsWith('.json'))
+    .filter((entry) => entry !== 'orchestration.json')
+    .sort((a, b) => a.localeCompare(b));
   return entries.map((entry) => {
     const filePath = path.join(dir, entry);
     const raw = fs.readFileSync(filePath, 'utf8');

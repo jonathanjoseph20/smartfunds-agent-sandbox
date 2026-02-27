@@ -1,4 +1,4 @@
-{
+gh pr view 41 --json labels --jq '.labels[].name'{
   "name": "smartfunds-agent-sandbox",
   "private": true,
   "type": "module",

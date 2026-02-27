@@ -114,7 +114,97 @@ describe('governance diagnostics', () => {
         ambiguousPaths: ['a.ts', 'x.ts'],
         modeEnforcementStatus: 'failed',
         modeViolation: 'mixed_execution_modes',
-        requiredMinimumTier: null
+        requiredMinimumTier: null,
+        errors: [
+          {
+            code: 'MISSING_EVIDENCE_FIELDS',
+            severity: 'error',
+            retryable: true,
+            message: 'Evidence is missing required field(s): Affected Paths, Tests Added.',
+            suggestedFix: {
+              action: 'patch_evidence_block',
+              details: 'Ensure evidence block exists and includes all required fields in Key: Value format.'
+            },
+            sourceFields: ['missingEvidenceFields']
+          },
+          {
+            code: 'MISSING_TIER_LABEL',
+            severity: 'error',
+            retryable: true,
+            message: 'Missing required tier label.',
+            suggestedFix: {
+              action: 'add_tier_label',
+              details: 'Add exactly one tier label matching the declared or implied tier.'
+            },
+            sourceFields: ['declaredTier', 'impliedTier', 'missingLabels']
+          },
+          {
+            code: 'MIXED_MODE',
+            severity: 'error',
+            retryable: false,
+            message: 'Mixed execution modes detected.',
+            suggestedFix: {
+              action: 'split_execution_modes',
+              details: 'Split PR by execution mode or adjust declared mode boundaries.'
+            },
+            sourceFields: ['modeEnforcementStatus', 'modeViolation']
+          },
+          {
+            code: 'OWNERSHIP_VIOLATION',
+            severity: 'error',
+            retryable: false,
+            message: 'Ownership status is multi_project.',
+            suggestedFix: {
+              action: 'resolve_ownership',
+              details: 'Address ownership diagnostics before retrying.'
+            },
+            sourceFields: ['ownershipStatus']
+          },
+          {
+            code: 'RAIL_BINDING_VIOLATION',
+            severity: 'error',
+            retryable: false,
+            message: 'Rail binding status is missing_rail_profile.',
+            suggestedFix: {
+              action: 'resolve_rail_binding',
+              details: 'Resolve rail binding diagnostics for touched entities.'
+            },
+            sourceFields: ['railBindingStatus']
+          },
+          {
+            code: 'SWARM_TOPOLOGY_VIOLATION',
+            severity: 'error',
+            retryable: false,
+            message: 'Swarm orchestration status is violations.',
+            suggestedFix: {
+              action: 'repair_swarm_topology',
+              details: 'Fix swarm orchestration registry and dependency topology.'
+            },
+            sourceFields: ['swarmOrchestrationStatus']
+          },
+          {
+            code: 'TIER_MISMATCH',
+            severity: 'error',
+            retryable: false,
+            message: 'Declared tier-2 is below implied tier-3.',
+            suggestedFix: {
+              action: 'align_tier',
+              details: 'Raise declared tier and align metadata with implied tier.'
+            },
+            sourceFields: ['declaredTier', 'impliedTier']
+          },
+          {
+            code: 'UNOWNED_PATHS',
+            severity: 'warning',
+            retryable: false,
+            message: 'Unowned paths detected: scripts/a.ts, scripts/z.ts.',
+            suggestedFix: {
+              action: 'assign_paths',
+              details: 'Map unowned paths to owning teams or projects.'
+            },
+            sourceFields: ['unownedPaths']
+          }
+        ]
       })
     );
   });

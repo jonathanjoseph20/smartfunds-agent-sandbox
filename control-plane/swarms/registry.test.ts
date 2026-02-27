@@ -73,6 +73,30 @@ describe('swarms registry', () => {
     expect(() => loadSwarmsFromDir(swarmsDir, projects)).toThrow(/Duplicate swarmId detected/);
   });
 
+  it('ignores orchestration registry file when loading base swarms', () => {
+    const root = makeTempDir();
+    const projectsDir = path.join(root, 'projects');
+    const swarmsDir = path.join(root, 'swarms');
+    fs.mkdirSync(projectsDir, { recursive: true });
+    fs.mkdirSync(swarmsDir, { recursive: true });
+
+    writeJson(path.join(projectsDir, 'docs.json'), { projectId: 'docs', ownedPaths: ['docs/**'] });
+    writeJson(path.join(swarmsDir, 'dev.json'), {
+      swarmId: 'dev-team',
+      project: 'docs',
+      team: 'docs',
+      executionMode: 'structured'
+    });
+    writeJson(path.join(swarmsDir, 'orchestration.json'), {
+      version: 1,
+      swarms: [{ swarmId: 'dev-team', phase: 'setup', dependsOn: [] }]
+    });
+
+    const projects = loadProjectsFromDir(projectsDir);
+    const swarms = loadSwarmsFromDir(swarmsDir, projects);
+    expect(swarms.map((swarm) => swarm.swarmId)).toEqual(['dev-team']);
+  });
+
   it('rejects swarms that reference unknown projects', () => {
     const root = makeTempDir();
     const projectsDir = path.join(root, 'projects');

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "swarms": [
+    {
+      "swarmId": "executive-team",
+      "phase": "setup",
+      "dependsOn": []
+    },
+    {
+      "swarmId": "dev-team",
+      "phase": "implement",
+      "dependsOn": ["executive-team"]
+    },
+    {
+      "swarmId": "example-research",
+      "phase": "verify",
+      "dependsOn": []
+    }
+  ]
+}

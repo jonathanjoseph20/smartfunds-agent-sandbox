@@ -60,6 +60,12 @@ export type GovernanceReport = {
   teamsTouched: string[];
   swarmsDeclared: string[];
   swarmsTouched: string[];
+  swarmOrchestrationStatus: 'ok' | 'missing_registry' | 'invalid_graph' | 'violations';
+  swarmOrchestrationViolations: string[];
+  swarmDependencyEdges: Array<{ from: string; to: string }>;
+  swarmTopologicalOrder: string[];
+  swarmPhaseBySwarm: Record<string, string>;
+  swarmCycleDetected?: string[];
   swarmWarnings: string[];
   swarmMode: SwarmMode | null;
   swarmTeamId: string | null;
@@ -463,6 +469,16 @@ function sortRailViolations(values: RailViolation[]): RailViolation[] {
   });
 }
 
+function sortSwarmDependencyEdges(values: Array<{ from: string; to: string }>): Array<{ from: string; to: string }> {
+  return [...values].sort((a, b) => {
+    const fromCompare = a.from.localeCompare(b.from);
+    if (fromCompare !== 0) {
+      return fromCompare;
+    }
+    return a.to.localeCompare(b.to);
+  });
+}
+
 export function buildGovernanceReport(input: {
   declaredTier: number | null;
   impliedTier: number | null;
@@ -474,6 +490,12 @@ export function buildGovernanceReport(input: {
   teamsTouched: string[];
   swarmsDeclared?: string[];
   swarmsTouched: string[];
+  swarmOrchestrationStatus?: 'ok' | 'missing_registry' | 'invalid_graph' | 'violations';
+  swarmOrchestrationViolations?: string[];
+  swarmDependencyEdges?: Array<{ from: string; to: string }>;
+  swarmTopologicalOrder?: string[];
+  swarmPhaseBySwarm?: Record<string, string>;
+  swarmCycleDetected?: string[];
   swarmWarnings?: string[];
   swarmMode?: SwarmMode | null;
   swarmTeamId?: string | null;
@@ -515,6 +537,14 @@ export function buildGovernanceReport(input: {
     teamsTouched: sortedUnique(input.teamsTouched),
     swarmsDeclared: sortedUnique(input.swarmsDeclared ?? []),
     swarmsTouched: sortedUnique(input.swarmsTouched),
+    swarmOrchestrationStatus: input.swarmOrchestrationStatus ?? 'ok',
+    swarmOrchestrationViolations: sortedUnique(input.swarmOrchestrationViolations ?? []),
+    swarmDependencyEdges: sortSwarmDependencyEdges(input.swarmDependencyEdges ?? []),
+    swarmTopologicalOrder: [...(input.swarmTopologicalOrder ?? [])],
+    swarmPhaseBySwarm: sortRecordByKey(input.swarmPhaseBySwarm ?? {}),
+    ...(input.swarmCycleDetected && input.swarmCycleDetected.length > 0
+      ? { swarmCycleDetected: [...input.swarmCycleDetected] }
+      : {}),
     swarmWarnings: sortedUnique(input.swarmWarnings ?? []),
     swarmMode: input.swarmMode ?? null,
     swarmTeamId: input.swarmTeamId ?? null,

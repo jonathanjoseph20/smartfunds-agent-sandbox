@@ -11,6 +11,33 @@ import type { SwarmMode } from '../swarm/schema.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
+export type GovernanceErrorSeverity = 'error' | 'warning';
+export type GovernanceErrorCode =
+  | 'MISSING_LABEL'
+  | 'MISSING_TIER_LABEL'
+  | 'MISSING_EVIDENCE_BLOCK'
+  | 'MISSING_EVIDENCE_FIELDS'
+  | 'TIER_MISMATCH'
+  | 'OWNERSHIP_VIOLATION'
+  | 'UNOWNED_PATHS'
+  | 'AMBIGUOUS_OWNERSHIP'
+  | 'MIXED_MODE'
+  | 'SWARM_TOPOLOGY_VIOLATION'
+  | 'RAIL_BINDING_VIOLATION';
+
+export type GovernanceSuggestedFix = {
+  action: string;
+  details: string;
+};
+
+export type GovernanceError = {
+  code: GovernanceErrorCode;
+  severity: GovernanceErrorSeverity;
+  retryable: boolean;
+  message: string;
+  suggestedFix: GovernanceSuggestedFix | null;
+  sourceFields: string[];
+};
 
 export const TIER_LABELS = ['tier-0', 'tier-1', 'tier-2', 'tier-3'] as const;
 export const TIER_VALUES = [0, 1, 2, 3] as const;
@@ -93,6 +120,7 @@ export type GovernanceReport = {
   modeViolation: ModeViolation;
   requiredMinimumTier: number | null;
   railProfilesTouched?: string[];
+  errors: GovernanceError[];
 };
 
 export function isTier(value: unknown): value is Tier {
@@ -479,6 +507,199 @@ function sortSwarmDependencyEdges(values: Array<{ from: string; to: string }>): 
   });
 }
 
+function sortSourceFields(values: string[]): string[] {
+  return sortedUnique(values);
+}
+
+function sortGovernanceErrors(values: GovernanceError[]): GovernanceError[] {
+  return [...values].sort((a, b) => {
+    const codeCompare = a.code.localeCompare(b.code);
+    if (codeCompare !== 0) {
+      return codeCompare;
+    }
+
+    const severityCompare = a.severity.localeCompare(b.severity);
+    if (severityCompare !== 0) {
+      return severityCompare;
+    }
+
+    return a.message.localeCompare(b.message);
+  });
+}
+
+function buildCanonicalGovernanceErrors(input: {
+  declaredTier: number | null;
+  impliedTier: number | null;
+  missingLabels: string[];
+  missingEvidenceFields: string[];
+  ownershipStatus: OwnershipStatus;
+  swarmOrchestrationStatus: 'ok' | 'missing_registry' | 'invalid_graph' | 'violations';
+  railBindingStatus: RailBindingStatus;
+  modeEnforcementStatus: ModeEnforcementStatus;
+  modeViolation: ModeViolation;
+  unownedPaths: string[];
+}): GovernanceError[] {
+  const errors: GovernanceError[] = [];
+  const tierLabels = new Set(['tier-0', 'tier-1', 'tier-2', 'tier-3']);
+  const sortedMissingEvidenceFields = sortedUnique(input.missingEvidenceFields);
+  const sortedUnownedPaths = sortedUnique(input.unownedPaths);
+  const missingTierLabel = input.missingLabels.some((label) => tierLabels.has(label));
+  const missingNonTierLabels = input.missingLabels.filter((label) => !tierLabels.has(label));
+
+  if (missingTierLabel) {
+    errors.push({
+      code: 'MISSING_TIER_LABEL',
+      severity: 'error',
+      retryable: true,
+      message: 'Missing required tier label.',
+      suggestedFix: {
+        action: 'add_tier_label',
+        details: 'Add exactly one tier label matching the declared or implied tier.'
+      },
+      sourceFields: ['missingLabels', 'declaredTier', 'impliedTier']
+    });
+  }
+
+  if (missingNonTierLabels.length > 0) {
+    errors.push({
+      code: 'MISSING_LABEL',
+      severity: 'error',
+      retryable: true,
+      message: `Missing required label(s): ${missingNonTierLabels.join(', ')}.`,
+      suggestedFix: {
+        action: 'add_missing_labels',
+        details: 'Add missing governance labels without removing existing labels.'
+      },
+      sourceFields: ['missingLabels']
+    });
+  }
+
+  if (sortedMissingEvidenceFields.length > 0) {
+    const missingSet = new Set(sortedMissingEvidenceFields);
+    const evidenceBlockMissing = EVIDENCE_FIELDS.every((field) => missingSet.has(field));
+    errors.push({
+      code: evidenceBlockMissing ? 'MISSING_EVIDENCE_BLOCK' : 'MISSING_EVIDENCE_FIELDS',
+      severity: 'error',
+      retryable: true,
+      message: evidenceBlockMissing
+        ? 'Missing required evidence block.'
+        : `Evidence is missing required field(s): ${sortedMissingEvidenceFields.join(', ')}.`,
+      suggestedFix: {
+        action: 'patch_evidence_block',
+        details: 'Ensure evidence block exists and includes all required fields in Key: Value format.'
+      },
+      sourceFields: ['missingEvidenceFields']
+    });
+  }
+
+  if (
+    input.declaredTier !== null &&
+    input.impliedTier !== null &&
+    input.declaredTier < input.impliedTier
+  ) {
+    errors.push({
+      code: 'TIER_MISMATCH',
+      severity: 'error',
+      retryable: false,
+      message: `Declared tier-${input.declaredTier} is below implied tier-${input.impliedTier}.`,
+      suggestedFix: {
+        action: 'align_tier',
+        details: 'Raise declared tier and align metadata with implied tier.'
+      },
+      sourceFields: ['declaredTier', 'impliedTier']
+    });
+  }
+
+  if (input.ownershipStatus === 'ambiguous_project_ownership') {
+    errors.push({
+      code: 'AMBIGUOUS_OWNERSHIP',
+      severity: 'error',
+      retryable: false,
+      message: 'Ownership is ambiguous for one or more changed paths.',
+      suggestedFix: {
+        action: 'resolve_ownership',
+        details: 'Clarify ownership mappings or split the change set.'
+      },
+      sourceFields: ['ownershipStatus']
+    });
+  } else if (input.ownershipStatus !== 'ok') {
+    errors.push({
+      code: 'OWNERSHIP_VIOLATION',
+      severity: 'error',
+      retryable: false,
+      message: `Ownership status is ${input.ownershipStatus}.`,
+      suggestedFix: {
+        action: 'resolve_ownership',
+        details: 'Address ownership diagnostics before retrying.'
+      },
+      sourceFields: ['ownershipStatus']
+    });
+  }
+
+  if (sortedUnownedPaths.length > 0) {
+    errors.push({
+      code: 'UNOWNED_PATHS',
+      severity: 'warning',
+      retryable: false,
+      message: `Unowned paths detected: ${sortedUnownedPaths.join(', ')}.`,
+      suggestedFix: {
+        action: 'assign_paths',
+        details: 'Map unowned paths to owning teams or projects.'
+      },
+      sourceFields: ['unownedPaths']
+    });
+  }
+
+  if (input.modeEnforcementStatus === 'failed' && input.modeViolation === 'mixed_execution_modes') {
+    errors.push({
+      code: 'MIXED_MODE',
+      severity: 'error',
+      retryable: false,
+      message: 'Mixed execution modes detected.',
+      suggestedFix: {
+        action: 'split_execution_modes',
+        details: 'Split PR by execution mode or adjust declared mode boundaries.'
+      },
+      sourceFields: ['modeEnforcementStatus', 'modeViolation']
+    });
+  }
+
+  if (input.swarmOrchestrationStatus !== 'ok') {
+    errors.push({
+      code: 'SWARM_TOPOLOGY_VIOLATION',
+      severity: 'error',
+      retryable: false,
+      message: `Swarm orchestration status is ${input.swarmOrchestrationStatus}.`,
+      suggestedFix: {
+        action: 'repair_swarm_topology',
+        details: 'Fix swarm orchestration registry and dependency topology.'
+      },
+      sourceFields: ['swarmOrchestrationStatus']
+    });
+  }
+
+  if (input.railBindingStatus !== 'ok') {
+    errors.push({
+      code: 'RAIL_BINDING_VIOLATION',
+      severity: 'error',
+      retryable: false,
+      message: `Rail binding status is ${input.railBindingStatus}.`,
+      suggestedFix: {
+        action: 'resolve_rail_binding',
+        details: 'Resolve rail binding diagnostics for touched entities.'
+      },
+      sourceFields: ['railBindingStatus']
+    });
+  }
+
+  return sortGovernanceErrors(
+    errors.map((error) => ({
+      ...error,
+      sourceFields: sortSourceFields(error.sourceFields)
+    }))
+  );
+}
+
 export function buildGovernanceReport(input: {
   declaredTier: number | null;
   impliedTier: number | null;
@@ -524,6 +745,18 @@ export function buildGovernanceReport(input: {
   const modePolicy = evaluateModePolicy({
     executionModesTouched: input.executionModesTouched,
     declaredTier: input.declaredTier
+  });
+  const canonicalErrors = buildCanonicalGovernanceErrors({
+    declaredTier: input.declaredTier,
+    impliedTier: input.impliedTier,
+    missingLabels: input.missingLabels,
+    missingEvidenceFields: input.missingEvidenceFields,
+    ownershipStatus: input.ownershipStatus,
+    swarmOrchestrationStatus: input.swarmOrchestrationStatus ?? 'ok',
+    railBindingStatus: input.railBindingStatus ?? 'ok',
+    modeEnforcementStatus: modePolicy.status,
+    modeViolation: modePolicy.violation,
+    unownedPaths: input.unownedPaths
   });
 
   return {
@@ -571,6 +804,7 @@ export function buildGovernanceReport(input: {
     modeEnforcementStatus: modePolicy.status,
     modeViolation: modePolicy.violation,
     requiredMinimumTier: modePolicy.requiredMinimumTier,
+    errors: canonicalErrors,
     ...(input.railProfilesTouched && input.railProfilesTouched.length > 0
       ? { railProfilesTouched: sortedUnique(input.railProfilesTouched) }
       : {})

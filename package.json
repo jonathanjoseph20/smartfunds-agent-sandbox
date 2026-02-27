@@ -10,7 +10,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "governance:check": "node --experimental-strip-types control-plane/governance-check.ts",
+    "governance:check": "node --experimental-strip-types control-plane/governance-check.ts --body-file .pr-body.md",
     "governance:preflight": "node --experimental-strip-types control-plane/cli/governance-preflight.ts",
     "swarms:execute": "node --experimental-strip-types control-plane/cli/swarms-execute.ts",
     "governance:generate": "node --experimental-strip-types control-plane/cli/governance-generate.ts",

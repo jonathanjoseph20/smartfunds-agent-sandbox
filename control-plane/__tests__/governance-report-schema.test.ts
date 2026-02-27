@@ -61,7 +61,8 @@ describe('governance report schema guard', () => {
       entityRailProfileByEntity: {},
       entitiesMissingRailProfile: [],
       railBindingStatus: 'ok',
-      railViolations: []
+      railViolations: [],
+      errors: []
     });
 
     expect(report.modeEnforcementStatus).toBe('ok');

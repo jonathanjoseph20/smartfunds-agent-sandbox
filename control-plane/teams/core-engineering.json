@@ -1,7 +1,10 @@
 {
   "teamId": "core-engineering",
   "projectId": "core-app",
-  "ownedPaths": ["control-plane/**"],
-  "roles": ["planner", "implementer", "verifier"],
-  "capabilities": ["governance"]
+  "executionMode": "structured",
+  "ownedPaths": [
+    "package.json",
+    "control-plane/**"
+  ],
+  "notes": "Core engineering owns the repo root package.json and control-plane."
 }

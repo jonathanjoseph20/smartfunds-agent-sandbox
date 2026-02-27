@@ -1,4 +1,4 @@
-gh pr view 41 --json labels --jq '.labels[].name'{
+{
   "name": "smartfunds-agent-sandbox",
   "private": true,
   "type": "module",
@@ -12,7 +12,6 @@ gh pr view 41 --json labels --jq '.labels[].name'{
     "typecheck": "npm run typecheck --workspaces --if-present",
     "governance:check": "node --experimental-strip-types control-plane/governance-check.ts --body-file .pr-body.md",
     "governance:preflight": "node --experimental-strip-types control-plane/cli/governance-preflight.ts",
-    "governance:retry-loop": "node --experimental-strip-types control-plane/cli/governance-retry-loop.ts",
     "swarms:execute": "node --experimental-strip-types control-plane/cli/swarms-execute.ts",
     "governance:generate": "node --experimental-strip-types control-plane/cli/governance-generate.ts",
     "governance:normalize": "node --experimental-strip-types control-plane/cli/governance-normalize.ts",

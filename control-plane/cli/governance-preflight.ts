@@ -22,6 +22,8 @@ import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { enforceModeBoundary } from '../studio/mode-boundary.ts';
+import { parseSwarmEvidenceMetadata } from '../swarm/parser.ts';
+import { evaluateSwarmPolicy } from '../swarm/validator.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
@@ -264,6 +266,17 @@ export function buildPreflightReport(
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
+  const swarmMetadata = parseSwarmEvidenceMetadata(body);
+  const swarmPolicy = evaluateSwarmPolicy({
+    swarmsDeclared: swarmMetadata.swarmsDeclared,
+    swarmMode: swarmMetadata.swarmMode,
+    swarmTeamId: swarmMetadata.swarmTeamId,
+    hasSwarmModeField: swarmMetadata.hasSwarmModeField,
+    hasSwarmTeamField: swarmMetadata.hasSwarmTeamField,
+    swarmWarnings: swarmMetadata.swarmWarnings,
+    executionModesTouched: teamResolution.executionModesTouched
+  });
+  errors.push(...swarmPolicy.swarmErrors);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
@@ -314,7 +327,6 @@ export function buildPreflightReport(
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
     teamsTouched: teamResolution.teamsTouched,
-    swarmsTouched: swarmResolution.swarmsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,
     entitiesTouched: entityTelemetryResult.telemetry.entitiesTouched,
@@ -326,12 +338,17 @@ export function buildPreflightReport(
     railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
     railViolations: railBindingResult.diagnostics.railViolations,
     nextActions,
-    warnings: [...warnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
+    warnings: [...warnings, ...swarmPolicy.swarmWarnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
     modeBoundaryStatus: modeBoundary.modeBoundaryStatus,
     conflictingTeams: modeBoundary.conflictingTeams ?? [],
     conflictingPaths: modeBoundary.conflictingPaths ?? [],
+    swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
+    swarmsTouched: [...swarmResolution.swarmsTouched, ...swarmPolicy.swarmsTouched],
+    swarmWarnings: swarmPolicy.swarmWarnings,
+    swarmMode: swarmMetadata.swarmMode,
+    swarmTeamId: swarmMetadata.swarmTeamId,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
     ambiguousPaths: teamResolution.ambiguousPaths

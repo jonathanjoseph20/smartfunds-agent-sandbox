@@ -7,6 +7,7 @@ import type { ExecutionMode } from '../teams/types';
 import type { RailBindingStatus, RailViolation } from './rail-binding.ts';
 import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
 import type { ModeBoundaryStatus } from '../studio/mode-boundary.ts';
+import type { SwarmMode } from '../swarm/schema.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -20,6 +21,7 @@ export const EVIDENCE_FIELDS = [
   'Tests Added',
   'Determinism Statement'
 ] as const;
+export const OPTIONAL_EVIDENCE_FIELDS = ['Swarm', 'Swarm Mode', 'Swarm Team'] as const;
 const REQUIRED_TIER0_CHECK = 'lint_tier0';
 const REQUIRED_TIER3_CHECK = 'tier3_label_gate';
 
@@ -56,7 +58,11 @@ export type GovernanceReport = {
   requiredChecks: string[];
   projectsTouched: string[];
   teamsTouched: string[];
+  swarmsDeclared: string[];
   swarmsTouched: string[];
+  swarmWarnings: string[];
+  swarmMode: SwarmMode | null;
+  swarmTeamId: string | null;
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
   entitiesTouched: string[];
@@ -199,11 +205,14 @@ export function validateEvidenceBlockSchema(body: string): {
 
     const key = trimmed.slice(0, separator).trim();
     const value = trimmed.slice(separator + 1).trim();
-    if (!EVIDENCE_FIELDS.includes(key as (typeof EVIDENCE_FIELDS)[number])) {
+    if (
+      !EVIDENCE_FIELDS.includes(key as (typeof EVIDENCE_FIELDS)[number]) &&
+      !OPTIONAL_EVIDENCE_FIELDS.includes(key as (typeof OPTIONAL_EVIDENCE_FIELDS)[number])
+    ) {
       errors.push(`Evidence block contains unsupported field: ${key}.`);
       continue;
     }
-    if (parsed[key]) {
+    if (key !== 'Swarm' && parsed[key]) {
       errors.push(`Evidence block contains duplicate field: ${key}.`);
       continue;
     }
@@ -463,7 +472,11 @@ export function buildGovernanceReport(input: {
   requiredChecks: string[];
   projectsTouched: string[];
   teamsTouched: string[];
+  swarmsDeclared?: string[];
   swarmsTouched: string[];
+  swarmWarnings?: string[];
+  swarmMode?: SwarmMode | null;
+  swarmTeamId?: string | null;
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
   entitiesTouched?: string[];
@@ -500,7 +513,11 @@ export function buildGovernanceReport(input: {
     requiredChecks: sortedUnique(input.requiredChecks),
     projectsTouched: sortedUnique(input.projectsTouched),
     teamsTouched: sortedUnique(input.teamsTouched),
+    swarmsDeclared: sortedUnique(input.swarmsDeclared ?? []),
     swarmsTouched: sortedUnique(input.swarmsTouched),
+    swarmWarnings: sortedUnique(input.swarmWarnings ?? []),
+    swarmMode: input.swarmMode ?? null,
+    swarmTeamId: input.swarmTeamId ?? null,
     unownedFiles: sortedUnique(input.unownedFiles),
     ownershipStatus: input.ownershipStatus,
     entitiesTouched: sortedUnique(input.entitiesTouched ?? []),

@@ -1,17 +1,15 @@
-import { EVIDENCE_FIELDS } from '../governance/diagnostics.ts';
 import { parsePrBodyForGovernance } from '../pr-body/evidence-parse.ts';
+import { mutationKernel } from '../pr/mutationKernel.ts';
 import { evaluateRetryEligibilityForNormalizedCi } from './ci/retry-eligibility.ts';
 import { normalizeCi } from './ci/normalize.ts';
 import type { NormalizedCiSummary, RawCheck } from './ci/types.ts';
 import { applyPatchPlan } from './retry/patchApplier.ts';
-import { buildCanonicalPrBody } from './retry/canonicalPrBody.ts';
 import { buildPatchPlan, stableSortLabels } from './retry/patchPlanner.ts';
 import type { PatchOp, PatchPlan } from './retry/patchTypes.ts';
 
 type CommandRunner = (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
 type WriteFile = (path: string, body: string) => void;
 
-const RETRY_ATTEMPT_LINE = 'retry-attempt: 1';
 const METADATA_REFRESH_COMMIT_MESSAGE = 'chore: governance metadata refresh';
 
 const STRICT_RETRYABLE_CODES = [
@@ -80,10 +78,6 @@ type EligibilityEvaluation = {
   governanceErrorCode: string | null;
 };
 
-function normalizeLines(value: string): string[] {
-  return value.replace(/\r\n?/g, '\n').split('\n');
-}
-
 function normalizeTierLabel(value: string | null | undefined): string | null {
   if (!value) {
     return null;
@@ -127,79 +121,20 @@ function toNormalizedCi(ciResult: NormalizedCiSummary | RawCheck[]): NormalizedC
   return ciResult;
 }
 
-function hasRetryAttemptLine(line: string): boolean {
-  return line.trim().toLowerCase().startsWith('retry-attempt:');
-}
-
-function evidenceBlockRange(lines: string[]): { start: number; end: number } | null {
-  const start = lines.findIndex((line) => line.trim() === '```evidence');
-  if (start < 0) {
-    return null;
-  }
-
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (lines[index].trim() === '```') {
-      return { start, end: index };
-    }
-  }
-
-  return null;
-}
-
 export function detectRetryAttemptInEvidence(body: string): boolean {
-  const lines = normalizeLines(body);
-  const range = evidenceBlockRange(lines);
-  if (!range) {
-    return false;
-  }
-
-  for (let index = range.start + 1; index < range.end; index += 1) {
-    if (hasRetryAttemptLine(lines[index])) {
-      return true;
-    }
-  }
-
-  return false;
+  const parsed = parsePrBodyForGovernance(body);
+  return typeof parsed.kv['retry-attempt'] === 'string' && parsed.kv['retry-attempt'].trim().length > 0;
 }
 
 export function insertRetryAttemptInEvidence(body: string): string {
-  const lines = normalizeLines(body);
-  const range = evidenceBlockRange(lines);
-  if (!range) {
-    return body;
-  }
-
-  for (let index = range.start + 1; index < range.end; index += 1) {
-    if (hasRetryAttemptLine(lines[index])) {
-      return lines.join('\n');
-    }
-  }
-
-  lines.splice(range.end, 0, RETRY_ATTEMPT_LINE);
-  return lines.join('\n');
-}
-
-function buildCanonicalBodyWithRetryAttempt(args: {
-  currentPrBody: string;
-  requiredTier?: number | null;
-  requiredTierLabel?: string | null;
-}): string {
-  const parsed = parsePrBodyForGovernance(args.currentPrBody);
-  const evidence: Partial<Record<(typeof EVIDENCE_FIELDS)[number], string>> = {};
-
-  for (const key of EVIDENCE_FIELDS) {
-    const value = parsed.kv[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      evidence[key] = value;
-    }
-  }
-
-  const canonical = buildCanonicalPrBody({
-    tierLabel: resolveTierLabel(args),
-    evidence
-  });
-
-  return insertRetryAttemptInEvidence(canonical);
+  const parsed = parsePrBodyForGovernance(body);
+  const desiredTier = normalizeTierLabel(parsed.tierLine) ?? 'tier-0';
+  return mutationKernel({
+    currentBody: body,
+    currentLabels: [],
+    desiredTier,
+    retryAttempt: 1
+  }).newBody;
 }
 
 function isStrictRetryableGovernanceCode(value: string | null): boolean {
@@ -268,10 +203,6 @@ function toLabelCommands(prNumber: number, labels: string[]): string[] {
   return labels.map((label) => `gh pr edit ${prNumber} --add-label "${label}"`);
 }
 
-function hasRefreshOp(plan: PatchPlan): boolean {
-  return plan.ops.some((entry) => entry.op === 'refresh_payload');
-}
-
 function extractAddLabelOps(plan: PatchPlan): string[] {
   return stableSortLabels(
     plan.ops
@@ -335,17 +266,24 @@ export async function runRetryIntegration(args: RetryIntegrationArgs): Promise<R
     };
   }
 
-  const canonicalBody = buildCanonicalBodyWithRetryAttempt({
+  const desiredTier = resolveTierLabel({
     currentPrBody: args.currentPrBody,
     requiredTier: args.requiredTier,
     requiredTierLabel: args.requiredTierLabel
   });
-  const bodyMutationRequired = canonicalBody !== args.currentPrBody;
+  const allowedLabelMutations = extractAddLabelOps(patchPlan);
+  const mutation = mutationKernel({
+    currentBody: args.currentPrBody,
+    currentLabels: args.currentLabels,
+    desiredTier,
+    retryAttempt: 1,
+    allowedLabelMutations
+  });
 
   const bodyPlan: PatchPlan = {
     ...patchPlan,
-    ops: bodyMutationRequired
-      ? [{ op: 'set_pr_body', body: canonicalBody }]
+    ops: mutation.bodyChanged
+      ? [{ op: 'set_pr_body', body: mutation.newBody }]
       : [{ op: 'noop', reason: 'body_already_canonical' }]
   };
 
@@ -380,7 +318,8 @@ export async function runRetryIntegration(args: RetryIntegrationArgs): Promise<R
     };
   }
 
-  const labelTargets = extractAddLabelOps(patchPlan).filter((label) => !args.currentLabels.includes(label));
+  const currentLabelSet = new Set(stableSortLabels(args.currentLabels));
+  const labelTargets = mutation.newLabels.filter((label) => !currentLabelSet.has(label));
   const labelCommands = toLabelCommands(args.prNumber, labelTargets);
   const labelAppliedOps: PatchOp[] = [];
 
@@ -413,8 +352,8 @@ export async function runRetryIntegration(args: RetryIntegrationArgs): Promise<R
   }
 
   const bodyUpdated = patchApply.appliedOps.some((entry) => entry.op === 'set_pr_body');
-  const labelsUpdated = labelAppliedOps.length > 0;
-  const refreshRequired = hasRefreshOp(patchPlan) || bodyUpdated || labelsUpdated;
+  const labelsUpdated = mutation.labelsChanged;
+  const refreshRequired = mutation.requiresMetadataRefresh;
   let metadataRefreshed = false;
 
   if (refreshRequired && !args.dryRun) {

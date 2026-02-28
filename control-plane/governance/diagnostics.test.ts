@@ -204,7 +204,27 @@ describe('governance diagnostics', () => {
             },
             sourceFields: ['unownedPaths']
           }
-        ]
+        ],
+        metadataSource: {
+          bodySource: 'stub',
+          bodyPath: null,
+          labelSource: 'stub',
+          labelsPath: null
+        },
+        executionContext: {
+          context: 'local',
+          executionMode: 'unknown',
+          retryEnabled: false
+        },
+        retryTrace: {
+          attempted: false,
+          retryCount: 0,
+          initialStatus: 'passed',
+          finalStatus: 'passed',
+          triggerErrorCode: null,
+          retryable: false,
+          patchApplied: null
+        }
       })
     );
   });

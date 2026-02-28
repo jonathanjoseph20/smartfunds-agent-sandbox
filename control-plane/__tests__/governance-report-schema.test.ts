@@ -68,5 +68,25 @@ describe('governance report schema guard', () => {
     expect(report.modeEnforcementStatus).toBe('ok');
     expect(report.modeViolation).toBeNull();
     expect(report.requiredMinimumTier).toBeNull();
+    expect(report.metadataSource).toEqual({
+      bodySource: 'stub',
+      bodyPath: null,
+      labelSource: 'stub',
+      labelsPath: null
+    });
+    expect(report.executionContext).toEqual({
+      context: 'local',
+      executionMode: 'unknown',
+      retryEnabled: false
+    });
+    expect(report.retryTrace).toEqual({
+      attempted: false,
+      retryCount: 0,
+      initialStatus: 'passed',
+      finalStatus: 'passed',
+      triggerErrorCode: null,
+      retryable: false,
+      patchApplied: null
+    });
   });
 });

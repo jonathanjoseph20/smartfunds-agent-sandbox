@@ -1,9 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { buildBootstrapActions, buildEvidenceBlockAction, buildGovernanceReport, buildStalePayloadActions, getMissingTierLabels, loadRiskContract, resolveDeclaredTier, selectPrimaryAction, shouldWarnStalePayload, validatePrData, type GovernanceReport, type PullRequestData, type RiskContract } from './diagnostics.ts';
+import {
+  buildBootstrapActions,
+  buildEvidenceBlockAction,
+  buildGovernanceReport,
+  buildStalePayloadActions,
+  getMissingTierLabels,
+  loadRiskContract,
+  resolveDeclaredTier,
+  selectPrimaryAction,
+  shouldWarnStalePayload,
+  validatePrData,
+  type GovernanceError,
+  type GovernanceReport,
+  type PullRequestData,
+  type RiskContract
+} from './diagnostics.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
+import { scanCommentsForEvidence } from '../pr-body/comment-scan.ts';
+import { fetchPrComments } from '../pr-body/gh-fetch.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
@@ -27,12 +44,20 @@ type GovernanceValidationResult = {
 
 type GovernanceValidationOptions = {
   prData?: PullRequestData;
+  prNumber?: number;
   repo?: string;
   contractPath?: string;
   token?: string;
   eventPath?: string;
   repository?: string;
   fetchImpl?: typeof fetch;
+  commentFetcher?: (args: { prNumber: number; repository: string }) => Promise<Array<{ id: number; body: string }>>;
+};
+
+type FetchedPrData = {
+  prData: PullRequestData;
+  prNumber: number;
+  repository: string;
 };
 
 function sortedUnique(values: string[]): string[] {
@@ -120,7 +145,7 @@ async function githubGet<T>(url: string, token: string, fetchImpl: typeof fetch)
   return (await response.json()) as T;
 }
 
-async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Promise<PullRequestData> {
+async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Promise<FetchedPrData> {
   const token = options.token ?? process.env.GITHUB_TOKEN;
   const repository = options.repository ?? process.env.GITHUB_REPOSITORY;
   const eventPath = options.eventPath ?? process.env.GITHUB_EVENT_PATH;
@@ -168,23 +193,50 @@ async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Prom
   }
 
   return {
-    body: pr.body ?? '',
-    labels: pr.labels.map((label) => label.name),
-    changedFiles
+    prData: {
+      body: pr.body ?? '',
+      labels: pr.labels.map((label) => label.name),
+      changedFiles
+    },
+    prNumber,
+    repository
   };
 }
 
-function buildReport(
+function shouldScanForCommentEvidence(validationResult: ReturnType<typeof validatePrData>): boolean {
+  const hasMissingTier = validationResult.tierBodyLabel === undefined;
+  const hasMissingEvidence = validationResult.missingEvidenceFields.length > 0;
+  const hasUnsupportedEvidence = validationResult.errors.some((error) => error.includes('unsupported field'));
+
+  return hasMissingTier || hasMissingEvidence || hasUnsupportedEvidence;
+}
+
+function buildSealCommand(prNumber: number | null, tier: number): string {
+  const prValue = prNumber === null ? '<n>' : String(prNumber);
+  return `npm run pr:seal -- --pr ${prValue} --tier ${tier} --evidence-file <path>`;
+}
+
+async function buildReport(
   prData: PullRequestData,
   contract: RiskContract,
-  repo?: string
-): { report: GovernanceReport; errors: string[] } {
+  context: {
+    repo?: string;
+    prNumber: number | null;
+    repository: string | null;
+    bodySource: 'gh' | 'stub';
+    labelSource: 'gh' | 'stub';
+  },
+  commentFetcher: (args: { prNumber: number; repository: string }) => Promise<Array<{ id: number; body: string }>>
+): Promise<{ report: GovernanceReport; errors: string[] }> {
   const result = validatePrData(prData, contract);
   let ownershipResult: OwnershipResult;
   let projects: Project[] = [];
   let teams: Team[] = [];
   let swarms: SwarmDefinition[] = [];
   const errors: string[] = [...result.errors];
+  const sealWarnings: string[] = [];
+  const additionalErrors: GovernanceError[] = [];
+
   try {
     projects = loadProjectsFromDir('control-plane/projects');
     teams = loadTeamsFromDir('control-plane/teams', projects);
@@ -237,18 +289,67 @@ function buildReport(
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  const nextActions = buildNextActions(result, prData, repo);
+  const nextActions = buildNextActions(result, prData, context.repo);
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
   nextActions.push(...isolation.nextActions);
+
   const warnings = [
     ...buildWarnings(result.errors),
     ...swarmPolicy.swarmWarnings,
     ...entityTelemetryResult.warnings,
     ...railBindingResult.warnings
   ];
+
+  let commentEvidenceDetected = false;
+  let commentEvidenceCount = 0;
+  let commentSource: 'gh' | 'none' | 'unknown' = 'none';
+  if (
+    shouldScanForCommentEvidence(result) &&
+    context.prNumber !== null &&
+    context.repository
+  ) {
+    try {
+      const comments = await commentFetcher({
+        prNumber: context.prNumber,
+        repository: context.repository
+      });
+      const scan = scanCommentsForEvidence(comments);
+      commentEvidenceDetected = scan.detected;
+      commentEvidenceCount = scan.count;
+      commentSource = 'gh';
+
+      if (scan.detected) {
+        const suggestedTier = labelTier ?? declaredTier ?? impliedTier;
+        const sealCommand = buildSealCommand(context.prNumber, suggestedTier);
+        const message =
+          'Governance payload detected in PR comments, but PR body is invalid. Move payload to PR description.';
+        const actionable = `EVIDENCE_IN_COMMENT_NOT_BODY: ${message}`;
+
+        errors.push(actionable);
+        nextActions.push(`Run: ${sealCommand}`);
+        sealWarnings.push(`Comment evidence detected in ${scan.count} comment(s): [${scan.commentIds.join(', ')}]`);
+
+        additionalErrors.push({
+          code: 'EVIDENCE_IN_COMMENT_NOT_BODY',
+          severity: 'error',
+          retryable: true,
+          message,
+          suggestedFix: {
+            action: 'run_pr_seal',
+            details: `Run: ${sealCommand}`
+          },
+          sourceFields: ['metadataSource.commentSource', 'commentEvidenceDetected', 'commentEvidenceCount']
+        });
+      }
+    } catch (error) {
+      commentSource = 'unknown';
+      warnings.push(`Unable to scan PR comments for governance evidence: ${(error as Error).message}`);
+    }
+  }
+
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
   }
@@ -312,11 +413,16 @@ function buildReport(
       unownedPaths: teamResolution.unownedPaths,
       ambiguousPaths: teamResolution.ambiguousPaths,
       metadataSource: {
-        bodySource: 'ci',
+        bodySource: context.bodySource,
         bodyPath: null,
-        labelSource: 'ci',
-        labelsPath: null
+        labelSource: context.labelSource,
+        labelsPath: null,
+        commentSource
       },
+      commentEvidenceDetected,
+      commentEvidenceCount,
+      sealWarnings,
+      additionalErrors,
       executionContext: {
         context: 'ci',
         executionMode: swarmMetadata.swarmMode ?? 'unknown',
@@ -339,9 +445,37 @@ function buildReport(
 export async function runGovernanceValidation(options: GovernanceValidationOptions = {}): Promise<GovernanceValidationResult> {
   const contractPath = options.contractPath ?? path.resolve('control-plane/risk-contract.json');
   const contract = loadRiskContract(contractPath);
-  const repo = options.repo ?? process.env.GITHUB_REPOSITORY;
-  const prData = options.prData ?? await fetchPrDataFromGitHub(options);
-  const { report, errors } = buildReport(prData, contract, repo);
+  const defaultCommentFetcher = async (args: { prNumber: number; repository: string }) => fetchPrComments(args.prNumber, args.repository);
+  const commentFetcher = options.commentFetcher ?? defaultCommentFetcher;
+
+  let prData: PullRequestData;
+  let prNumber: number | null;
+  let repository: string | null;
+  let bodySource: 'gh' | 'stub';
+  let labelSource: 'gh' | 'stub';
+
+  if (options.prData) {
+    prData = options.prData;
+    prNumber = options.prNumber ?? null;
+    repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
+    bodySource = 'stub';
+    labelSource = 'stub';
+  } else {
+    const fetched = await fetchPrDataFromGitHub(options);
+    prData = fetched.prData;
+    prNumber = fetched.prNumber;
+    repository = fetched.repository;
+    bodySource = 'gh';
+    labelSource = 'gh';
+  }
+
+  const repo = options.repo ?? repository ?? undefined;
+  const { report, errors } = await buildReport(
+    prData,
+    contract,
+    { repo, prNumber, repository, bodySource, labelSource },
+    commentFetcher
+  );
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);

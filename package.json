@@ -26,7 +26,8 @@
     "demo:prepare": "node control-plane/demo/prepare-demo.ts",
     "demo:run": "bash scripts/demo.sh",
     "demo:scenario": "bash scripts/demo.sh --scenario",
-    "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts"
+    "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts",
+    "service:start": "node --experimental-strip-types control-plane/service/index.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

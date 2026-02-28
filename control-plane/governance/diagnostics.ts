@@ -54,7 +54,7 @@ export const EVIDENCE_FIELDS = [
   'Tests Added',
   'Determinism Statement'
 ] as const;
-export const OPTIONAL_EVIDENCE_FIELDS = ['Swarm', 'Swarm Mode', 'Swarm Team'] as const;
+export const OPTIONAL_EVIDENCE_FIELDS = ['Swarm', 'Swarm Mode', 'Swarm Team', 'retry-attempt'] as const;
 const REQUIRED_TIER0_CHECK = 'lint_tier0';
 const REQUIRED_TIER3_CHECK = 'tier3_label_gate';
 

@@ -11,16 +11,14 @@ import {
 import type { NormalizedCiSummary, RawCheck } from './ci/types.ts';
 import { buildOrchestratorExecutionReportV1 } from './report/build-report.ts';
 import type { OrchestratorExecutionReportV1 } from './report/types.ts';
-import { applyPatchPlan } from './retry/patchApplier.ts';
-import { buildPatchPlan } from './retry/patchPlanner.ts';
+import { runRetryIntegration } from './retryIntegration.ts';
 import {
   type RetryAppliedFix,
   type RetryState,
   createInitialRetryState,
   parseGovernanceReport,
   toGovernanceRetryContext,
-  withFinalStatus,
-  withRetryAttempt
+  withFinalStatus
 } from './retry/retry-engine.ts';
 import type { PatchOp, PatchPlan } from './retry/patchTypes.ts';
 
@@ -183,6 +181,37 @@ function evaluateCiSummary(prNumber: number, deps: SwarmTaskDependencies): Norma
     return normalizeCi(parseRawChecksFromRollup(result.stdout));
   } catch {
     return normalizeCi([]);
+  }
+}
+
+function readPrBody(prNumber: number, deps: SwarmTaskDependencies): string {
+  const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'body'], true);
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as { body?: string | null };
+    return typeof parsed.body === 'string' ? parsed.body : '';
+  } catch {
+    return '';
+  }
+}
+
+function readPrLabels(prNumber: number, deps: SwarmTaskDependencies): string[] {
+  const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'labels'], true);
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as { labels?: Array<{ name?: string | null }> };
+    const labels = (parsed.labels ?? [])
+      .map((entry) => entry.name ?? null)
+      .filter((label): label is string => typeof label === 'string' && label.trim().length > 0);
+    return Array.from(new Set(labels)).sort((left, right) => left.localeCompare(right));
+  } catch {
+    return [];
   }
 }
 
@@ -376,47 +405,14 @@ export async function spawnTask(params: {
     });
   }
 
-  if (
-    !initialEligibility.eligible ||
-    !initialEligibility.triggerErrorCode ||
-    !initialEligibility.triggerGovernanceErrorCode ||
-    !governanceReport ||
-    initialCiSummary.governingFailure?.classification !== 'governance'
-  ) {
-    if (initialCiStatus === 'failed') {
-      retryState = withFinalStatus(retryState, 'failed');
-    }
-
-    return buildResult({
-      executionMode: params.executionMode,
-      prNumber,
-      ciStatusInitial: initialCiStatus,
-      ciStatusFinal: initialCiStatus,
-      retryState,
-      ciSummary: initialCiSummary,
-      eligibility: initialEligibility,
-      governanceReport,
-      retryAppliedFix: null,
-      patchPlan,
-      patchOutcomeCode,
-      patchAppliedOps,
-      patchDryRun,
-      patchCommands,
-      headSha
-    });
-  }
-
-  patchPlan = buildPatchPlan({
-    retryAttempt: retryState.retryCount,
-    governanceErrorCode: initialEligibility.triggerGovernanceErrorCode,
-    governanceClassification: initialCiSummary.governingFailure?.classification,
-    requiredTier: governanceReport.requiredMinimumTier ?? governanceReport.declaredTier ?? governanceReport.labelTier ?? governanceReport.impliedTier,
-    requiredTierLabel: resolveTierLabel(governanceReport)
-  });
-
-  const patchResult = await applyPatchPlan({
+  const retryIntegration = await runRetryIntegration({
+    executionMode: params.executionMode,
+    ciResult: initialCiSummary,
     prNumber,
-    plan: patchPlan,
+    currentPrBody: readPrBody(prNumber, deps),
+    currentLabels: readPrLabels(prNumber, deps),
+    requiredTier: governanceReport?.requiredMinimumTier ?? governanceReport?.declaredTier ?? governanceReport?.labelTier ?? governanceReport?.impliedTier,
+    requiredTierLabel: governanceReport ? resolveTierLabel(governanceReport) : null,
     dryRun: patchDryRun,
     gh: async (args) => {
       const result = deps.runCommand('gh', args, true);
@@ -436,11 +432,14 @@ export async function spawnTask(params: {
     }
   });
 
-  patchOutcomeCode = patchResult.outcome;
-  patchAppliedOps = patchResult.appliedOps;
-  patchCommands = patchResult.commands;
+  patchPlan = retryIntegration.patchPlan ?? null;
+  patchAppliedOps = retryIntegration.patchAppliedOps ?? [];
+  patchCommands = retryIntegration.patchCommands ?? [];
+  patchOutcomeCode = retryIntegration.retryAttempted
+    ? retryIntegration.error ? 'failed' : 'applied'
+    : 'noop';
 
-  if (patchResult.outcome === 'failed') {
+  if (retryIntegration.error) {
     retryState = withFinalStatus(retryState, 'failed');
     return buildResult({
       executionMode: params.executionMode,
@@ -461,8 +460,10 @@ export async function spawnTask(params: {
     });
   }
 
-  if (patchResult.outcome === 'noop') {
-    retryState = withFinalStatus(retryState, 'failed');
+  if (!retryIntegration.retryAttempted) {
+    if (initialCiStatus === 'failed') {
+      retryState = withFinalStatus(retryState, 'failed');
+    }
     return buildResult({
       executionMode: params.executionMode,
       prNumber,
@@ -483,30 +484,26 @@ export async function spawnTask(params: {
   }
 
   const retryAppliedFix = toLegacyRetryAppliedFix(patchAppliedOps);
-  const finalCiSummary = evaluateCiSummary(prNumber, deps);
-  const finalCiStatus = finalCiSummary.ciStatus;
-
-  retryState = withRetryAttempt(retryState, {
+  retryState = {
+    ...retryState,
+    retryCount: 1,
+    retryAttempted: true,
     triggerErrorCode: initialEligibility.triggerErrorCode,
-    finalStatus: finalCiStatus === 'passed' ? 'passed' : 'failed_after_retry'
-  });
-
-  governanceReport = readGovernanceReportForPr(prNumber, deps) ?? governanceReport;
-
-  const finalEligibility = evaluateRetryEligibilityForNormalizedCi({
-    executionMode: params.executionMode,
-    ci: finalCiSummary,
-    retryState
-  });
+    finalStatus: 'failed_after_retry'
+  };
 
   return buildResult({
     executionMode: params.executionMode,
     prNumber,
     ciStatusInitial: initialCiStatus,
-    ciStatusFinal: finalCiStatus,
+    ciStatusFinal: initialCiStatus,
     retryState,
-    ciSummary: finalCiSummary,
-    eligibility: finalEligibility,
+    ciSummary: initialCiSummary,
+    eligibility: {
+      ...initialEligibility,
+      eligible: retryIntegration.retryEligible,
+      ineligibleReason: retryIntegration.retryEligible ? null : initialEligibility.ineligibleReason
+    },
     governanceReport,
     retryAppliedFix,
     patchPlan,

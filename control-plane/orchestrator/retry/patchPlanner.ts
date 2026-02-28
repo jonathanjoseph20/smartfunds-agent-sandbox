@@ -1,4 +1,5 @@
 import { buildCanonicalPrBody } from './canonicalPrBody.ts';
+import { canonicalStringify, sha256 } from '../../finance/determinism.ts';
 import type { PatchOp, PatchPlan } from './patchTypes.ts';
 
 type GovernanceClassification = 'governance' | 'non_governance' | 'unknown';
@@ -85,11 +86,13 @@ export function stablePlanOps(ops: PatchOp[]): PatchOp[] {
 }
 
 function noopPlan(governanceErrorCode: string, retryAttempt: number, reason: string): PatchPlan {
+  const ops: PatchOp[] = [{ op: 'noop', reason }];
   return {
     version: 'v1',
+    patchId: createPatchId(governanceErrorCode, retryAttempt, ops),
     governanceErrorCode,
     retryAttempt,
-    ops: [{ op: 'noop', reason }]
+    ops
   };
 }
 
@@ -159,8 +162,19 @@ export function buildPatchPlan(params: BuildPatchPlanParams): PatchPlan {
 
   return {
     version: 'v1',
+    patchId: createPatchId(code, params.retryAttempt, stablePlanOps(ops)),
     governanceErrorCode: code,
     retryAttempt: params.retryAttempt,
     ops: stablePlanOps(ops)
   };
+}
+
+function createPatchId(governanceErrorCode: string, retryAttempt: number, ops: PatchOp[]): string {
+  const payload = canonicalStringify({
+    version: 'v1',
+    governanceErrorCode,
+    retryAttempt,
+    ops
+  });
+  return `patch-v1-${sha256(payload).slice(0, 16)}`;
 }

@@ -16,6 +16,10 @@ function toRetriableErrorCode(value: string | null): RetriableErrorCode | null {
   }
 
   const normalized = value.trim().toUpperCase();
+  if (normalized === 'MISSING_EVIDENCE_BLOCK' || normalized === 'MISSING_EVIDENCE_FIELDS') {
+    return 'MISSING_EVIDENCE_FIELD';
+  }
+
   for (const code of RETRYABLE_ERROR_CODES) {
     if (code === normalized) {
       return code;

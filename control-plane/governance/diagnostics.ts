@@ -121,6 +121,26 @@ export type GovernanceReport = {
   requiredMinimumTier: number | null;
   railProfilesTouched?: string[];
   errors: GovernanceError[];
+  metadataSource: {
+    bodySource: 'ci' | 'cli' | 'stub' | 'template';
+    bodyPath: string | null;
+    labelSource: 'ci' | 'cli' | 'stub';
+    labelsPath: string | null;
+  };
+  executionContext: {
+    context: 'local' | 'ci';
+    executionMode: 'structured' | 'autonomous' | 'unknown';
+    retryEnabled: boolean;
+  };
+  retryTrace: {
+    attempted: boolean;
+    retryCount: 0 | 1;
+    initialStatus: 'passed' | 'failed';
+    finalStatus: 'passed' | 'failed';
+    triggerErrorCode: string | null;
+    retryable: boolean;
+    patchApplied: string | null;
+  };
 };
 
 export function isTier(value: unknown): value is Tier {
@@ -741,6 +761,26 @@ export function buildGovernanceReport(input: {
   modeWarnings: string[];
   unownedPaths: string[];
   ambiguousPaths: string[];
+  metadataSource?: {
+    bodySource: 'ci' | 'cli' | 'stub' | 'template';
+    bodyPath: string | null;
+    labelSource: 'ci' | 'cli' | 'stub';
+    labelsPath: string | null;
+  };
+  executionContext?: {
+    context: 'local' | 'ci';
+    executionMode: 'structured' | 'autonomous' | 'unknown';
+    retryEnabled: boolean;
+  };
+  retryTrace?: {
+    attempted: boolean;
+    retryCount: 0 | 1;
+    initialStatus: 'passed' | 'failed';
+    finalStatus: 'passed' | 'failed';
+    triggerErrorCode: string | null;
+    retryable: boolean;
+    patchApplied: string | null;
+  };
 }): GovernanceReport {
   const modePolicy = evaluateModePolicy({
     executionModesTouched: input.executionModesTouched,
@@ -805,6 +845,26 @@ export function buildGovernanceReport(input: {
     modeViolation: modePolicy.violation,
     requiredMinimumTier: modePolicy.requiredMinimumTier,
     errors: canonicalErrors,
+    metadataSource: input.metadataSource ?? {
+      bodySource: 'stub',
+      bodyPath: null,
+      labelSource: 'stub',
+      labelsPath: null
+    },
+    executionContext: input.executionContext ?? {
+      context: 'local',
+      executionMode: 'unknown',
+      retryEnabled: false
+    },
+    retryTrace: input.retryTrace ?? {
+      attempted: false,
+      retryCount: 0,
+      initialStatus: 'passed',
+      finalStatus: 'passed',
+      triggerErrorCode: null,
+      retryable: false,
+      patchApplied: null
+    },
     ...(input.railProfilesTouched && input.railProfilesTouched.length > 0
       ? { railProfilesTouched: sortedUnique(input.railProfilesTouched) }
       : {})

@@ -18,6 +18,7 @@ import {
   type GovernanceReport,
   type Tier
 } from '../governance/diagnostics.ts';
+import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
@@ -60,9 +61,12 @@ type PreflightResult = {
   warnings: string[];
 };
 
-const BODY_FILE = '.pr-body.md';
-const LABELS_FILE = '.pr-labels.txt';
 const METADATA_MARKER = '.governance-metadata-changed';
+
+type ParsedArgs = {
+  bodyFile?: string;
+  labelsFile?: string;
+};
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
@@ -81,6 +85,50 @@ function defaultGitExec(args: string[]): string {
     }
     throw error;
   }
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
+  let bodyFile: string | undefined;
+  let labelsFile: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--body-file') {
+      const value = argv[index + 1];
+      if (!value) {
+        throw new Error('Missing value for --body-file.');
+      }
+      bodyFile = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--body-file=')) {
+      bodyFile = arg.slice('--body-file='.length);
+      if (!bodyFile) {
+        throw new Error('Missing value for --body-file.');
+      }
+      continue;
+    }
+    if (arg === '--labels-file') {
+      const value = argv[index + 1];
+      if (!value) {
+        throw new Error('Missing value for --labels-file.');
+      }
+      labelsFile = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--labels-file=')) {
+      labelsFile = arg.slice('--labels-file='.length);
+      if (!labelsFile) {
+        throw new Error('Missing value for --labels-file.');
+      }
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return { bodyFile, labelsFile };
 }
 
 function getChangedFiles(execGit: GitExec): string[] {
@@ -106,20 +154,6 @@ function getHeadCommitTime(execGit: GitExec): number {
     throw new Error('Unable to determine HEAD commit time.');
   }
   return parsed * 1000;
-}
-
-function readFileIfExists(readFile: (filePath: string) => string, existsSync: (filePath: string) => boolean, filePath: string): string {
-  if (!existsSync(filePath)) {
-    return '';
-  }
-  return readFile(filePath);
-}
-
-function parseLabelsFile(body: string): string[] {
-  return body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
 }
 
 function stripFencedBlocks(body: string): string {
@@ -192,7 +226,18 @@ export function buildPreflightReport(
   body: string,
   changedFiles: string[],
   labelNames: string[],
-  deps: PreflightDependencies = {}
+  deps: PreflightDependencies = {},
+  metadata: {
+    bodySource: 'cli' | 'stub' | 'template';
+    bodyPath: string | null;
+    labelSource: 'cli' | 'stub';
+    labelsPath: string | null;
+  } = {
+    bodySource: 'stub',
+    bodyPath: null,
+    labelSource: 'stub',
+    labelsPath: null
+  }
 ): PreflightResult {
   const errors: string[] = [];
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
@@ -371,7 +416,22 @@ export function buildPreflightReport(
     swarmTeamId: swarmMetadata.swarmTeamId,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
-    ambiguousPaths: teamResolution.ambiguousPaths
+    ambiguousPaths: teamResolution.ambiguousPaths,
+    metadataSource: metadata,
+    executionContext: {
+      context: 'local',
+      executionMode: swarmMetadata.swarmMode ?? 'unknown',
+      retryEnabled: false
+    },
+    retryTrace: {
+      attempted: false,
+      retryCount: 0,
+      initialStatus: errors.length === 0 ? 'passed' : 'failed',
+      finalStatus: errors.length === 0 ? 'passed' : 'failed',
+      triggerErrorCode: null,
+      retryable: false,
+      patchApplied: null
+    }
   });
 
   return {
@@ -452,6 +512,7 @@ function renderSummary(result: PreflightResult, branch: string): string {
 }
 
 async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
   const gitExec = defaultGitExec;
   const readFile = (filePath: string) => fs.readFileSync(filePath, 'utf8');
   const statSync = (filePath: string) => fs.statSync(filePath);
@@ -459,20 +520,26 @@ async function main(): Promise<void> {
 
   const branch = getBranchName(gitExec);
   const changedFiles = getChangedFiles(gitExec);
-  const body = readFileIfExists(readFile, existsSync, BODY_FILE);
-  const labels = parseLabelsFile(readFileIfExists(readFile, existsSync, LABELS_FILE));
+  const resolvedMetadata = resolveLocalMetadata({
+    bodyFile: args.bodyFile,
+    labelsFile: args.labelsFile,
+    readFile,
+    existsSync
+  });
 
-  const result = buildPreflightReport(body, changedFiles, labels, {
+  const result = buildPreflightReport(resolvedMetadata.body, changedFiles, resolvedMetadata.labels, {
     readFile,
     statSync,
     existsSync
-  });
+  }, resolvedMetadata.metadataSource);
 
   const summary = renderSummary(result, branch);
   console.log(summary);
 
   const headCommitMs = getHeadCommitTime(gitExec);
-  const bodyMtimeMs = existsSync(BODY_FILE) ? statSync(BODY_FILE).mtimeMs : null;
+  const bodyMtimeMs = resolvedMetadata.metadataSource.bodyPath && existsSync(resolvedMetadata.metadataSource.bodyPath)
+    ? statSync(resolvedMetadata.metadataSource.bodyPath).mtimeMs
+    : null;
   const markerExists = existsSync(METADATA_MARKER);
 
   if (shouldWarnStaleMetadata({

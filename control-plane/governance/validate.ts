@@ -296,7 +296,27 @@ function buildReport(
       swarmExecutionModesTouched: swarmResolution.swarmExecutionModesTouched,
       modeWarnings: teamResolution.modeWarnings,
       unownedPaths: teamResolution.unownedPaths,
-      ambiguousPaths: teamResolution.ambiguousPaths
+      ambiguousPaths: teamResolution.ambiguousPaths,
+      metadataSource: {
+        bodySource: 'ci',
+        bodyPath: null,
+        labelSource: 'ci',
+        labelsPath: null
+      },
+      executionContext: {
+        context: 'ci',
+        executionMode: swarmMetadata.swarmMode ?? 'unknown',
+        retryEnabled: false
+      },
+      retryTrace: {
+        attempted: false,
+        retryCount: 0,
+        initialStatus: errors.length === 0 ? 'passed' : 'failed',
+        finalStatus: errors.length === 0 ? 'passed' : 'failed',
+        triggerErrorCode: null,
+        retryable: false,
+        patchApplied: null
+      }
     }),
     errors
   };

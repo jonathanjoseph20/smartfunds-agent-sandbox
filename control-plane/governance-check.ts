@@ -19,6 +19,7 @@ import {
   type GovernanceReport,
   type Tier
 } from './governance/diagnostics.ts';
+import { resolveLocalMetadata } from './governance/metadata-resolution.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { REQUIRED_LABELS } from './bootstrap-labels.ts';
@@ -37,10 +38,12 @@ type GitExec = (args: string[]) => string;
 
 type GovernanceCheckOptions = {
   bodyFile?: string;
+  labelsFile?: string;
   repo?: string;
   token?: string;
   gitExec?: GitExec;
   readFile?: (filePath: string) => string;
+  existsSync?: (filePath: string) => boolean;
   fetchImpl?: typeof fetch;
 };
 
@@ -52,14 +55,13 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-const DEFAULT_BODY_FILE = '.github/pull_request_template.md';
-
 function defaultGitExec(args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
-function parseArgs(argv: string[]): { bodyFile: string } {
-  let bodyFile = DEFAULT_BODY_FILE;
+function parseArgs(argv: string[]): { bodyFile?: string; labelsFile?: string } {
+  let bodyFile: string | undefined;
+  let labelsFile: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -79,10 +81,26 @@ function parseArgs(argv: string[]): { bodyFile: string } {
       }
       continue;
     }
+    if (arg === '--labels-file') {
+      const value = argv[index + 1];
+      if (!value) {
+        throw new Error('Missing value for --labels-file.');
+      }
+      labelsFile = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--labels-file=')) {
+      labelsFile = arg.slice('--labels-file='.length);
+      if (!labelsFile) {
+        throw new Error('Missing value for --labels-file.');
+      }
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { bodyFile };
+  return { bodyFile, labelsFile };
 }
 
 function resolveMergeBase(execGit: GitExec): string {
@@ -202,13 +220,17 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 }> {
   const gitExec = options.gitExec ?? defaultGitExec;
   const readFile = options.readFile ?? ((filePath: string) => fs.readFileSync(filePath, 'utf8'));
+  const existsSync = options.existsSync ?? (options.readFile ? (() => true) : ((filePath: string) => fs.existsSync(filePath)));
   const fetchImpl = options.fetchImpl ?? fetch;
   const repo = options.repo ?? process.env.GITHUB_REPOSITORY;
   const token = options.token ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-
-  const bodyFile = options.bodyFile ?? DEFAULT_BODY_FILE;
-  const resolvedBodyPath = path.resolve(bodyFile);
-  const body = readFile(resolvedBodyPath);
+  const resolvedMetadata = resolveLocalMetadata({
+    bodyFile: options.bodyFile,
+    labelsFile: options.labelsFile,
+    readFile,
+    existsSync
+  });
+  const body = resolvedMetadata.body;
 
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
   const baseSha = resolveMergeBase(gitExec);
@@ -376,7 +398,22 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     swarmTeamId: swarmMetadata.swarmTeamId,
     modeWarnings: teamResolution.modeWarnings,
     unownedPaths: teamResolution.unownedPaths,
-    ambiguousPaths: teamResolution.ambiguousPaths
+    ambiguousPaths: teamResolution.ambiguousPaths,
+    metadataSource: resolvedMetadata.metadataSource,
+    executionContext: {
+      context: 'local',
+      executionMode: swarmMetadata.swarmMode ?? 'unknown',
+      retryEnabled: false
+    },
+    retryTrace: {
+      attempted: false,
+      retryCount: 0,
+      initialStatus: errors.length === 0 ? 'passed' : 'failed',
+      finalStatus: errors.length === 0 ? 'passed' : 'failed',
+      triggerErrorCode: null,
+      retryable: false,
+      patchApplied: null
+    }
   });
 
   return {
@@ -388,7 +425,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const { ok, report, errors } = await runGovernanceCheck({ bodyFile: args.bodyFile });
+  const { ok, report, errors } = await runGovernanceCheck({ bodyFile: args.bodyFile, labelsFile: args.labelsFile });
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);
 

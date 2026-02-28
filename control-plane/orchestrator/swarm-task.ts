@@ -2,25 +2,27 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 import { canonicalStringify } from '../finance/determinism.ts';
-import { generateBody } from '../cli/governance-generate.ts';
-import { normalizeBody } from '../cli/governance-normalize.ts';
 import type { GovernanceReport } from '../governance/diagnostics.ts';
 import { normalizeCi } from './ci/normalize.ts';
-import { evaluateRetryEligibilityForNormalizedCi } from './ci/retry-eligibility.ts';
+import {
+  evaluateRetryEligibilityForNormalizedCi,
+  type RetryEligibilityDecision
+} from './ci/retry-eligibility.ts';
 import type { NormalizedCiSummary, RawCheck } from './ci/types.ts';
 import { buildOrchestratorExecutionReportV1 } from './report/build-report.ts';
 import type { OrchestratorExecutionReportV1 } from './report/types.ts';
+import { applyPatchPlan } from './retry/patchApplier.ts';
+import { buildPatchPlan } from './retry/patchPlanner.ts';
 import {
   type RetryAppliedFix,
   type RetryState,
-  type RetriableErrorCode,
-  buildDeterministicFixPlan,
   createInitialRetryState,
   parseGovernanceReport,
   toGovernanceRetryContext,
   withFinalStatus,
   withRetryAttempt
 } from './retry/retry-engine.ts';
+import type { PatchOp, PatchPlan } from './retry/patchTypes.ts';
 
 type CommandResult = {
   status: number;
@@ -46,8 +48,6 @@ type SwarmTaskResult = {
 type SwarmTaskDependencies = {
   runCommand: (command: string, args: string[], allowFailure?: boolean) => CommandResult;
 };
-
-const TEMP_PR_BODY_PATH = 'control-plane/orchestrator/.swarm-task-pr-body.tmp.md';
 
 function runCommand(command: string, args: string[], allowFailure = false): CommandResult {
   try {
@@ -114,28 +114,6 @@ function parsePrNumberFromPrCreateOutput(output: string): number {
   throw new Error('Unable to parse PR number from pr:create output.');
 }
 
-function resolveTier(report: GovernanceReport): 0 | 1 | 2 | 3 {
-  const candidate = report.declaredTier ?? report.labelTier ?? report.impliedTier;
-  if (candidate === 0 || candidate === 1 || candidate === 2 || candidate === 3) {
-    return candidate;
-  }
-  throw new Error('Unable to resolve governance tier for deterministic retry patch.');
-}
-
-function readPrBody(prNumber: number, deps: SwarmTaskDependencies): string {
-  const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'body', '--jq', '.body']);
-  return result.stdout.replace(/\n$/, '');
-}
-
-function readPrChangedFiles(prNumber: number, deps: SwarmTaskDependencies): string[] {
-  const result = deps.runCommand('gh', ['pr', 'diff', String(prNumber), '--name-only']);
-  return result.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-}
-
 function readPrHeadSha(prNumber: number, deps: SwarmTaskDependencies): string | null {
   const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'headRefOid'], true);
   if (result.status !== 0 || !result.stdout.trim()) {
@@ -150,19 +128,6 @@ function readPrHeadSha(prNumber: number, deps: SwarmTaskDependencies): string | 
   } catch {
     return null;
   }
-}
-
-function updatePrBody(prNumber: number, body: string, deps: SwarmTaskDependencies): void {
-  fs.writeFileSync(TEMP_PR_BODY_PATH, `${body}\n`, 'utf8');
-  try {
-    deps.runCommand('gh', ['pr', 'edit', String(prNumber), '--body-file', TEMP_PR_BODY_PATH]);
-  } finally {
-    fs.rmSync(TEMP_PR_BODY_PATH, { force: true });
-  }
-}
-
-function addLabel(prNumber: number, label: string, deps: SwarmTaskDependencies): void {
-  deps.runCommand('gh', ['pr', 'edit', String(prNumber), '--add-label', label]);
 }
 
 function parseRawChecksFromRollup(stdout: string): RawCheck[] {
@@ -236,42 +201,25 @@ function readGovernanceReportForPr(prNumber: number, deps: SwarmTaskDependencies
   }
 }
 
-function applyRetryFix(params: {
-  prNumber: number;
-  triggerErrorCode: RetriableErrorCode;
-  governanceReport: GovernanceReport;
-  deps: SwarmTaskDependencies;
-}): { applied: boolean; retryAppliedFix: RetryAppliedFix | null } {
-  const plan = buildDeterministicFixPlan(params.triggerErrorCode);
-
-  if (plan.fix === 'ADD_LABEL') {
-    const tier = resolveTier(params.governanceReport);
-    addLabel(params.prNumber, `tier-${tier}`, params.deps);
-    return { applied: true, retryAppliedFix: 'ADD_LABEL' };
+function resolveTierLabel(report: GovernanceReport): string | null {
+  const candidate = report.declaredTier ?? report.labelTier ?? report.impliedTier;
+  if (candidate === 0 || candidate === 1 || candidate === 2 || candidate === 3) {
+    return `tier-${candidate}`;
   }
+  return null;
+}
 
-  if (plan.fix === 'ADD_APPROVAL_LABEL') {
-    addLabel(params.prNumber, 'tier-3-approved', params.deps);
-    return { applied: true, retryAppliedFix: 'ADD_APPROVAL_LABEL' };
+function toLegacyRetryAppliedFix(appliedOps: PatchOp[]): RetryAppliedFix | null {
+  if (appliedOps.some((entry) => entry.op === 'add_label' && entry.label === 'tier-3-approved')) {
+    return 'ADD_APPROVAL_LABEL';
   }
-
-  if (plan.fix === 'REGENERATE_BODY') {
-    const tier = resolveTier(params.governanceReport);
-    const changedPaths = readPrChangedFiles(params.prNumber, params.deps);
-    const generated = generateBody({ tier, changedPaths });
-    const normalized = normalizeBody(generated).normalized;
-    updatePrBody(params.prNumber, normalized, params.deps);
-    return { applied: true, retryAppliedFix: 'REGENERATE_BODY' };
+  if (appliedOps.some((entry) => entry.op === 'set_pr_body')) {
+    return 'REGENERATE_BODY';
   }
-
-  if (plan.fix === 'NORMALIZE_BODY') {
-    const current = readPrBody(params.prNumber, params.deps);
-    const normalized = normalizeBody(current).normalized;
-    updatePrBody(params.prNumber, normalized, params.deps);
-    return { applied: true, retryAppliedFix: 'NORMALIZE_BODY' };
+  if (appliedOps.some((entry) => entry.op === 'add_label')) {
+    return 'ADD_LABEL';
   }
-
-  return { applied: false, retryAppliedFix: null };
+  return null;
 }
 
 function withRetryContext(report: GovernanceReport | null, retryState: RetryState, retryAppliedFix: RetryAppliedFix | null):
@@ -315,6 +263,11 @@ function buildResult(params: {
   eligibility: RetryEligibilityDecision;
   governanceReport: GovernanceReport | null;
   retryAppliedFix: RetryAppliedFix | null;
+  patchPlan: PatchPlan | null;
+  patchOutcomeCode: 'applied' | 'noop' | 'failed';
+  patchAppliedOps: PatchOp[];
+  patchDryRun: boolean;
+  patchCommands: string[];
   headSha: string | null;
 }): SwarmTaskResult {
   const executionReport = buildOrchestratorExecutionReportV1({
@@ -328,6 +281,7 @@ function buildResult(params: {
     },
     retry: {
       retryCount: params.retryState.retryCount as 0 | 1,
+      retryAttempt: params.retryState.retryCount as 0 | 1,
       eligible: params.eligibility.eligible,
       ineligibleReason: params.eligibility.ineligibleReason,
       trigger: {
@@ -342,6 +296,11 @@ function buildResult(params: {
         patchApplied: params.retryAppliedFix,
         promptAmendmentApplied: params.retryAppliedFix === 'REGENERATE_BODY' || params.retryAppliedFix === 'NORMALIZE_BODY'
       },
+      patchPlan: params.patchPlan,
+      patchOutcomeCode: params.patchOutcomeCode,
+      patchAppliedOps: params.patchAppliedOps,
+      patchDryRun: params.patchDryRun,
+      patchCommands: params.patchCommands,
       finalStatus: toReportFinalStatus(params.retryState.finalStatus)
     }
   });
@@ -366,6 +325,7 @@ export function stableStringify(value: unknown): string {
 
 export async function spawnTask(params: {
   executionMode: ExecutionMode;
+  dryRun?: boolean;
   deps?: Partial<SwarmTaskDependencies>;
 }): Promise<SwarmTaskResult> {
   const deps: SwarmTaskDependencies = {
@@ -377,6 +337,12 @@ export async function spawnTask(params: {
   const prNumber = parsePrNumberFromPrCreateOutput(`${prCreate.stdout}\n${prCreate.stderr}`);
 
   let retryState = createInitialRetryState();
+  const patchDryRun = params.dryRun === true;
+  let patchPlan: PatchPlan | null = null;
+  let patchOutcomeCode: 'applied' | 'noop' | 'failed' = 'noop';
+  let patchAppliedOps: PatchOp[] = [];
+  let patchCommands: string[] = [];
+
   const initialCiSummary = evaluateCiSummary(prNumber, deps);
   const initialCiStatus = initialCiSummary.ciStatus;
 
@@ -401,11 +367,22 @@ export async function spawnTask(params: {
       eligibility: initialEligibility,
       governanceReport,
       retryAppliedFix: null,
+      patchPlan,
+      patchOutcomeCode,
+      patchAppliedOps,
+      patchDryRun,
+      patchCommands,
       headSha
     });
   }
 
-  if (!initialEligibility.eligible || !initialEligibility.triggerErrorCode || !governanceReport) {
+  if (
+    !initialEligibility.eligible ||
+    !initialEligibility.triggerErrorCode ||
+    !initialEligibility.triggerGovernanceErrorCode ||
+    !governanceReport ||
+    initialCiSummary.governingFailure?.classification !== 'governance'
+  ) {
     if (initialCiStatus === 'failed') {
       retryState = withFinalStatus(retryState, 'failed');
     }
@@ -420,18 +397,50 @@ export async function spawnTask(params: {
       eligibility: initialEligibility,
       governanceReport,
       retryAppliedFix: null,
+      patchPlan,
+      patchOutcomeCode,
+      patchAppliedOps,
+      patchDryRun,
+      patchCommands,
       headSha
     });
   }
 
-  const fix = applyRetryFix({
-    prNumber,
-    triggerErrorCode: initialEligibility.triggerErrorCode,
-    governanceReport,
-    deps
+  patchPlan = buildPatchPlan({
+    retryAttempt: retryState.retryCount,
+    governanceErrorCode: initialEligibility.triggerGovernanceErrorCode,
+    governanceClassification: initialCiSummary.governingFailure?.classification,
+    requiredTier: governanceReport.requiredMinimumTier ?? governanceReport.declaredTier ?? governanceReport.labelTier ?? governanceReport.impliedTier,
+    requiredTierLabel: resolveTierLabel(governanceReport)
   });
 
-  if (!fix.applied || !fix.retryAppliedFix) {
+  const patchResult = await applyPatchPlan({
+    prNumber,
+    plan: patchPlan,
+    dryRun: patchDryRun,
+    gh: async (args) => {
+      const result = deps.runCommand('gh', args, true);
+      return {
+        code: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr
+      };
+    },
+    git: async (args) => {
+      const result = deps.runCommand('git', args, true);
+      return {
+        code: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr
+      };
+    }
+  });
+
+  patchOutcomeCode = patchResult.outcome;
+  patchAppliedOps = patchResult.appliedOps;
+  patchCommands = patchResult.commands;
+
+  if (patchResult.outcome === 'failed') {
     retryState = withFinalStatus(retryState, 'failed');
     return buildResult({
       executionMode: params.executionMode,
@@ -442,11 +451,38 @@ export async function spawnTask(params: {
       ciSummary: initialCiSummary,
       eligibility: initialEligibility,
       governanceReport,
-      retryAppliedFix: null,
+      retryAppliedFix: toLegacyRetryAppliedFix(patchAppliedOps),
+      patchPlan,
+      patchOutcomeCode,
+      patchAppliedOps,
+      patchDryRun,
+      patchCommands,
       headSha
     });
   }
 
+  if (patchResult.outcome === 'noop') {
+    retryState = withFinalStatus(retryState, 'failed');
+    return buildResult({
+      executionMode: params.executionMode,
+      prNumber,
+      ciStatusInitial: initialCiStatus,
+      ciStatusFinal: initialCiStatus,
+      retryState,
+      ciSummary: initialCiSummary,
+      eligibility: initialEligibility,
+      governanceReport,
+      retryAppliedFix: null,
+      patchPlan,
+      patchOutcomeCode,
+      patchAppliedOps,
+      patchDryRun,
+      patchCommands,
+      headSha
+    });
+  }
+
+  const retryAppliedFix = toLegacyRetryAppliedFix(patchAppliedOps);
   const finalCiSummary = evaluateCiSummary(prNumber, deps);
   const finalCiStatus = finalCiSummary.ciStatus;
 
@@ -472,7 +508,12 @@ export async function spawnTask(params: {
     ciSummary: finalCiSummary,
     eligibility: finalEligibility,
     governanceReport,
-    retryAppliedFix: fix.retryAppliedFix,
+    retryAppliedFix,
+    patchPlan,
+    patchOutcomeCode,
+    patchAppliedOps,
+    patchDryRun,
+    patchCommands,
     headSha
   });
 }

@@ -1,7 +1,7 @@
 {
   "swarmId": "example-research",
-  "project": "docs",
-  "team": "docs",
+  "project": "core-app",
+  "team": "core-app",
   "executionMode": "autonomous",
   "members": [
     { "role": "researcher", "capabilities": ["analyze", "summarize"] }

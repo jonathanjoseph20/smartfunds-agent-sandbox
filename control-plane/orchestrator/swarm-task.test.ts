@@ -199,6 +199,22 @@ function createFakeDeps(input: {
       };
     }
 
+    if (command === 'git' && args[0] === 'commit') {
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
+
+    if (command === 'git' && args[0] === 'push') {
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
+
     throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
   };
 

@@ -10,7 +10,7 @@ import type { PatchOp, PatchPlan } from './retry/patchTypes.ts';
 type CommandRunner = (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
 type WriteFile = (path: string, body: string) => void;
 
-const METADATA_REFRESH_COMMIT_MESSAGE = 'chore: governance metadata refresh';
+const METADATA_REFRESH_COMMIT_MESSAGE = 'chore: refresh retry metadata';
 
 const STRICT_RETRYABLE_CODES = [
   'MISSING_TIER_LABEL',

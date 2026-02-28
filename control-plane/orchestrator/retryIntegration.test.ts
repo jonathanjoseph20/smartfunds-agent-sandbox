@@ -150,7 +150,7 @@ describe('retryIntegration', () => {
     expect(writes[0].body).toContain('retry-attempt: 1');
     expect(calls).toContainEqual({
       runner: 'git',
-      args: ['commit', '--allow-empty', '-m', 'chore: governance metadata refresh']
+      args: ['commit', '--allow-empty', '-m', 'chore: refresh retry metadata']
     });
     expect(calls).toContainEqual({
       runner: 'git',
@@ -173,6 +173,104 @@ describe('retryIntegration', () => {
     expect(second.retryAttempted).toBe(false);
     expect(second.retryEligible).toBe(false);
     expect(second.retryReason).toBe('retry_already_consumed');
+  });
+
+  it('does not retry governance schema failures', async () => {
+    const calls: RunnerCall[] = [];
+    const result = await runRetryIntegration({
+      executionMode: 'autonomous',
+      ciResult: governanceFailureRawCheck('SCHEMA_VALIDATION_FAILED'),
+      prNumber: 41,
+      currentPrBody: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: x\nAffected Paths: x\nTests Added: x\nDeterminism Statement: x\n```',
+      currentLabels: ['tier-2'],
+      requiredTier: 2,
+      requiredTierLabel: 'tier-2',
+      dryRun: false,
+      gh: runner(calls, 'gh'),
+      git: runner(calls, 'git')
+    });
+
+    expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('error_code_not_retry_eligible');
+    expect(calls).toEqual([]);
+  });
+
+  it('does not retry governance ownership failures', async () => {
+    const calls: RunnerCall[] = [];
+    const result = await runRetryIntegration({
+      executionMode: 'autonomous',
+      ciResult: governanceFailureRawCheck('UNOWNED_PATHS'),
+      prNumber: 41,
+      currentPrBody: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: x\nAffected Paths: x\nTests Added: x\nDeterminism Statement: x\n```',
+      currentLabels: ['tier-2'],
+      requiredTier: 2,
+      requiredTierLabel: 'tier-2',
+      dryRun: false,
+      gh: runner(calls, 'gh'),
+      git: runner(calls, 'git')
+    });
+
+    expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('error_code_not_retry_eligible');
+    expect(calls).toEqual([]);
+  });
+
+  it('does not retry governance rail enforcement failures', async () => {
+    const calls: RunnerCall[] = [];
+    const result = await runRetryIntegration({
+      executionMode: 'autonomous',
+      ciResult: governanceFailureRawCheck('RAIL_ENFORCEMENT_VIOLATION'),
+      prNumber: 41,
+      currentPrBody: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: x\nAffected Paths: x\nTests Added: x\nDeterminism Statement: x\n```',
+      currentLabels: ['tier-2'],
+      requiredTier: 2,
+      requiredTierLabel: 'tier-2',
+      dryRun: false,
+      gh: runner(calls, 'gh'),
+      git: runner(calls, 'git')
+    });
+
+    expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('error_code_not_retry_eligible');
+    expect(calls).toEqual([]);
+  });
+
+  it('does not recurse when failure persists after retry-attempt is present', async () => {
+    const calls: RunnerCall[] = [];
+    const bodyWithRetryAttempt = [
+      'tier-3',
+      '',
+      '```evidence',
+      'Risk Tier: 3',
+      'Justification: x',
+      'Affected Paths: x',
+      'Tests Added: x',
+      'Determinism Statement: x',
+      'retry-attempt: 1',
+      '```'
+    ].join('\n');
+
+    const result = await runRetryIntegration({
+      executionMode: 'autonomous',
+      ciResult: governanceFailureRawCheck('MISSING_TIER_LABEL'),
+      prNumber: 41,
+      currentPrBody: bodyWithRetryAttempt,
+      currentLabels: ['tier-3'],
+      requiredTier: 3,
+      requiredTierLabel: 'tier-3',
+      dryRun: false,
+      gh: runner(calls, 'gh'),
+      git: runner(calls, 'git')
+    });
+
+    expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('retry_already_consumed');
+    expect(result.metadataRefreshed).toBe(false);
+    expect(calls).toEqual([]);
   });
 
   it('does not refresh metadata when no mutation occurs', async () => {

@@ -25,7 +25,8 @@
     "bootstrap:labels": "npx tsc --target ES2022 --module ES2022 --moduleResolution node --lib ES2022,DOM --outDir control-plane/dist control-plane/bootstrap-labels.ts && node control-plane/dist/bootstrap-labels.js",
     "demo:prepare": "node control-plane/demo/prepare-demo.ts",
     "demo:run": "bash scripts/demo.sh",
-    "demo:scenario": "bash scripts/demo.sh --scenario"
+    "demo:scenario": "bash scripts/demo.sh --scenario",
+    "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

@@ -1,20 +1,6 @@
 {
   "projectId": "core-app",
-  "ownedPaths": [
-    "package.json",
-    "control-plane/projects/**",
-
-    "control-plane/governance-check.ts",
-    "control-plane/governance-*.ts",
-
-    "control-plane/finance/**",
-    "control-plane/entities/**"
-
-    // ADD: each file from `ls -1 control-plane/*.json` explicitly, one per line
-    // Example:
-    // ,"control-plane/registry.json"
-    // ,"control-plane/teams.json"
-  ],
-  "description": "Core governance/project registry (explicit, non-overlapping)",
-  "tags": ["seed"]
+  "ownedPaths": ["**"],
+  "description": "Bootstrap project ownership (single-project).",
+  "tags": ["bootstrap"]
 }

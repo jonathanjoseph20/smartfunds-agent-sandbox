@@ -1,7 +1,7 @@
 {
   "swarmId": "executive-team",
-  "project": "docs",
-  "team": "docs",
+  "project": "core-app",
+  "team": "core-app",
   "executionMode": "structured",
   "members": [
     { "role": "lead", "capabilities": ["plan", "review"] },

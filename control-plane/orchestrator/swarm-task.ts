@@ -37,6 +37,12 @@ type SwarmTaskResult = {
   prNumber: number;
   ciStatusInitial: CiStatus;
   ciStatusFinal: CiStatus;
+  RETRY_ACTIVATION_RESULT: {
+    retryAttempted: boolean;
+    retryEligible: boolean;
+    retryReason: string;
+    patchId: string | null;
+  };
   retryState: RetryState;
   governanceReport: (GovernanceReport & { retryContext?: ReturnType<typeof toGovernanceRetryContext> }) | null;
   executionReportPath: string;
@@ -287,6 +293,12 @@ function buildResult(params: {
   prNumber: number;
   ciStatusInitial: CiStatus;
   ciStatusFinal: CiStatus;
+  retryActivationResult: {
+    retryAttempted: boolean;
+    retryEligible: boolean;
+    retryReason: string;
+    patchId: string | null;
+  };
   retryState: RetryState;
   ciSummary: NormalizedCiSummary;
   eligibility: RetryEligibilityDecision;
@@ -341,6 +353,12 @@ function buildResult(params: {
     prNumber: params.prNumber,
     ciStatusInitial: params.ciStatusInitial,
     ciStatusFinal: params.ciStatusFinal,
+    RETRY_ACTIVATION_RESULT: {
+      retryAttempted: params.retryActivationResult.retryAttempted,
+      retryEligible: params.retryActivationResult.retryEligible,
+      retryReason: params.retryActivationResult.retryReason,
+      patchId: params.retryActivationResult.patchId
+    },
     retryState: params.retryState,
     governanceReport: withRetryContext(params.governanceReport, params.retryState, params.retryAppliedFix),
     executionReportPath,
@@ -371,6 +389,12 @@ export async function spawnTask(params: {
   let patchOutcomeCode: 'applied' | 'noop' | 'failed' = 'noop';
   let patchAppliedOps: PatchOp[] = [];
   let patchCommands: string[] = [];
+  let retryActivationResult: SwarmTaskResult['RETRY_ACTIVATION_RESULT'] = {
+    retryAttempted: false,
+    retryEligible: false,
+    retryReason: 'ci_not_failed',
+    patchId: null
+  };
 
   const initialCiSummary = evaluateCiSummary(prNumber, deps);
   const initialCiStatus = initialCiSummary.ciStatus;
@@ -391,6 +415,35 @@ export async function spawnTask(params: {
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: 'passed',
+      retryActivationResult,
+      retryState,
+      ciSummary: initialCiSummary,
+      eligibility: initialEligibility,
+      governanceReport,
+      retryAppliedFix: null,
+      patchPlan,
+      patchOutcomeCode,
+      patchAppliedOps,
+      patchDryRun,
+      patchCommands,
+      headSha
+    });
+  }
+
+  if (initialCiStatus !== 'failed') {
+    retryState = withFinalStatus(retryState, 'pending');
+    retryActivationResult = {
+      retryAttempted: false,
+      retryEligible: false,
+      retryReason: initialCiStatus === 'unknown' ? 'ci_unknown' : 'ci_not_failed',
+      patchId: null
+    };
+    return buildResult({
+      executionMode: params.executionMode,
+      prNumber,
+      ciStatusInitial: initialCiStatus,
+      ciStatusFinal: initialCiStatus,
+      retryActivationResult,
       retryState,
       ciSummary: initialCiSummary,
       eligibility: initialEligibility,
@@ -432,6 +485,13 @@ export async function spawnTask(params: {
     }
   });
 
+  retryActivationResult = {
+    retryAttempted: retryIntegration.retryAttempted,
+    retryEligible: retryIntegration.retryEligible,
+    retryReason: retryIntegration.retryReason,
+    patchId: retryIntegration.patchId
+  };
+
   patchPlan = retryIntegration.patchPlan ?? null;
   patchAppliedOps = retryIntegration.patchAppliedOps ?? [];
   patchCommands = retryIntegration.patchCommands ?? [];
@@ -446,6 +506,7 @@ export async function spawnTask(params: {
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: 'failed',
+      retryActivationResult,
       retryState,
       ciSummary: initialCiSummary,
       eligibility: initialEligibility,
@@ -469,6 +530,7 @@ export async function spawnTask(params: {
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: initialCiStatus,
+      retryActivationResult,
       retryState,
       ciSummary: initialCiSummary,
       eligibility: initialEligibility,
@@ -497,6 +559,7 @@ export async function spawnTask(params: {
     prNumber,
     ciStatusInitial: initialCiStatus,
     ciStatusFinal: initialCiStatus,
+    retryActivationResult,
     retryState,
     ciSummary: initialCiSummary,
     eligibility: {

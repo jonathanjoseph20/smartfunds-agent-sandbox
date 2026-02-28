@@ -129,6 +129,10 @@ function nonGovernanceFailureRollup(): Array<Record<string, unknown>> {
   return [{ name: 'unit_tests', conclusion: 'FAILURE' }];
 }
 
+function unknownCiRollup(): Array<Record<string, unknown>> {
+  return [{ name: 'governance', state: 'IN_PROGRESS' }];
+}
+
 function createFakeDeps(input: {
   ciRollups: Array<Array<Record<string, unknown>>>;
   governanceOutput: string;
@@ -257,6 +261,12 @@ describe('swarm task orchestrator', () => {
       triggerErrorCode: 'MISSING_TIER_LABEL',
       finalStatus: 'failed_after_retry'
     });
+    expect(result.RETRY_ACTIVATION_RESULT).toEqual({
+      retryAttempted: true,
+      retryEligible: true,
+      retryReason: 'retry_applied',
+      patchId: expect.any(String)
+    });
 
     expect(result.executionReport.retry.finalStatus).toBe('failed');
     expect(result.executionReportPath).toBe('.orchestrator/reports/pr-41/execution-report.v1.json');
@@ -329,5 +339,102 @@ describe('swarm task orchestrator', () => {
     expect(result.retryState.retryAttempted).toBe(false);
     expect(result.retryState.finalStatus).toBe('failed');
     expect(result.executionReport.retry.ineligibleReason).toBe('NON_GOVERNANCE_GOVERNING_FAILURE');
+    expect(result.RETRY_ACTIVATION_RESULT).toEqual({
+      retryAttempted: false,
+      retryEligible: false,
+      retryReason: 'non_governance_governing_failure',
+      patchId: null
+    });
+  });
+
+  it('does not trigger retry when CI status is unknown', async () => {
+    const { deps, runCommand } = createFakeDeps({
+      ciRollups: [unknownCiRollup()],
+      governanceOutput: buildGovernanceOutput({
+        code: 'MISSING_TIER_LABEL',
+        message: 'tier label missing'
+      })
+    });
+
+    const result = await spawnTask({
+      executionMode: 'autonomous',
+      deps: { runCommand }
+    });
+
+    expect(result.ciStatusInitial).toBe('unknown');
+    expect(result.retryState.retryAttempted).toBe(false);
+    expect(result.retryState.finalStatus).toBe('pending');
+    expect(result.RETRY_ACTIVATION_RESULT).toEqual({
+      retryAttempted: false,
+      retryEligible: false,
+      retryReason: 'ci_unknown',
+      patchId: null
+    });
+    expect(deps.callLog.some((entry) =>
+      entry.command === 'gh' && entry.args[0] === 'pr' && entry.args[1] === 'edit'
+    )).toBe(false);
+  });
+
+  it('does not retry schema governance failures', async () => {
+    const { deps, runCommand } = createFakeDeps({
+      ciRollups: [governanceFailureRollup('SCHEMA_VALIDATION_FAILED')],
+      governanceOutput: buildGovernanceOutput({
+        code: 'SCHEMA_VALIDATION_FAILED',
+        message: 'schema failed'
+      })
+    });
+
+    const result = await spawnTask({
+      executionMode: 'autonomous',
+      deps: { runCommand }
+    });
+
+    expect(result.retryState.retryAttempted).toBe(false);
+    expect(result.RETRY_ACTIVATION_RESULT.retryReason).toBe('error_code_not_retry_eligible');
+    expect(deps.callLog.some((entry) =>
+      entry.command === 'gh' && entry.args[0] === 'pr' && entry.args[1] === 'edit'
+    )).toBe(false);
+  });
+
+  it('does not retry ownership governance failures', async () => {
+    const { deps, runCommand } = createFakeDeps({
+      ciRollups: [governanceFailureRollup('UNOWNED_PATHS')],
+      governanceOutput: buildGovernanceOutput({
+        code: 'UNOWNED_PATHS',
+        message: 'ownership failed'
+      })
+    });
+
+    const result = await spawnTask({
+      executionMode: 'autonomous',
+      deps: { runCommand }
+    });
+
+    expect(result.retryState.retryAttempted).toBe(false);
+    expect(result.RETRY_ACTIVATION_RESULT.retryReason).toBe('error_code_not_retry_eligible');
+    expect(deps.callLog.some((entry) =>
+      entry.command === 'gh' && entry.args[0] === 'pr' && entry.args[1] === 'edit'
+    )).toBe(false);
+  });
+
+  it('does not retry rail enforcement governance failures', async () => {
+    const { deps, runCommand } = createFakeDeps({
+      ciRollups: [governanceFailureRollup('RAIL_ENFORCEMENT_VIOLATION')],
+      governanceOutput: buildGovernanceOutput({
+        code: 'RAIL_ENFORCEMENT_VIOLATION',
+        message: 'rail enforcement failed'
+      })
+    });
+
+    const result = await spawnTask({
+      executionMode: 'autonomous',
+      deps: { runCommand }
+    });
+
+    expect(result.retryState.retryAttempted).toBe(false);
+    expect(result.RETRY_ACTIVATION_RESULT.retryReason).toBe('error_code_not_retry_eligible');
+    expect(deps.callLog.some((entry) =>
+      entry.command === 'gh' && entry.args[0] === 'pr' && entry.args[1] === 'edit'
+    )).toBe(false);
   });
 });

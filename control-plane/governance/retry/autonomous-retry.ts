@@ -24,10 +24,11 @@ type RetryCandidate = {
 };
 
 type MetadataSource = {
-  bodySource: 'ci' | 'cli' | 'stub' | 'template';
+  bodySource: 'gh' | 'local' | 'stub' | 'unknown' | 'none';
   bodyPath: string | null;
-  labelSource: 'ci' | 'cli' | 'stub';
+  labelSource: 'gh' | 'local' | 'stub' | 'unknown' | 'none';
   labelsPath: string | null;
+  commentSource: 'gh' | 'local' | 'stub' | 'unknown' | 'none';
 };
 
 type LocalValidationResult = {
@@ -190,7 +191,11 @@ function runLocalValidation(options: AutonomousRetryOptions): LocalValidationRes
     errors: result.errors,
     body: resolved.body,
     metadataSource: {
-      ...resolved.metadataSource
+      bodySource: resolved.metadataSource.bodySource === 'stub' ? 'stub' : 'local',
+      bodyPath: resolved.metadataSource.bodyPath,
+      labelSource: resolved.metadataSource.labelSource === 'stub' ? 'stub' : 'local',
+      labelsPath: resolved.metadataSource.labelsPath,
+      commentSource: 'none'
     }
   };
 }
@@ -307,10 +312,11 @@ async function runCiValidation(pr: number, bodyOverride?: string): Promise<{
   const reportWithCiSource = {
     ...result.report,
     metadataSource: {
-      bodySource: 'ci' as const,
+      bodySource: 'gh' as const,
       bodyPath: null,
-      labelSource: 'ci' as const,
-      labelsPath: null
+      labelSource: 'gh' as const,
+      labelsPath: null,
+      commentSource: result.report.metadataSource.commentSource
     },
     executionContext: {
       ...result.report.executionContext,

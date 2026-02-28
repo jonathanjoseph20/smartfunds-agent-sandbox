@@ -72,8 +72,12 @@ describe('governance report schema guard', () => {
       bodySource: 'stub',
       bodyPath: null,
       labelSource: 'stub',
-      labelsPath: null
+      labelsPath: null,
+      commentSource: 'none'
     });
+    expect(report.commentEvidenceDetected).toBe(false);
+    expect(report.commentEvidenceCount).toBe(0);
+    expect(report.sealWarnings).toEqual([]);
     expect(report.executionContext).toEqual({
       context: 'local',
       executionMode: 'unknown',

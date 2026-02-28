@@ -229,8 +229,12 @@ describe('governance diagnostics', () => {
           bodySource: 'stub',
           bodyPath: null,
           labelSource: 'stub',
-          labelsPath: null
+          labelsPath: null,
+          commentSource: 'none'
         },
+        commentEvidenceDetected: false,
+        commentEvidenceCount: 0,
+        sealWarnings: [],
         executionContext: {
           context: 'local',
           executionMode: 'unknown',

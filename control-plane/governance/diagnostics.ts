@@ -9,6 +9,7 @@ import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } fr
 import type { ModeBoundaryStatus } from '../studio/mode-boundary.ts';
 import type { SwarmMode } from '../swarm/schema.ts';
 import type { IsolationStatus, IsolationViolationCode } from '../isolation/types.ts';
+import type { ProvenanceSource } from '../pr-body/types.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -16,15 +17,19 @@ export type GovernanceErrorSeverity = 'error' | 'warning';
 export type GovernanceErrorCode =
   | 'MISSING_LABEL'
   | 'MISSING_TIER_LABEL'
+  | 'INVALID_TIER_LABEL'
   | 'MISSING_EVIDENCE_BLOCK'
   | 'MISSING_EVIDENCE_FIELDS'
+  | 'UNSUPPORTED_EVIDENCE_FIELDS'
+  | 'EVIDENCE_FORMAT_ERROR'
   | 'TIER_MISMATCH'
   | 'OWNERSHIP_VIOLATION'
   | 'UNOWNED_PATHS'
   | 'AMBIGUOUS_OWNERSHIP'
   | 'MIXED_MODE'
   | 'SWARM_TOPOLOGY_VIOLATION'
-  | 'RAIL_BINDING_VIOLATION';
+  | 'RAIL_BINDING_VIOLATION'
+  | 'EVIDENCE_IN_COMMENT_NOT_BODY';
 
 export type GovernanceSuggestedFix = {
   action: string;
@@ -129,11 +134,15 @@ export type GovernanceReport = {
   railProfilesTouched?: string[];
   errors: GovernanceError[];
   metadataSource: {
-    bodySource: 'ci' | 'cli' | 'stub' | 'template';
+    bodySource: ProvenanceSource;
     bodyPath: string | null;
-    labelSource: 'ci' | 'cli' | 'stub';
+    labelSource: ProvenanceSource;
     labelsPath: string | null;
+    commentSource: ProvenanceSource;
   };
+  commentEvidenceDetected: boolean;
+  commentEvidenceCount: number;
+  sealWarnings: string[];
   executionContext: {
     context: 'local' | 'ci';
     executionMode: 'structured' | 'autonomous' | 'unknown';
@@ -775,11 +784,16 @@ export function buildGovernanceReport(input: {
   unownedPaths: string[];
   ambiguousPaths: string[];
   metadataSource?: {
-    bodySource: 'ci' | 'cli' | 'stub' | 'template';
+    bodySource: ProvenanceSource | 'ci' | 'cli' | 'template';
     bodyPath: string | null;
-    labelSource: 'ci' | 'cli' | 'stub';
+    labelSource: ProvenanceSource | 'ci' | 'cli';
     labelsPath: string | null;
+    commentSource?: ProvenanceSource;
   };
+  commentEvidenceDetected?: boolean;
+  commentEvidenceCount?: number;
+  sealWarnings?: string[];
+  additionalErrors?: GovernanceError[];
   executionContext?: {
     context: 'local' | 'ci';
     executionMode: 'structured' | 'autonomous' | 'unknown';
@@ -811,6 +825,30 @@ export function buildGovernanceReport(input: {
     modeViolation: modePolicy.violation,
     unownedPaths: input.unownedPaths
   });
+
+  const additionalErrors = input.additionalErrors ?? [];
+  const allErrors = sortGovernanceErrors([
+    ...canonicalErrors,
+    ...additionalErrors.map((error) => ({
+      ...error,
+      sourceFields: sortSourceFields(error.sourceFields)
+    }))
+  ]);
+
+  const resolveLegacySource = (
+    source: ProvenanceSource | 'ci' | 'cli' | 'template' | undefined
+  ): ProvenanceSource => {
+    if (!source) {
+      return 'unknown';
+    }
+    if (source === 'ci') {
+      return 'gh';
+    }
+    if (source === 'cli' || source === 'template') {
+      return 'local';
+    }
+    return source;
+  };
 
   return {
     declaredTier: input.declaredTier,
@@ -863,13 +901,17 @@ export function buildGovernanceReport(input: {
     modeEnforcementStatus: modePolicy.status,
     modeViolation: modePolicy.violation,
     requiredMinimumTier: modePolicy.requiredMinimumTier,
-    errors: canonicalErrors,
-    metadataSource: input.metadataSource ?? {
-      bodySource: 'stub',
-      bodyPath: null,
-      labelSource: 'stub',
-      labelsPath: null
+    errors: allErrors,
+    metadataSource: {
+      bodySource: resolveLegacySource(input.metadataSource?.bodySource ?? 'stub'),
+      bodyPath: input.metadataSource?.bodyPath ?? null,
+      labelSource: resolveLegacySource(input.metadataSource?.labelSource ?? 'stub'),
+      labelsPath: input.metadataSource?.labelsPath ?? null,
+      commentSource: resolveLegacySource(input.metadataSource?.commentSource ?? 'none')
     },
+    commentEvidenceDetected: input.commentEvidenceDetected ?? false,
+    commentEvidenceCount: input.commentEvidenceCount ?? 0,
+    sealWarnings: sortedUnique(input.sealWarnings ?? []),
     executionContext: input.executionContext ?? {
       context: 'local',
       executionMode: 'unknown',

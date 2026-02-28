@@ -7,3 +7,4 @@ coverage/
 *.bak
 *.save
 node_modules/.vite
+.tmp/

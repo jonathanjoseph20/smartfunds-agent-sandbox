@@ -1,0 +1,16 @@
+[
+  {
+    "name": "integration_tests",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "integration failed"
+    }
+  },
+  {
+    "name": "lint_tier0",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "lint failed"
+    }
+  }
+]

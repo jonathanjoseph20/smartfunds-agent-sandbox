@@ -1,0 +1,23 @@
+[
+  {
+    "name": "lint_tier0",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "lint failed"
+    }
+  },
+  {
+    "name": "governance",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "GOVERNANCE_REPORT_JSON_START\n{\"errorCode\":\"MISSING_TIER_LABEL\",\"retryable\":true,\"source\":\"governance\"}\nGOVERNANCE_REPORT_JSON_END"
+    }
+  },
+  {
+    "name": "unit_tests",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "tests failed"
+    }
+  }
+]

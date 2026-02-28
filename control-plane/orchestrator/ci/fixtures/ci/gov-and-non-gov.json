@@ -1,0 +1,16 @@
+[
+  {
+    "name": "governance",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "errorCode: SOME_NEW_ERROR"
+    }
+  },
+  {
+    "name": "unit_tests",
+    "conclusion": "FAILURE",
+    "output": {
+      "summary": "tests failed"
+    }
+  }
+]

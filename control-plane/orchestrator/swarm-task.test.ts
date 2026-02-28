@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { spawnTask } from './swarm-task.ts';
 
@@ -9,7 +11,7 @@ type FakeCommandResult = {
 };
 
 type FakeDeps = {
-  ciStatuses: Array<'passed' | 'failed'>;
+  ciRollups: Array<Array<Record<string, unknown>>>;
   governanceOutput: string;
   callLog: Array<{ command: string; args: string[]; allowFailure: boolean }>;
 };
@@ -109,12 +111,30 @@ function buildGovernanceOutput(params: {
   ].join('\n');
 }
 
+function governanceFailureRollup(code: string): Array<Record<string, unknown>> {
+  return [{
+    name: 'governance',
+    conclusion: 'FAILURE',
+    output: {
+      summary: `errorCode: ${code}`
+    }
+  }];
+}
+
+function passedRollup(): Array<Record<string, unknown>> {
+  return [{ name: 'lint_tier0', conclusion: 'SUCCESS' }];
+}
+
+function nonGovernanceFailureRollup(): Array<Record<string, unknown>> {
+  return [{ name: 'unit_tests', conclusion: 'FAILURE' }];
+}
+
 function createFakeDeps(input: {
-  ciStatuses: Array<'passed' | 'failed'>;
+  ciRollups: Array<Array<Record<string, unknown>>>;
   governanceOutput: string;
 }): { deps: FakeDeps; runCommand: (command: string, args: string[], allowFailure?: boolean) => FakeCommandResult } {
   const deps: FakeDeps = {
-    ciStatuses: [...input.ciStatuses],
+    ciRollups: [...input.ciRollups],
     governanceOutput: input.governanceOutput,
     callLog: []
   };
@@ -131,17 +151,18 @@ function createFakeDeps(input: {
     }
 
     if (command === 'gh' && args[0] === 'pr' && args[1] === 'view' && args.includes('statusCheckRollup')) {
-      const status = deps.ciStatuses.shift() ?? 'failed';
-      if (status === 'passed') {
-        return {
-          status: 0,
-          stdout: JSON.stringify({ statusCheckRollup: [{ conclusion: 'SUCCESS' }] }),
-          stderr: ''
-        };
-      }
+      const rollup = deps.ciRollups.shift() ?? nonGovernanceFailureRollup();
       return {
         status: 0,
-        stdout: JSON.stringify({ statusCheckRollup: [{ conclusion: 'FAILURE' }] }),
+        stdout: JSON.stringify({ statusCheckRollup: rollup }),
+        stderr: ''
+      };
+    }
+
+    if (command === 'gh' && args[0] === 'pr' && args[1] === 'view' && args.includes('headRefOid')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({ headRefOid: 'abc123' }),
         stderr: ''
       };
     }
@@ -184,10 +205,14 @@ function createFakeDeps(input: {
   return { deps, runCommand };
 }
 
+afterEach(() => {
+  fs.rmSync('.orchestrator', { recursive: true, force: true });
+});
+
 describe('swarm task orchestrator', () => {
   it('applies one deterministic fix on governance-retriable failure and passes', async () => {
     const { deps, runCommand } = createFakeDeps({
-      ciStatuses: ['failed', 'passed'],
+      ciRollups: [governanceFailureRollup('MISSING_TIER_LABEL'), passedRollup()],
       governanceOutput: buildGovernanceOutput({
         code: 'MISSING_TIER_LABEL',
         message: 'tier label missing'
@@ -207,6 +232,8 @@ describe('swarm task orchestrator', () => {
       finalStatus: 'passed'
     });
 
+    expect(result.executionReport.retry.finalStatus).toBe('passed');
+    expect(result.executionReportPath).toBe('.orchestrator/reports/pr-41/execution-report.v1.json');
     expect(deps.callLog.some((entry) =>
       entry.command === 'gh' &&
       entry.args[0] === 'pr' &&
@@ -217,7 +244,7 @@ describe('swarm task orchestrator', () => {
 
   it('fails after single retry when CI remains failed', async () => {
     const { runCommand } = createFakeDeps({
-      ciStatuses: ['failed', 'failed'],
+      ciRollups: [governanceFailureRollup('MISSING_TIER_LABEL'), governanceFailureRollup('MISSING_TIER_LABEL')],
       governanceOutput: buildGovernanceOutput({
         code: 'MISSING_TIER_LABEL',
         message: 'tier label missing'
@@ -231,11 +258,12 @@ describe('swarm task orchestrator', () => {
 
     expect(result.retryState.finalStatus).toBe('failed_after_retry');
     expect(result.retryState.retryCount).toBe(1);
+    expect(result.executionReport.retry.finalStatus).toBe('failed');
   });
 
   it('does not retry in structured mode', async () => {
     const { deps, runCommand } = createFakeDeps({
-      ciStatuses: ['failed'],
+      ciRollups: [governanceFailureRollup('MISSING_TIER_LABEL')],
       governanceOutput: buildGovernanceOutput({
         code: 'MISSING_TIER_LABEL',
         message: 'tier label missing'
@@ -255,6 +283,7 @@ describe('swarm task orchestrator', () => {
       finalStatus: 'failed'
     });
 
+    expect(result.executionReport.retry.ineligibleReason).toBe('MODE_NOT_AUTONOMOUS');
     expect(deps.callLog.some((entry) =>
       entry.command === 'gh' && entry.args[0] === 'pr' && entry.args[1] === 'edit'
     )).toBe(false);
@@ -262,7 +291,7 @@ describe('swarm task orchestrator', () => {
 
   it('does not retry non-governance CI failures', async () => {
     const { runCommand } = createFakeDeps({
-      ciStatuses: ['failed'],
+      ciRollups: [nonGovernanceFailureRollup()],
       governanceOutput: 'not-json'
     });
 
@@ -273,5 +302,6 @@ describe('swarm task orchestrator', () => {
 
     expect(result.retryState.retryAttempted).toBe(false);
     expect(result.retryState.finalStatus).toBe('failed');
+    expect(result.executionReport.retry.ineligibleReason).toBe('NON_GOVERNANCE_GOVERNING_FAILURE');
   });
 });

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "integration_tests",
+    "conclusion": "SUCCESS"
+  },
+  {
+    "name": "lint_tier0",
+    "conclusion": "SUCCESS"
+  },
+  {
+    "name": "unit_tests",
+    "conclusion": "SKIPPED"
+  }
+]

@@ -33,6 +33,8 @@ import { resolveSwarmsForProjects } from './swarms/resolution.ts';
 import { evaluateSwarmOrchestration } from './swarms/orchestration.ts';
 import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
+import { classifyIsolation, type ClassifyIsolationArgs } from './isolation/path-classifier.ts';
+import type { IsolationClassification } from './isolation/types.ts';
 
 type GitExec = (args: string[]) => string;
 
@@ -41,6 +43,7 @@ type GovernanceCheckOptions = {
   labelsFile?: string;
   repo?: string;
   token?: string;
+  branchName?: string;
   gitExec?: GitExec;
   readFile?: (filePath: string) => string;
   existsSync?: (filePath: string) => boolean;
@@ -51,12 +54,19 @@ type LabelInfo = {
   name: string;
 };
 
+export const ISOLATION_REMEDIATION_ACTION =
+  'Autonomous contexts (swarm/*) must not touch structured paths; move change to structured branch or restrict task to autonomous paths.';
+
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
 function defaultGitExec(args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
+}
+
+function getBranchName(execGit: GitExec): string {
+  return execGit(['rev-parse', '--abbrev-ref', 'HEAD']);
 }
 
 function parseArgs(argv: string[]): { bodyFile?: string; labelsFile?: string } {
@@ -124,6 +134,47 @@ function collectChangedFiles(execGit: GitExec, baseSha: string): string[] {
     return [];
   }
   return output.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
+function buildIsolationErrorMessage(classification: IsolationClassification): string {
+  const statusCode = `isolation_violation:${classification.isolationStatus}`;
+  if (classification.isolationStatus === 'invalid_autonomous_branch_namespace') {
+    return `${statusCode}: swarm branch must match swarm/<task> where <task> is [a-z0-9._-]+.`;
+  }
+
+  const structuredPaths = sortedUnique(classification.structuredPathsTouched);
+  return `${statusCode}: autonomous context may not modify structured paths: ${structuredPaths.join(', ')}`;
+}
+
+export function buildIsolationEnforcement(args: {
+  branchName: string;
+  changedFiles: string[];
+  executionMode: 'structured' | 'autonomous' | 'unknown';
+}): {
+  classification: IsolationClassification;
+  errors: string[];
+  nextActions: string[];
+} {
+  const classifyArgs: ClassifyIsolationArgs = {
+    branchName: args.branchName,
+    changedFiles: args.changedFiles,
+    executionMode: args.executionMode
+  };
+  const classification = classifyIsolation(classifyArgs);
+
+  if (!classification.autonomousContextDetected || classification.isolationStatus === 'ok') {
+    return {
+      classification,
+      errors: [],
+      nextActions: []
+    };
+  }
+
+  return {
+    classification,
+    errors: [buildIsolationErrorMessage(classification)],
+    nextActions: [ISOLATION_REMEDIATION_ACTION]
+  };
 }
 
 async function fetchRepoLabels(fetchImpl: typeof fetch, repo: string, token: string): Promise<string[]> {
@@ -235,6 +286,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
   const baseSha = resolveMergeBase(gitExec);
   const changedFiles = collectChangedFiles(gitExec, baseSha);
+  const branchName = options.branchName ?? getBranchName(gitExec);
 
   const evidenceValidation = validateEvidenceBlockSchema(body);
   const evidenceErrors = [...evidenceValidation.errors];
@@ -321,6 +373,12 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     executionModesTouched: teamResolution.executionModesTouched
   });
   errors.push(...swarmPolicy.swarmErrors);
+  const isolation = buildIsolationEnforcement({
+    branchName,
+    changedFiles,
+    executionMode: swarmMetadata.swarmMode ?? 'unknown'
+  });
+  errors.push(...isolation.errors);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
@@ -343,6 +401,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
+  nextActions.push(...isolation.nextActions);
 
   if (errors.length > 0) {
     warnings.push(
@@ -381,6 +440,12 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
     railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
     railViolations: railBindingResult.diagnostics.railViolations,
+    autonomousContextDetected: isolation.classification.autonomousContextDetected,
+    branchNamespaceValid: isolation.classification.branchNamespaceValid,
+    structuredPathsTouched: isolation.classification.structuredPathsTouched,
+    autonomousPathsTouched: isolation.classification.autonomousPathsTouched,
+    isolationStatus: isolation.classification.isolationStatus,
+    isolationViolations: isolation.classification.isolationViolations,
     nextActions,
     warnings: [...warnings, ...swarmPolicy.swarmWarnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
@@ -457,4 +522,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 }
 
-export { parseArgs, resolveMergeBase, collectChangedFiles };
+export { parseArgs, resolveMergeBase, collectChangedFiles, getBranchName };

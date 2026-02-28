@@ -17,10 +17,13 @@ ${extraEvidenceLines.join('\n')}
 \`\`\``;
 }
 
-function makeGitExec(changedFiles: string[]): (args: string[]) => string {
+function makeGitExec(changedFiles: string[], branchName = 'main'): (args: string[]) => string {
   return (args) => {
     if (args[0] === 'merge-base') {
       return 'base-sha';
+    }
+    if (args[0] === 'rev-parse') {
+      return branchName;
     }
     if (args[0] === 'diff') {
       return changedFiles.join('\n');
@@ -96,7 +99,7 @@ describe('governance:check', () => {
     const result = await runGovernanceCheck({
       bodyFile: 'pr-body.md',
       readFile: () => tier2Body,
-      gitExec: makeGitExec(['apps/api/src/index.ts', 'governance/policy.ts']),
+      gitExec: makeGitExec(['apps/api/src/index.ts', 'control-plane/governance/validate.ts']),
       token: '',
       repo: ''
     });
@@ -111,13 +114,35 @@ describe('governance:check', () => {
     const result = await runGovernanceCheck({
       bodyFile: 'pr-body.md',
       readFile: () => makeBody(2, ['Swarm: swarm-contract-v1', 'Swarm Mode: autonomous', 'Swarm Team: governance']),
-      gitExec: makeGitExec(['governance/policy.ts']),
+      gitExec: makeGitExec(['control-plane/governance/validate.ts']),
       token: '',
       repo: ''
     });
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('swarm_autonomous_structured_violation');
+    expect(result.errors.join('\n')).toContain('isolation_violation:autonomous_governance_core_mutation');
+    expect(result.report.isolationStatus).toBe('autonomous_governance_core_mutation');
+    expect(result.report.structuredPathsTouched).toEqual(['control-plane/governance/validate.ts']);
+  });
+
+  it('fails swarm branch touching structured paths without swarm metadata', async () => {
+    const result = await runGovernanceCheck({
+      bodyFile: 'pr-body.md',
+      readFile: () => makeBody(1),
+      gitExec: makeGitExec(['control-plane/governance/diagnostics.ts'], 'swarm/sprint-34'),
+      token: '',
+      repo: ''
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('isolation_violation:autonomous_governance_core_mutation');
+    expect(result.report.autonomousContextDetected).toBe(true);
+    expect(result.report.branchNamespaceValid).toBe(true);
+    expect(result.report.isolationViolations).toEqual([
+      'governance_core_mutation_attempt',
+      'structured_path_in_autonomous_context'
+    ]);
   });
 
   it('passes autonomous swarm on autonomous-only paths', async () => {

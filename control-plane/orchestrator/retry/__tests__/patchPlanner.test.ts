@@ -111,6 +111,8 @@ describe('patchPlanner', () => {
     const second = buildPatchPlan(input);
 
     expect(canonicalStringify(first)).toBe(canonicalStringify(second));
+    expect(first.patchId).toBe(second.patchId);
+    expect(typeof first.patchId).toBe('string');
   });
 
   it('canonical body builder is deterministic', () => {

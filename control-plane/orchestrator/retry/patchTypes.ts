@@ -6,6 +6,7 @@ export type PatchOp =
 
 export type PatchPlan = {
   version: 'v1';
+  patchId?: string;
   governanceErrorCode: string;
   retryAttempt: number;
   ops: PatchOp[];

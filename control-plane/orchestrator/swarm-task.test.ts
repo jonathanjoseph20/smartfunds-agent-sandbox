@@ -167,6 +167,24 @@ function createFakeDeps(input: {
       };
     }
 
+    if (command === 'gh' && args[0] === 'pr' && args[1] === 'view' && args.includes('body')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: x\nAffected Paths: x\nTests Added: x\nDeterminism Statement: x\n```'
+        }),
+        stderr: ''
+      };
+    }
+
+    if (command === 'gh' && args[0] === 'pr' && args[1] === 'view' && args.includes('labels')) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({ labels: [] }),
+        stderr: ''
+      };
+    }
+
     if (command === 'npm' && args[0] === 'run' && args[1] === 'governance:autonomous-retry') {
       return {
         status: 1,
@@ -179,14 +197,6 @@ function createFakeDeps(input: {
       return {
         status: 0,
         stdout: 'control-plane/orchestrator/swarm-task.ts\n',
-        stderr: ''
-      };
-    }
-
-    if (command === 'gh' && args[0] === 'pr' && args[1] === 'view' && args.includes('--jq') && args.includes('.body')) {
-      return {
-        status: 0,
-        stdout: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: x\nAffected Paths: x\nTests Added: x\nDeterminism Statement: x\n```\n',
         stderr: ''
       };
     }
@@ -226,7 +236,7 @@ afterEach(() => {
 });
 
 describe('swarm task orchestrator', () => {
-  it('applies one deterministic fix on governance-retriable failure and passes', async () => {
+  it('applies one deterministic fix on governance-retriable failure and exits', async () => {
     const { deps, runCommand } = createFakeDeps({
       ciRollups: [governanceFailureRollup('MISSING_TIER_LABEL'), passedRollup()],
       governanceOutput: buildGovernanceOutput({
@@ -245,10 +255,10 @@ describe('swarm task orchestrator', () => {
       retryCount: 1,
       retryAttempted: true,
       triggerErrorCode: 'MISSING_TIER_LABEL',
-      finalStatus: 'passed'
+      finalStatus: 'failed_after_retry'
     });
 
-    expect(result.executionReport.retry.finalStatus).toBe('passed');
+    expect(result.executionReport.retry.finalStatus).toBe('failed');
     expect(result.executionReportPath).toBe('.orchestrator/reports/pr-41/execution-report.v1.json');
     expect(deps.callLog.some((entry) =>
       entry.command === 'gh' &&

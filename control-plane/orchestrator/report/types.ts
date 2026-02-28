@@ -1,5 +1,6 @@
 import type { NormalizedCiSummary } from '../ci/types.ts';
 import type { RetryAppliedFix, RetriableErrorCode } from '../retry/retry-engine.ts';
+import type { PatchOp, PatchPlan } from '../retry/patchTypes.ts';
 
 export type IneligibleReasonCode =
   | 'CI_PASSED'
@@ -13,6 +14,7 @@ export type IneligibleReasonCode =
 
 export type RetryDecisionSummary = {
   retryCount: 0 | 1;
+  retryAttempt: 0 | 1;
   eligible: boolean;
   ineligibleReason: IneligibleReasonCode | null;
   trigger: {
@@ -27,6 +29,11 @@ export type RetryDecisionSummary = {
     patchApplied: RetryAppliedFix | null;
     promptAmendmentApplied: boolean;
   };
+  patchPlan: PatchPlan | null;
+  patchOutcomeCode: 'applied' | 'noop' | 'failed';
+  patchAppliedOps: PatchOp[];
+  patchDryRun: boolean;
+  patchCommands: string[];
   finalStatus: 'passed' | 'failed';
 };
 

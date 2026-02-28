@@ -1,0 +1,8 @@
+{
+  "projectId": "orchestrator",
+  "ownedPaths": [
+    "control-plane/orchestrator/**"
+  ],
+  "description": "Orchestrator + retry patching",
+  "tags": ["seed"]
+}

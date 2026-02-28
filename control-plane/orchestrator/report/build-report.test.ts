@@ -22,6 +22,7 @@ describe('build orchestrator execution report v1', () => {
       },
       retry: {
         retryCount: 1,
+        retryAttempt: 1,
         eligible: false,
         ineligibleReason: 'RETRY_ALREADY_CONSUMED',
         trigger: {
@@ -36,12 +37,17 @@ describe('build orchestrator execution report v1', () => {
           patchApplied: null,
           promptAmendmentApplied: false
         },
+        patchPlan: null,
+        patchOutcomeCode: 'noop',
+        patchAppliedOps: [],
+        patchDryRun: false,
+        patchCommands: [],
         finalStatus: 'failed'
       }
     });
 
     expect(canonicalStringify(report)).toBe(
-      '{"ci":{"normalized":{"checks":[],"ciStatus":"failed","failedChecks":[],"governingFailure":null,"governingReason":null}},"executionMode":"autonomous","pr":{"headSha":"abc123","number":41},"retry":{"action":{"patchApplied":null,"promptAmendmentApplied":false},"eligible":false,"finalStatus":"failed","ineligibleReason":"RETRY_ALREADY_CONSUMED","retryContext":{"consumed":true,"retriableErrorCode":null},"retryCount":1,"trigger":{"failingCheckName":null,"governanceErrorCode":null}},"version":1}'
+      '{"ci":{"normalized":{"checks":[],"ciStatus":"failed","failedChecks":[],"governingFailure":null,"governingReason":null}},"executionMode":"autonomous","pr":{"headSha":"abc123","number":41},"retry":{"action":{"patchApplied":null,"promptAmendmentApplied":false},"eligible":false,"finalStatus":"failed","ineligibleReason":"RETRY_ALREADY_CONSUMED","patchAppliedOps":[],"patchCommands":[],"patchDryRun":false,"patchOutcomeCode":"noop","patchPlan":null,"retryAttempt":1,"retryContext":{"consumed":true,"retriableErrorCode":null},"retryCount":1,"trigger":{"failingCheckName":null,"governanceErrorCode":null}},"version":1}'
     );
   });
 });

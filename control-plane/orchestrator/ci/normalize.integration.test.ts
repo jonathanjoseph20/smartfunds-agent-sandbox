@@ -36,6 +36,7 @@ function buildScenarioReport(name: string, executionMode: 'structured' | 'autono
     },
     retry: {
       retryCount: 0,
+      retryAttempt: 0,
       eligible: eligibility.eligible,
       ineligibleReason: eligibility.ineligibleReason,
       trigger: {
@@ -50,6 +51,11 @@ function buildScenarioReport(name: string, executionMode: 'structured' | 'autono
         patchApplied: null,
         promptAmendmentApplied: false
       },
+      patchPlan: null,
+      patchOutcomeCode: 'noop',
+      patchAppliedOps: [],
+      patchDryRun: false,
+      patchCommands: [],
       finalStatus: normalized.ciStatus === 'passed' ? 'passed' : 'failed'
     }
   });

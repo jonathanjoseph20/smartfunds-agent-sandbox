@@ -4,15 +4,17 @@ type ParsedArgs = {
   help: boolean;
   dryRun: boolean;
   printReport: boolean;
+  printPlan: boolean;
   executionMode: 'structured' | 'autonomous';
 };
 
-const USAGE = 'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--print-report] [--help]';
+const USAGE = 'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--print-report] [--print-plan] [--help]';
 
 export function parseArgs(argv: string[]): ParsedArgs {
   let help = false;
   let dryRun = false;
   let printReport = false;
+  let printPlan = false;
   let executionMode: 'structured' | 'autonomous' = 'structured';
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -30,6 +32,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === '--print-report') {
       printReport = true;
+      continue;
+    }
+
+    if (arg === '--print-plan') {
+      printPlan = true;
       continue;
     }
 
@@ -59,6 +66,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     help,
     dryRun,
     printReport,
+    printPlan,
     executionMode
   };
 }
@@ -67,12 +75,28 @@ function buildDryRunPlan(args: ParsedArgs): {
   mode: 'dry-run';
   executionMode: 'structured' | 'autonomous';
   printReport: boolean;
+  printPlan: boolean;
+  patchPlan: {
+    version: 'v1';
+    governanceErrorCode: string;
+    retryAttempt: number;
+    ops: Array<{ op: 'noop'; reason: string }>;
+  };
+  patchCommands: string[];
   steps: string[];
 } {
   return {
     mode: 'dry-run',
     executionMode: args.executionMode,
     printReport: args.printReport,
+    printPlan: args.printPlan,
+    patchPlan: {
+      version: 'v1',
+      governanceErrorCode: 'N/A',
+      retryAttempt: 0,
+      ops: [{ op: 'noop', reason: 'dry_run_no_context' }]
+    },
+    patchCommands: [],
     steps: [
       'Validate CLI inputs',
       'Compute deterministic task plan',
@@ -100,8 +124,16 @@ export async function main(
     return 0;
   }
 
-  const result = await spawnTaskFn({ executionMode: args.executionMode });
-  const payload = args.printReport ? result.executionReport : result;
+  const result = await spawnTaskFn({ executionMode: args.executionMode, dryRun: false });
+  const payload = args.printPlan
+    ? {
+      patchPlan: result.executionReport.retry.patchPlan,
+      patchCommands: result.executionReport.retry.patchCommands,
+      patchDryRun: result.executionReport.retry.patchDryRun
+    }
+    : args.printReport
+      ? result.executionReport
+      : result;
   process.stdout.write(`${stableStringify(payload)}\n`);
 
   if (result.retryState.finalStatus === 'passed') {

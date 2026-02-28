@@ -17,7 +17,7 @@ describe('swarm-task CLI args', () => {
     expect(spawnTaskFn).not.toHaveBeenCalled();
     expect(writeSpy).toHaveBeenCalledTimes(1);
     expect(writeSpy.mock.calls[0][0]).toBe(
-      'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--print-report] [--help]\n'
+      'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--print-report] [--print-plan] [--help]\n'
     );
   });
 
@@ -31,7 +31,7 @@ describe('swarm-task CLI args', () => {
     expect(spawnTaskFn).not.toHaveBeenCalled();
     expect(writeSpy).toHaveBeenCalledTimes(1);
     expect(writeSpy.mock.calls[0][0]).toBe(
-      '{"executionMode":"autonomous","mode":"dry-run","printReport":false,"steps":["Validate CLI inputs","Compute deterministic task plan","Skip PR open/edit operations","Skip CI polling","Skip retry mutation"]}\n'
+      '{"executionMode":"autonomous","mode":"dry-run","patchCommands":[],"patchPlan":{"governanceErrorCode":"N/A","ops":[{"op":"noop","reason":"dry_run_no_context"}],"retryAttempt":0,"version":"v1"},"printPlan":false,"printReport":false,"steps":["Validate CLI inputs","Compute deterministic task plan","Skip PR open/edit operations","Skip CI polling","Skip retry mutation"]}\n'
     );
   });
 
@@ -66,11 +66,17 @@ describe('swarm-task CLI args', () => {
         },
         retry: {
           retryCount: 1,
+          retryAttempt: 1,
           eligible: false,
           ineligibleReason: 'RETRY_ALREADY_CONSUMED',
           trigger: { failingCheckName: null, governanceErrorCode: null },
           retryContext: { consumed: true, retriableErrorCode: null },
           action: { patchApplied: null, promptAmendmentApplied: false },
+          patchPlan: null,
+          patchOutcomeCode: 'noop',
+          patchAppliedOps: [],
+          patchDryRun: false,
+          patchCommands: [],
           finalStatus: 'failed'
         }
       }
@@ -81,7 +87,29 @@ describe('swarm-task CLI args', () => {
     expect(code).toBe(0);
     expect(writeSpy).toHaveBeenCalledTimes(1);
     expect(writeSpy.mock.calls[0][0]).toBe(
-      '{"ci":{"normalized":{"checks":[],"ciStatus":"failed","failedChecks":[],"governingFailure":null,"governingReason":null}},"executionMode":"autonomous","pr":{"headSha":null,"number":41},"retry":{"action":{"patchApplied":null,"promptAmendmentApplied":false},"eligible":false,"finalStatus":"failed","ineligibleReason":"RETRY_ALREADY_CONSUMED","retryContext":{"consumed":true,"retriableErrorCode":null},"retryCount":1,"trigger":{"failingCheckName":null,"governanceErrorCode":null}},"version":1}\n'
+      '{"ci":{"normalized":{"checks":[],"ciStatus":"failed","failedChecks":[],"governingFailure":null,"governingReason":null}},"executionMode":"autonomous","pr":{"headSha":null,"number":41},"retry":{"action":{"patchApplied":null,"promptAmendmentApplied":false},"eligible":false,"finalStatus":"failed","ineligibleReason":"RETRY_ALREADY_CONSUMED","patchAppliedOps":[],"patchCommands":[],"patchDryRun":false,"patchOutcomeCode":"noop","patchPlan":null,"retryAttempt":1,"retryContext":{"consumed":true,"retriableErrorCode":null},"retryCount":1,"trigger":{"failingCheckName":null,"governanceErrorCode":null}},"version":1}\n'
+    );
+  });
+
+  it('--print-plan writes patch plan payload', async () => {
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const spawnTaskFn = vi.fn(async () => ({
+      retryState: { finalStatus: 'passed' },
+      executionReport: {
+        retry: {
+          patchPlan: { version: 'v1', governanceErrorCode: 'MISSING_TIER_LABEL', retryAttempt: 0, ops: [] },
+          patchCommands: ['gh pr edit 41 --add-label "tier-3"'],
+          patchDryRun: false
+        }
+      }
+    }));
+
+    const code = await main(['--print-plan'], { spawnTaskFn: spawnTaskFn as never });
+
+    expect(code).toBe(0);
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(writeSpy.mock.calls[0][0]).toBe(
+      '{"patchCommands":["gh pr edit 41 --add-label \\"tier-3\\""],"patchDryRun":false,"patchPlan":{"governanceErrorCode":"MISSING_TIER_LABEL","ops":[],"retryAttempt":0,"version":"v1"}}\n'
     );
   });
 

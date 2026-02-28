@@ -17,6 +17,7 @@ export function buildOrchestratorExecutionReportV1(
     },
     retry: {
       retryCount: params.retry.retryCount,
+      retryAttempt: params.retry.retryAttempt,
       eligible: params.retry.eligible,
       ineligibleReason: params.retry.ineligibleReason,
       trigger: {
@@ -31,6 +32,11 @@ export function buildOrchestratorExecutionReportV1(
         patchApplied: params.retry.action.patchApplied,
         promptAmendmentApplied: params.retry.action.promptAmendmentApplied
       },
+      patchPlan: params.retry.patchPlan,
+      patchOutcomeCode: params.retry.patchOutcomeCode,
+      patchAppliedOps: params.retry.patchAppliedOps,
+      patchDryRun: params.retry.patchDryRun,
+      patchCommands: params.retry.patchCommands,
       finalStatus: params.retry.finalStatus
     }
   };

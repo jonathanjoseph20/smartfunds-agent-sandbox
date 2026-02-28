@@ -14,6 +14,7 @@ import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
 import { evaluateSwarmOrchestration } from '../swarms/orchestration.ts';
 import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
+import { buildIsolationEnforcement } from '../governance-check.ts';
 
 type GovernanceValidationResult = {
   ok: boolean;
@@ -222,6 +223,12 @@ function buildReport(
     executionModesTouched: teamResolution.executionModesTouched
   });
   errors.push(...swarmPolicy.swarmErrors);
+  const isolation = buildIsolationEnforcement({
+    branchName: process.env.GITHUB_HEAD_REF ?? '',
+    changedFiles: prData.changedFiles,
+    executionMode: swarmMetadata.swarmMode ?? 'unknown'
+  });
+  errors.push(...isolation.errors);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
@@ -235,6 +242,7 @@ function buildReport(
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
+  nextActions.push(...isolation.nextActions);
   const warnings = [
     ...buildWarnings(result.errors),
     ...swarmPolicy.swarmWarnings,
@@ -290,6 +298,12 @@ function buildReport(
       entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
       railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
       railViolations: railBindingResult.diagnostics.railViolations,
+      autonomousContextDetected: isolation.classification.autonomousContextDetected,
+      branchNamespaceValid: isolation.classification.branchNamespaceValid,
+      structuredPathsTouched: isolation.classification.structuredPathsTouched,
+      autonomousPathsTouched: isolation.classification.autonomousPathsTouched,
+      isolationStatus: isolation.classification.isolationStatus,
+      isolationViolations: isolation.classification.isolationViolations,
       nextActions,
       warnings,
       executionModesTouched: teamResolution.executionModesTouched,

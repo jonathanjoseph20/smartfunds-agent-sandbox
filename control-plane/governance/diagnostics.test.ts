@@ -48,6 +48,20 @@ describe('governance diagnostics', () => {
           details: 'a'
         }
       ],
+      autonomousContextDetected: true,
+      branchNamespaceValid: false,
+      structuredPathsTouched: [
+        'control-plane/governance/diagnostics.ts',
+        'control-plane/entities/rails.json',
+        'control-plane/governance/diagnostics.ts'
+      ],
+      autonomousPathsTouched: ['docs/z.md', 'docs/a.md', 'docs/a.md'],
+      isolationStatus: 'autonomous_governance_core_mutation',
+      isolationViolations: [
+        'structured_path_in_autonomous_context',
+        'governance_core_mutation_attempt',
+        'structured_path_in_autonomous_context'
+      ],
       nextActions: ['Run: git push', 'Add label: tier-3-approved.'],
       warnings: ['b', 'a'],
       executionModesTouched: ['structured', 'autonomous'],
@@ -102,6 +116,12 @@ describe('governance diagnostics', () => {
             details: 'z'
           }
         ],
+        autonomousContextDetected: true,
+        branchNamespaceValid: false,
+        structuredPathsTouched: ['control-plane/entities/rails.json', 'control-plane/governance/diagnostics.ts'],
+        autonomousPathsTouched: ['docs/a.md', 'docs/z.md'],
+        isolationStatus: 'autonomous_governance_core_mutation',
+        isolationViolations: ['governance_core_mutation_attempt', 'structured_path_in_autonomous_context'],
         nextActions: ['Add label: tier-3-approved.', 'Run: git push'],
         warnings: ['a', 'b'],
         executionModesTouched: ['autonomous', 'structured'],

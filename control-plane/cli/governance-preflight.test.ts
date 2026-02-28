@@ -141,7 +141,7 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsDeclared\":[],\"swarmsTouched\":[],\"swarmOrchestrationStatus\":\"ok\",\"swarmOrchestrationViolations\":[],\"swarmDependencyEdges\":[],\"swarmTopologicalOrder\":[],\"swarmPhaseBySwarm\":{},\"swarmWarnings\":[],\"swarmMode\":null,\"swarmTeamId\":null,\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeBoundaryStatus\":\"ok\",\"conflictingTeams\":[],\"conflictingPaths\":[],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null,\"errors\":[],\"metadataSource\":{\"bodySource\":\"stub\",\"bodyPath\":null,\"labelSource\":\"stub\",\"labelsPath\":null},\"executionContext\":{\"context\":\"local\",\"executionMode\":\"unknown\",\"retryEnabled\":false},\"retryTrace\":{\"attempted\":false,\"retryCount\":0,\"initialStatus\":\"passed\",\"finalStatus\":\"passed\",\"triggerErrorCode\":null,\"retryable\":false,\"patchApplied\":null}}"`);
+    expect(json).toMatchInlineSnapshot(`"{\"declaredTier\":1,\"impliedTier\":1,\"labelTier\":1,\"missingLabels\":[],\"missingEvidenceFields\":[],\"requiredChecks\":[\"lint_tier0\",\"unit_tests\"],\"projectsTouched\":[\"project-a\",\"project-b\"],\"teamsTouched\":[\"product-app\"],\"swarmsDeclared\":[],\"swarmsTouched\":[],\"swarmOrchestrationStatus\":\"ok\",\"swarmOrchestrationViolations\":[],\"swarmDependencyEdges\":[],\"swarmTopologicalOrder\":[],\"swarmPhaseBySwarm\":{},\"swarmWarnings\":[],\"swarmMode\":null,\"swarmTeamId\":null,\"unownedFiles\":[],\"ownershipStatus\":\"ok\",\"entitiesTouched\":[],\"entityOwnershipStatus\":\"unknown_entity_mapping\",\"unmappedProjects\":[\"project-a\",\"project-b\"],\"entityByProject\":{\"project-a\":null,\"project-b\":null},\"entityRailProfileByEntity\":{},\"entitiesMissingRailProfile\":[],\"railBindingStatus\":\"ok\",\"railViolations\":[],\"autonomousContextDetected\":false,\"branchNamespaceValid\":true,\"structuredPathsTouched\":[],\"autonomousPathsTouched\":[],\"isolationStatus\":\"ok\",\"isolationViolations\":[],\"nextActions\":[\"Add missing projectId to control-plane/entities/registry.json.\"],\"warnings\":[],\"executionModesTouched\":[\"autonomous\"],\"modeBoundaryStatus\":\"ok\",\"conflictingTeams\":[],\"conflictingPaths\":[],\"swarmExecutionModesTouched\":[],\"modeWarnings\":[],\"unownedPaths\":[],\"ambiguousPaths\":[],\"modeEnforcementStatus\":\"ok\",\"modeViolation\":null,\"requiredMinimumTier\":null,\"errors\":[],\"metadataSource\":{\"bodySource\":\"stub\",\"bodyPath\":null,\"labelSource\":\"stub\",\"labelsPath\":null},\"executionContext\":{\"context\":\"local\",\"executionMode\":\"unknown\",\"retryEnabled\":false},\"retryTrace\":{\"attempted\":false,\"retryCount\":0,\"initialStatus\":\"passed\",\"finalStatus\":\"passed\",\"triggerErrorCode\":null,\"retryable\":false,\"patchApplied\":null}}"`);
   });
 
   it('reports swarms touched for project-level mappings', () => {
@@ -160,7 +160,7 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
       'Swarm Mode: autonomous',
       'Swarm Team: governance'
     ]);
-    const result = buildPreflightReport(body, ['governance/policy.ts'], [], {
+    const result = buildPreflightReport(body, ['control-plane/governance/validate.ts'], [], {
       loadProjects: () => [],
       loadTeams: () => [],
       resolveOwnership: () => makeOwnership()
@@ -168,6 +168,12 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('swarm_autonomous_structured_violation');
+    expect(result.errors.join('\n')).toContain('isolation_violation:autonomous_governance_core_mutation');
+    expect(result.report.isolationStatus).toBe('autonomous_governance_core_mutation');
+    expect(result.report.isolationViolations).toEqual([
+      'governance_core_mutation_attempt',
+      'structured_path_in_autonomous_context'
+    ]);
   });
 
   it('warns on invalid swarm mode metadata without failing', () => {

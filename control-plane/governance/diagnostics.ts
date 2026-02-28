@@ -8,6 +8,7 @@ import type { RailBindingStatus, RailViolation } from './rail-binding.ts';
 import { evaluateModePolicy, type ModeEnforcementStatus, type ModeViolation } from './mode-policy.ts';
 import type { ModeBoundaryStatus } from '../studio/mode-boundary.ts';
 import type { SwarmMode } from '../swarm/schema.ts';
+import type { IsolationStatus, IsolationViolationCode } from '../isolation/types.ts';
 
 export type Tier = 0 | 1 | 2 | 3;
 export type TierString = '0' | '1' | '2' | '3';
@@ -106,6 +107,12 @@ export type GovernanceReport = {
   entitiesMissingRailProfile: string[];
   railBindingStatus: RailBindingStatus;
   railViolations: RailViolation[];
+  autonomousContextDetected: boolean;
+  branchNamespaceValid: boolean;
+  structuredPathsTouched: string[];
+  autonomousPathsTouched: string[];
+  isolationStatus: IsolationStatus;
+  isolationViolations: IsolationViolationCode[];
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
@@ -751,6 +758,12 @@ export function buildGovernanceReport(input: {
   railBindingStatus?: RailBindingStatus;
   railViolations?: RailViolation[];
   railProfilesTouched?: string[];
+  autonomousContextDetected?: boolean;
+  branchNamespaceValid?: boolean;
+  structuredPathsTouched?: string[];
+  autonomousPathsTouched?: string[];
+  isolationStatus?: IsolationStatus;
+  isolationViolations?: IsolationViolationCode[];
   nextActions: string[];
   warnings: string[];
   executionModesTouched: ExecutionMode[];
@@ -831,6 +844,12 @@ export function buildGovernanceReport(input: {
     entitiesMissingRailProfile: sortedUnique(input.entitiesMissingRailProfile ?? []),
     railBindingStatus: input.railBindingStatus ?? 'ok',
     railViolations: sortRailViolations(input.railViolations ?? []),
+    autonomousContextDetected: input.autonomousContextDetected ?? false,
+    branchNamespaceValid: input.branchNamespaceValid ?? true,
+    structuredPathsTouched: sortedUnique(input.structuredPathsTouched ?? []),
+    autonomousPathsTouched: sortedUnique(input.autonomousPathsTouched ?? []),
+    isolationStatus: input.isolationStatus ?? 'ok',
+    isolationViolations: sortedUnique(input.isolationViolations ?? []),
     nextActions: sortedUnique(input.nextActions),
     warnings: sortedUnique(input.warnings),
     executionModesTouched: sortedUnique(input.executionModesTouched),

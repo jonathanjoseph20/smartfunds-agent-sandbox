@@ -32,12 +32,14 @@ import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
 import { evaluateSwarmOrchestration } from '../swarms/orchestration.ts';
 import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
+import { buildIsolationEnforcement } from '../governance-check.ts';
 
 type GitExec = (args: string[]) => string;
 
 type FileStat = { mtimeMs: number };
 
 type PreflightDependencies = {
+  branchName?: string;
   gitExec?: GitExec;
   readFile?: (filePath: string) => string;
   statSync?: (filePath: string) => FileStat;
@@ -240,6 +242,7 @@ export function buildPreflightReport(
   }
 ): PreflightResult {
   const errors: string[] = [];
+  const branchName = deps.branchName ?? 'main';
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
 
   const evidenceValidation = validateEvidenceBlockSchema(body);
@@ -327,6 +330,12 @@ export function buildPreflightReport(
     executionModesTouched: teamResolution.executionModesTouched
   });
   errors.push(...swarmPolicy.swarmErrors);
+  const isolation = buildIsolationEnforcement({
+    branchName,
+    changedFiles,
+    executionMode: swarmMetadata.swarmMode ?? 'unknown'
+  });
+  errors.push(...isolation.errors);
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
@@ -361,6 +370,7 @@ export function buildPreflightReport(
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
+  nextActions.push(...isolation.nextActions);
 
   if (warnings.length > 0) {
     nextActions.push(...buildStalePayloadActions());
@@ -396,6 +406,12 @@ export function buildPreflightReport(
     entitiesMissingRailProfile: railBindingResult.diagnostics.entitiesMissingRailProfile,
     railBindingStatus: railBindingResult.diagnostics.railBindingStatus,
     railViolations: railBindingResult.diagnostics.railViolations,
+    autonomousContextDetected: isolation.classification.autonomousContextDetected,
+    branchNamespaceValid: isolation.classification.branchNamespaceValid,
+    structuredPathsTouched: isolation.classification.structuredPathsTouched,
+    autonomousPathsTouched: isolation.classification.autonomousPathsTouched,
+    isolationStatus: isolation.classification.isolationStatus,
+    isolationViolations: isolation.classification.isolationViolations,
     nextActions,
     warnings: [...warnings, ...swarmPolicy.swarmWarnings, ...entityTelemetryResult.warnings, ...railBindingResult.warnings],
     executionModesTouched: teamResolution.executionModesTouched,
@@ -472,6 +488,8 @@ function renderSummary(result: PreflightResult, branch: string): string {
   lines.push(`Projects Touched: ${result.report.projectsTouched.join(', ') || 'none'}`);
   lines.push(`Teams Touched: ${result.report.teamsTouched.join(', ') || 'none'}`);
   lines.push(`Execution Modes: ${result.report.executionModesTouched.join(', ') || 'none'}`);
+  lines.push(`Isolation Status: ${result.report.isolationStatus}`);
+  lines.push(`Isolation Violations: ${result.report.isolationViolations.join(', ') || 'none'}`);
   lines.push(`Swarm Orchestration: ${result.report.swarmOrchestrationStatus}`);
   lines.push(`Swarm Orchestration Topo: ${result.report.swarmTopologicalOrder.join(', ') || 'none'}`);
   lines.push(
@@ -528,6 +546,7 @@ async function main(): Promise<void> {
   });
 
   const result = buildPreflightReport(resolvedMetadata.body, changedFiles, resolvedMetadata.labels, {
+    branchName: branch,
     readFile,
     statSync,
     existsSync

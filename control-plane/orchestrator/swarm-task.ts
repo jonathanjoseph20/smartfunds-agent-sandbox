@@ -5,13 +5,17 @@ import { canonicalStringify } from '../finance/determinism.ts';
 import { generateBody } from '../cli/governance-generate.ts';
 import { normalizeBody } from '../cli/governance-normalize.ts';
 import type { GovernanceReport } from '../governance/diagnostics.ts';
+import { normalizeCi } from './ci/normalize.ts';
+import { evaluateRetryEligibilityForNormalizedCi } from './ci/retry-eligibility.ts';
+import type { NormalizedCiSummary, RawCheck } from './ci/types.ts';
+import { buildOrchestratorExecutionReportV1 } from './report/build-report.ts';
+import type { OrchestratorExecutionReportV1 } from './report/types.ts';
 import {
   type RetryAppliedFix,
   type RetryState,
   type RetriableErrorCode,
   buildDeterministicFixPlan,
   createInitialRetryState,
-  evaluateRetryEligibility,
   parseGovernanceReport,
   toGovernanceRetryContext,
   withFinalStatus,
@@ -26,7 +30,7 @@ type CommandResult = {
 
 type ExecutionMode = 'structured' | 'autonomous';
 
-type CiStatus = 'passed' | 'failed' | 'pending';
+type CiStatus = 'passed' | 'failed' | 'unknown';
 
 type SwarmTaskResult = {
   executionMode: ExecutionMode;
@@ -35,6 +39,8 @@ type SwarmTaskResult = {
   ciStatusFinal: CiStatus;
   retryState: RetryState;
   governanceReport: (GovernanceReport & { retryContext?: ReturnType<typeof toGovernanceRetryContext> }) | null;
+  executionReportPath: string;
+  executionReport: OrchestratorExecutionReportV1;
 };
 
 type SwarmTaskDependencies = {
@@ -130,6 +136,22 @@ function readPrChangedFiles(prNumber: number, deps: SwarmTaskDependencies): stri
     .sort((a, b) => a.localeCompare(b));
 }
 
+function readPrHeadSha(prNumber: number, deps: SwarmTaskDependencies): string | null {
+  const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'headRefOid'], true);
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout) as { headRefOid?: string | null };
+    return typeof parsed.headRefOid === 'string' && parsed.headRefOid.trim().length > 0
+      ? parsed.headRefOid
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function updatePrBody(prNumber: number, body: string, deps: SwarmTaskDependencies): void {
   fs.writeFileSync(TEMP_PR_BODY_PATH, `${body}\n`, 'utf8');
   try {
@@ -143,35 +165,60 @@ function addLabel(prNumber: number, label: string, deps: SwarmTaskDependencies):
   deps.runCommand('gh', ['pr', 'edit', String(prNumber), '--add-label', label]);
 }
 
-function evaluateCiStatus(prNumber: number, deps: SwarmTaskDependencies): CiStatus {
+function parseRawChecksFromRollup(stdout: string): RawCheck[] {
+  const parsed = JSON.parse(stdout) as {
+    statusCheckRollup?: Array<{
+      name?: string | null;
+      context?: string | null;
+      status?: string | null;
+      state?: string | null;
+      conclusion?: string | null;
+      detailsUrl?: string | null;
+      output?: {
+        summary?: string | null;
+        text?: string | null;
+      } | null;
+      checkRun?: {
+        name?: string | null;
+        conclusion?: string | null;
+        status?: string | null;
+        detailsUrl?: string | null;
+        output?: {
+          summary?: string | null;
+          text?: string | null;
+        } | null;
+      } | null;
+    }>;
+  };
+
+  const rollup = parsed.statusCheckRollup ?? [];
+  return rollup.map((entry) => {
+    const checkRun = entry.checkRun ?? null;
+    return {
+      name: entry.name ?? entry.context ?? checkRun?.name ?? null,
+      status: entry.status ?? checkRun?.status ?? null,
+      state: entry.state ?? null,
+      conclusion: entry.conclusion ?? checkRun?.conclusion ?? null,
+      detailsUrl: entry.detailsUrl ?? checkRun?.detailsUrl ?? null,
+      output: {
+        summary: entry.output?.summary ?? checkRun?.output?.summary ?? null,
+        text: entry.output?.text ?? checkRun?.output?.text ?? null
+      }
+    };
+  });
+}
+
+function evaluateCiSummary(prNumber: number, deps: SwarmTaskDependencies): NormalizedCiSummary {
   const result = deps.runCommand('gh', ['pr', 'view', String(prNumber), '--json', 'statusCheckRollup'], true);
   if (result.status !== 0) {
-    return 'pending';
+    return normalizeCi([]);
   }
 
-  const parsed = JSON.parse(result.stdout) as {
-    statusCheckRollup?: Array<{ conclusion?: string | null; state?: string | null }>;
-  };
-  const checks = parsed.statusCheckRollup ?? [];
-
-  const conclusions = checks
-    .map((check) => (check.conclusion ?? check.state ?? '').toUpperCase())
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-
-  if (conclusions.some((value) => ['FAILURE', 'FAILED', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED'].includes(value))) {
-    return 'failed';
+  try {
+    return normalizeCi(parseRawChecksFromRollup(result.stdout));
+  } catch {
+    return normalizeCi([]);
   }
-
-  if (conclusions.length === 0 || conclusions.some((value) => ['PENDING', 'QUEUED', 'IN_PROGRESS', 'EXPECTED'].includes(value))) {
-    return 'pending';
-  }
-
-  if (conclusions.every((value) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(value))) {
-    return 'passed';
-  }
-
-  return 'failed';
 }
 
 function readGovernanceReportForPr(prNumber: number, deps: SwarmTaskDependencies): GovernanceReport | null {
@@ -239,6 +286,80 @@ function withRetryContext(report: GovernanceReport | null, retryState: RetryStat
   };
 }
 
+function toReportFinalStatus(status: RetryState['finalStatus']): 'passed' | 'failed' {
+  return status === 'passed' ? 'passed' : 'failed';
+}
+
+function reportPathForPr(prNumber: number | null): string {
+  if (prNumber === null) {
+    return '.orchestrator/reports/no-pr/execution-report.v1.json';
+  }
+  return `.orchestrator/reports/pr-${prNumber}/execution-report.v1.json`;
+}
+
+function writeExecutionReport(report: OrchestratorExecutionReportV1, prNumber: number | null): string {
+  const path = reportPathForPr(prNumber);
+  const directory = path.slice(0, path.lastIndexOf('/'));
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path, `${canonicalStringify(report)}\n`, 'utf8');
+  return path;
+}
+
+function buildResult(params: {
+  executionMode: ExecutionMode;
+  prNumber: number;
+  ciStatusInitial: CiStatus;
+  ciStatusFinal: CiStatus;
+  retryState: RetryState;
+  ciSummary: NormalizedCiSummary;
+  eligibility: RetryEligibilityDecision;
+  governanceReport: GovernanceReport | null;
+  retryAppliedFix: RetryAppliedFix | null;
+  headSha: string | null;
+}): SwarmTaskResult {
+  const executionReport = buildOrchestratorExecutionReportV1({
+    executionMode: params.executionMode,
+    pr: {
+      number: params.prNumber,
+      headSha: params.headSha
+    },
+    ci: {
+      normalized: params.ciSummary
+    },
+    retry: {
+      retryCount: params.retryState.retryCount as 0 | 1,
+      eligible: params.eligibility.eligible,
+      ineligibleReason: params.eligibility.ineligibleReason,
+      trigger: {
+        failingCheckName: params.eligibility.triggerCheckName,
+        governanceErrorCode: params.eligibility.triggerGovernanceErrorCode
+      },
+      retryContext: {
+        consumed: params.retryState.retryCount > 0 || params.retryState.retryAttempted,
+        retriableErrorCode: params.eligibility.triggerErrorCode
+      },
+      action: {
+        patchApplied: params.retryAppliedFix,
+        promptAmendmentApplied: params.retryAppliedFix === 'REGENERATE_BODY' || params.retryAppliedFix === 'NORMALIZE_BODY'
+      },
+      finalStatus: toReportFinalStatus(params.retryState.finalStatus)
+    }
+  });
+
+  const executionReportPath = writeExecutionReport(executionReport, params.prNumber);
+
+  return {
+    executionMode: params.executionMode,
+    prNumber: params.prNumber,
+    ciStatusInitial: params.ciStatusInitial,
+    ciStatusFinal: params.ciStatusFinal,
+    retryState: params.retryState,
+    governanceReport: withRetryContext(params.governanceReport, params.retryState, params.retryAppliedFix),
+    executionReportPath,
+    executionReport
+  };
+}
+
 export function stableStringify(value: unknown): string {
   return canonicalStringify(value);
 }
@@ -255,79 +376,103 @@ export async function spawnTask(params: {
   const prCreate = deps.runCommand('npm', ['run', 'pr:create'], false);
   const prNumber = parsePrNumberFromPrCreateOutput(`${prCreate.stdout}\n${prCreate.stderr}`);
 
-  const initialCiStatus = evaluateCiStatus(prNumber, deps);
   let retryState = createInitialRetryState();
+  const initialCiSummary = evaluateCiSummary(prNumber, deps);
+  const initialCiStatus = initialCiSummary.ciStatus;
+
   let governanceReport = readGovernanceReportForPr(prNumber, deps);
+  const headSha = readPrHeadSha(prNumber, deps);
+
+  const initialEligibility = evaluateRetryEligibilityForNormalizedCi({
+    executionMode: params.executionMode,
+    ci: initialCiSummary,
+    retryState
+  });
 
   if (initialCiStatus === 'passed') {
     retryState = withFinalStatus(retryState, 'passed');
-    return {
+    return buildResult({
       executionMode: params.executionMode,
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: 'passed',
       retryState,
-      governanceReport: withRetryContext(governanceReport, retryState, null)
-    };
+      ciSummary: initialCiSummary,
+      eligibility: initialEligibility,
+      governanceReport,
+      retryAppliedFix: null,
+      headSha
+    });
   }
 
-  const eligibility = evaluateRetryEligibility({
-    executionMode: params.executionMode,
-    ciStatus: initialCiStatus === 'failed' ? 'failed' : 'passed',
-    retryState,
-    governanceReport
-  });
-
-  if (!eligibility.eligible || !eligibility.triggerErrorCode || !governanceReport) {
-    if (params.executionMode === 'structured' && initialCiStatus === 'failed') {
-      retryState = withFinalStatus(retryState, 'failed');
-    } else if (initialCiStatus === 'failed') {
+  if (!initialEligibility.eligible || !initialEligibility.triggerErrorCode || !governanceReport) {
+    if (initialCiStatus === 'failed') {
       retryState = withFinalStatus(retryState, 'failed');
     }
 
-    return {
+    return buildResult({
       executionMode: params.executionMode,
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: initialCiStatus,
       retryState,
-      governanceReport: withRetryContext(governanceReport, retryState, null)
-    };
+      ciSummary: initialCiSummary,
+      eligibility: initialEligibility,
+      governanceReport,
+      retryAppliedFix: null,
+      headSha
+    });
   }
 
   const fix = applyRetryFix({
     prNumber,
-    triggerErrorCode: eligibility.triggerErrorCode,
+    triggerErrorCode: initialEligibility.triggerErrorCode,
     governanceReport,
     deps
   });
 
   if (!fix.applied || !fix.retryAppliedFix) {
     retryState = withFinalStatus(retryState, 'failed');
-    return {
+    return buildResult({
       executionMode: params.executionMode,
       prNumber,
       ciStatusInitial: initialCiStatus,
       ciStatusFinal: 'failed',
       retryState,
-      governanceReport: withRetryContext(governanceReport, retryState, null)
-    };
+      ciSummary: initialCiSummary,
+      eligibility: initialEligibility,
+      governanceReport,
+      retryAppliedFix: null,
+      headSha
+    });
   }
 
-  const finalCiStatus = evaluateCiStatus(prNumber, deps);
+  const finalCiSummary = evaluateCiSummary(prNumber, deps);
+  const finalCiStatus = finalCiSummary.ciStatus;
+
   retryState = withRetryAttempt(retryState, {
-    triggerErrorCode: eligibility.triggerErrorCode,
+    triggerErrorCode: initialEligibility.triggerErrorCode,
     finalStatus: finalCiStatus === 'passed' ? 'passed' : 'failed_after_retry'
   });
 
   governanceReport = readGovernanceReportForPr(prNumber, deps) ?? governanceReport;
 
-  return {
+  const finalEligibility = evaluateRetryEligibilityForNormalizedCi({
+    executionMode: params.executionMode,
+    ci: finalCiSummary,
+    retryState
+  });
+
+  return buildResult({
     executionMode: params.executionMode,
     prNumber,
     ciStatusInitial: initialCiStatus,
     ciStatusFinal: finalCiStatus,
     retryState,
-    governanceReport: withRetryContext(governanceReport, retryState, fix.retryAppliedFix)
-  };
+    ciSummary: finalCiSummary,
+    eligibility: finalEligibility,
+    governanceReport,
+    retryAppliedFix: fix.retryAppliedFix,
+    headSha
+  });
 }

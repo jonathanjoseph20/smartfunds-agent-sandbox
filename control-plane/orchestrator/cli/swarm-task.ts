@@ -3,14 +3,16 @@ import { spawnTask, stableStringify } from '../swarm-task.ts';
 type ParsedArgs = {
   help: boolean;
   dryRun: boolean;
+  printReport: boolean;
   executionMode: 'structured' | 'autonomous';
 };
 
-const USAGE = 'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--help]';
+const USAGE = 'Usage: npm run swarm:task -- [--execution-mode structured|autonomous] [--dry-run] [--print-report] [--help]';
 
 export function parseArgs(argv: string[]): ParsedArgs {
   let help = false;
   let dryRun = false;
+  let printReport = false;
   let executionMode: 'structured' | 'autonomous' = 'structured';
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -23,6 +25,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === '--dry-run') {
       dryRun = true;
+      continue;
+    }
+
+    if (arg === '--print-report') {
+      printReport = true;
       continue;
     }
 
@@ -51,14 +58,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return {
     help,
     dryRun,
+    printReport,
     executionMode
   };
 }
 
-function buildDryRunPlan(args: ParsedArgs): { mode: 'dry-run'; executionMode: 'structured' | 'autonomous'; steps: string[] } {
+function buildDryRunPlan(args: ParsedArgs): {
+  mode: 'dry-run';
+  executionMode: 'structured' | 'autonomous';
+  printReport: boolean;
+  steps: string[];
+} {
   return {
     mode: 'dry-run',
     executionMode: args.executionMode,
+    printReport: args.printReport,
     steps: [
       'Validate CLI inputs',
       'Compute deterministic task plan',
@@ -87,8 +101,8 @@ export async function main(
   }
 
   const result = await spawnTaskFn({ executionMode: args.executionMode });
-
-  process.stdout.write(`${stableStringify(result)}\n`);
+  const payload = args.printReport ? result.executionReport : result;
+  process.stdout.write(`${stableStringify(payload)}\n`);
 
   if (result.retryState.finalStatus === 'passed') {
     return 0;

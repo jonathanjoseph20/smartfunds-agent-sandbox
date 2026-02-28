@@ -44,6 +44,22 @@ npm run governance:check
 npm run governance:check -- --body-file path/to/pr-body.md
 ```
 
+## Orchestrator CI Normalization + Report v1
+
+- Governing failure: the single deterministic failed check used for retry eligibility.
+- Selection order:
+  1. governance-classified failed checks first (priority list, then lexicographic by name),
+  2. otherwise lexicographically first non-governance failed check,
+  3. unknown/partial CI states produce no governing failure.
+- Report artifact path:
+  - `.orchestrator/reports/pr-<number>/execution-report.v1.json`
+  - `.orchestrator/reports/no-pr/execution-report.v1.json`
+- Optional CLI stdout report JSON:
+
+```bash
+npm run swarm:task -- --execution-mode autonomous --print-report
+```
+
 ## Evidence Block Reminder
 
 ```evidence

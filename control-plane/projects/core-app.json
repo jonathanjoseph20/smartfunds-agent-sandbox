@@ -1,6 +1,7 @@
 {
   "projectId": "core-app",
-  "ownedPaths": ["**"],
-  "description": "Bootstrap project ownership (single-project).",
-  "tags": ["bootstrap"]
+  "ownedPaths": [
+    "**",
+    "control-plane/**"
+  ]
 }

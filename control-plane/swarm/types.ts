@@ -37,3 +37,26 @@ export type SwarmRunResult = {
   stepResults: SwarmStepResult[];
   chargeIntentReceipt?: unknown;
 };
+
+export interface SwarmExecutionArgs {
+  projectId: string;
+  swarmId: string;
+  executionMode: 'structured' | 'autonomous';
+  intent: string;
+  runIndex?: number;
+}
+
+export interface SwarmExecutionResult {
+  ok: boolean;
+  code: string;
+  projectId: string;
+  swarmId: string;
+  executionMode: 'structured' | 'autonomous';
+  runId: string;
+  branchName: string;
+  prNumber?: number;
+  prUrl?: string;
+  appliedPatchId?: string;
+  mutatedFiles: string[];
+  reportHash: string;
+}

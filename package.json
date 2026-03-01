@@ -27,6 +27,7 @@
     "demo:run": "bash scripts/demo.sh",
     "demo:scenario": "bash scripts/demo.sh --scenario",
     "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts",
+    "swarm:run": "node --experimental-strip-types control-plane/cli/swarm-run.ts",
     "service:start": "node --experimental-strip-types control-plane/service/index.ts"
   },
   "devDependencies": {

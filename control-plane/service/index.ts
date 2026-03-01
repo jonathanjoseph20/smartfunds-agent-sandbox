@@ -5,16 +5,39 @@ import { createExecutionJournal } from '../execution/journal.ts';
 import type { NormalizedFailure } from '../execution/error-classification.ts';
 import { assertEnvelopeHashMatch, buildEnvelopeIdentityV1 } from '../execution/envelope.ts';
 import { computeAttemptId } from '../execution/retry.ts';
+import type { RunLifecycleState } from '../execution/run-lifecycle.ts';
+import type { RunRecord, RuntimeEvent } from '../execution/types.ts';
 import { createRuntimeService } from '../execution/runtime-service.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
 import { runSwarmExecutor } from '../swarm/swarm-executor.ts';
+import { extractRunIdFromSlackActionPayload } from './integrations/slack/actions.ts';
+import {
+  computeSlackWebhookEventId,
+  normalizeSlackActionPayload,
+  normalizeSlackEventEnvelope,
+  parseSlackActionPayload,
+  parseSlackEventEnvelope
+} from './integrations/slack/normalize.ts';
+import {
+  buildLifecycleNotificationId,
+  createSlackNotifier,
+  isRetryButtonEligible,
+  type SlackNotificationError
+} from './integrations/slack/notifier.ts';
+import { verifySlackSignature, type SlackSignatureError } from './integrations/slack/signature.ts';
 import { resolveHandlerRoute } from './handlers/router.ts';
 import type { HandlerResult } from './handlers/types.ts';
+import type { SlackNotifier } from './integrations/slack/types.ts';
 import { toSwarmExecutionArgs } from './http/types.ts';
 import { validateExecuteRequestBody, validateWebhookSource } from './http/validation.ts';
 import { getServiceDb } from './storage/db.ts';
 import { computeEventId, getEventById, insertReceivedEvent, updateEventStatus } from './storage/events.ts';
-import { appendJournalEntry, computeEventIngestRunId, computeSwarmRunId } from './storage/journal.ts';
+import {
+  appendJournalEntry,
+  computeEventIngestRunId,
+  computeSwarmRunId,
+  hasJournalRunId
+} from './storage/journal.ts';
 import { computeTaskId, insertQueuedTask, updateTaskStatus } from './storage/tasks.ts';
 
 const DEFAULT_SERVICE_PORT = 3000;
@@ -23,6 +46,9 @@ export interface ServiceOptions {
   dbPath?: string;
   now?: () => string;
   swarmExecutor?: typeof runSwarmExecutor;
+  slackNotifier?: SlackNotifier;
+  slackSigningSecret?: string;
+  slackNowSeconds?: () => number;
 }
 
 export interface ServiceDispatchRequest {
@@ -30,6 +56,7 @@ export interface ServiceDispatchRequest {
   pathname: string;
   bodyText: string | null;
   query?: URLSearchParams;
+  headers?: Record<string, string | undefined>;
 }
 
 export interface ServiceDispatchResponse {
@@ -194,18 +221,123 @@ function toFailureCategory(code: string): NormalizedFailure['category'] {
   return 'unknown';
 }
 
+function resolveHeader(headers: Record<string, string | undefined> | undefined, key: string): string | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  const direct = headers[key];
+  if (direct !== undefined) {
+    return direct;
+  }
+  return headers[key.toLowerCase()];
+}
+
 export function createServiceDispatcher(options: ServiceOptions = {}) {
   const db = getServiceDb(options.dbPath);
   const now = options.now ?? (() => new Date().toISOString());
+  const slackNowSeconds = options.slackNowSeconds ?? (() => Math.floor(Date.now() / 1000));
+  const slackNotifier = options.slackNotifier ?? createSlackNotifier({
+    botToken: process.env.SLACK_BOT_TOKEN,
+    webhookUrl: process.env.SLACK_WEBHOOK_URL,
+    defaultChannel: process.env.SLACK_DEFAULT_CHANNEL
+  });
+  const slackSigningSecret = options.slackSigningSecret ?? process.env.SLACK_SIGNING_SECRET ?? '';
+  const serviceBaseUrl = process.env.SERVICE_BASE_URL;
+  const slackConfigured = Boolean(
+    (process.env.SLACK_BOT_TOKEN && process.env.SLACK_DEFAULT_CHANNEL) ||
+    process.env.SLACK_WEBHOOK_URL
+  );
   const executionJournal = createExecutionJournal(db);
   const runtimeService = createRuntimeService(executionJournal);
   const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
 
+  async function notifyLifecycleState(
+    run: RunRecord,
+    state: RunLifecycleState,
+    attemptIndex: number
+  ): Promise<void> {
+    const notificationId = buildLifecycleNotificationId({
+      runId: run.runId,
+      state,
+      attemptIndex
+    });
+
+    if (hasJournalRunId(db, notificationId, 'slack_notification')) {
+      return;
+    }
+
+    try {
+      const retryEligible = state === 'FAILED' && attemptIndex === 0 ? isRetryButtonEligible(run) : false;
+      await slackNotifier.postLifecycleNotification(run, state, {
+        retryEligible,
+        serviceBaseUrl
+      });
+    } catch (error) {
+      const slackError = error as SlackNotificationError;
+      if (slackError?.name !== 'SlackNotificationError') {
+        return;
+      }
+      return;
+    }
+
+    appendJournalEntry(db, {
+      run_id: notificationId,
+      type: 'slack_notification',
+      ref_id: run.runId,
+      result_hash: sha256(canonicalStringify({
+        runId: run.runId,
+        state,
+        attemptIndex
+      })),
+      created_at: now()
+    });
+  }
+
+  async function notifyPendingLifecycleTransitions(runId: string): Promise<void> {
+    const run = runtimeService.getRun(runId);
+    if (!run) {
+      return;
+    }
+
+    for (const event of run.events) {
+      if (event.eventType !== 'STATE_TRANSITION' || !event.nextState) {
+        continue;
+      }
+      await notifyLifecycleState(run, event.nextState, event.attemptIndex);
+    }
+  }
+
+  async function appendRuntimeEvent(runId: string, attemptId: string, event: RuntimeEvent): Promise<void> {
+    runtimeService.appendEvent(runId, attemptId, event);
+    if (event.eventType !== 'STATE_TRANSITION' || !event.nextState) {
+      return;
+    }
+    const run = runtimeService.getRun(runId);
+    if (!run) {
+      return;
+    }
+    const matchingEvent = [...run.events]
+      .reverse()
+      .find((entry) => entry.eventType === 'STATE_TRANSITION' && entry.nextState === event.nextState && entry.attemptId === attemptId);
+    await notifyLifecycleState(run, event.nextState, matchingEvent?.attemptIndex ?? 0);
+  }
+
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
     if (request.method === 'GET' && request.pathname === '/health') {
+      let journalConnectivityOk = true;
+      try {
+        db.prepare('SELECT 1 AS ok').get();
+      } catch {
+        journalConnectivityOk = false;
+      }
+
       return buildResponse(200, {
         status: 'ok',
-        service: 'execution'
+        service: 'execution',
+        version: process.env.SERVICE_VERSION ?? null,
+        build: process.env.SERVICE_BUILD_SHA ?? null,
+        journalConnectivityOk,
+        slackConfigured
       });
     }
 
@@ -255,7 +387,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
 
       const attempt0Id = computeAttemptId(runId, 0);
       if (validated.value.changedPaths.length === 0) {
-        runtimeService.appendEvent(runId, attempt0Id, {
+        await appendRuntimeEvent(runId, attempt0Id, {
           eventType: 'STATE_TRANSITION',
           previousState: 'CREATED',
           nextState: 'NO_WORK',
@@ -265,7 +397,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         return buildResponse(200, noWorkRun ?? { runId, envelopeHash: created.envelopeHash });
       }
 
-      runtimeService.appendEvent(runId, attempt0Id, {
+      await appendRuntimeEvent(runId, attempt0Id, {
         eventType: 'STATE_TRANSITION',
         previousState: 'CREATED',
         nextState: 'RUNNING',
@@ -291,14 +423,14 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
           };
           const classified = runtimeService.classifyFailure(normalizedFailure);
 
-          runtimeService.appendEvent(runId, attempt0Id, {
+          await appendRuntimeEvent(runId, attempt0Id, {
             eventType: 'ERROR_CLASSIFIED',
             envelopeHash: created.envelopeHash,
             errorClass: classified.errorClass,
             failureSignature: classified.failureSignature
           });
 
-          runtimeService.appendEvent(runId, attempt0Id, {
+          await appendRuntimeEvent(runId, attempt0Id, {
             eventType: 'STATE_TRANSITION',
             previousState: 'RUNNING',
             nextState: 'FAILED',
@@ -308,6 +440,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
           });
 
           const retryRequest = runtimeService.requestRetry(runId);
+          await notifyPendingLifecycleTransitions(runId);
           if (retryRequest.accepted && retryRequest.attemptIndex === 1) {
             const attempt1Id = computeAttemptId(runId, 1);
 
@@ -321,7 +454,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
 
             if (retryResult.ok) {
               const retryCanonical = canonicalStringify(retryResult);
-              runtimeService.appendEvent(runId, attempt1Id, {
+              await appendRuntimeEvent(runId, attempt1Id, {
                 eventType: 'STATE_TRANSITION',
                 previousState: 'RETRY_RUNNING',
                 nextState: 'RETRY_SUCCEEDED',
@@ -342,13 +475,13 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
               normalizedMessage: retryResult.code,
               code: retryResult.code
             });
-            runtimeService.appendEvent(runId, attempt1Id, {
+            await appendRuntimeEvent(runId, attempt1Id, {
               eventType: 'ERROR_CLASSIFIED',
               envelopeHash: created.envelopeHash,
               errorClass: retryFailure.errorClass,
               failureSignature: retryFailure.failureSignature
             });
-            runtimeService.appendEvent(runId, attempt1Id, {
+            await appendRuntimeEvent(runId, attempt1Id, {
               eventType: 'STATE_TRANSITION',
               previousState: 'RETRY_RUNNING',
               nextState: 'RETRY_FAILED',
@@ -375,7 +508,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         }
 
         const resultCanonical = canonicalStringify(result);
-        runtimeService.appendEvent(runId, attempt0Id, {
+        await appendRuntimeEvent(runId, attempt0Id, {
           eventType: 'STATE_TRANSITION',
           previousState: 'RUNNING',
           nextState: 'SUCCEEDED',
@@ -392,13 +525,13 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
           code: 'ERR_EXECUTION_FAILED'
         };
         const classified = runtimeService.classifyFailure(fallbackFailure);
-        runtimeService.appendEvent(runId, attempt0Id, {
+        await appendRuntimeEvent(runId, attempt0Id, {
           eventType: 'ERROR_CLASSIFIED',
           envelopeHash: created.envelopeHash,
           errorClass: classified.errorClass,
           failureSignature: classified.failureSignature
         });
-        runtimeService.appendEvent(runId, attempt0Id, {
+        await appendRuntimeEvent(runId, attempt0Id, {
           eventType: 'STATE_TRANSITION',
           previousState: 'RUNNING',
           nextState: 'FAILED',
@@ -426,7 +559,135 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
       }
 
       const retryResult = runtimeService.requestRetry(runId);
+      await notifyPendingLifecycleTransitions(runId);
       return buildResponse(200, retryResult);
+    }
+
+    if (request.method === 'POST' && request.pathname === '/webhooks/slack/actions') {
+      if (!slackSigningSecret) {
+        return buildResponse(503, { error: 'SLACK_NOT_CONFIGURED' });
+      }
+
+      const rawBody = request.bodyText ?? '';
+      try {
+        verifySlackSignature({
+          signingSecret: slackSigningSecret,
+          rawBody,
+          slackSignatureHeader: resolveHeader(request.headers, 'x-slack-signature'),
+          slackTimestampHeader: resolveHeader(request.headers, 'x-slack-request-timestamp'),
+          nowSeconds: slackNowSeconds
+        });
+      } catch (error) {
+        const signatureError = error as SlackSignatureError;
+        return buildResponse(signatureError.statusCode ?? 401, { error: signatureError.code ?? 'SLACK_SIGNATURE_INVALID' });
+      }
+
+      const payload = parseSlackActionPayload(rawBody);
+      if (!payload) {
+        return buildResponse(400, { error: 'ERR_INVALID_ACTION_PAYLOAD' });
+      }
+
+      const normalizedPayload = normalizeSlackActionPayload(payload);
+      const webhookEventId = computeSlackWebhookEventId({
+        webhookType: 'slack_actions',
+        normalizedPayload
+      });
+
+      if (hasJournalRunId(db, webhookEventId, 'webhook_intake')) {
+        return buildResponse(200, { ok: true, status: 'duplicate_ignored', webhookEventId });
+      }
+
+      const runId = extractRunIdFromSlackActionPayload(payload);
+      if (!runId) {
+        appendJournalEntry(db, {
+          run_id: webhookEventId,
+          type: 'webhook_intake',
+          ref_id: 'slack_actions:unknown:unknown',
+          result_hash: sha256(canonicalStringify(normalizedPayload)),
+          created_at: now()
+        });
+        return buildResponse(400, { error: 'ERR_INVALID_ACTION_PAYLOAD', webhookEventId });
+      }
+
+      const retryResult = runtimeService.requestRetry(runId);
+      await notifyPendingLifecycleTransitions(runId);
+
+      appendJournalEntry(db, {
+        run_id: webhookEventId,
+        type: 'webhook_intake',
+        ref_id: `slack_actions:${runId}:retry`,
+        result_hash: sha256(canonicalStringify({
+          normalizedPayload,
+          retryResult
+        })),
+        created_at: now()
+      });
+
+      if (retryResult.accepted) {
+        return buildResponse(200, {
+          ok: true,
+          status: 'retry_scheduled',
+          attemptIndex: retryResult.attemptIndex,
+          message: `Retry scheduled (attemptIndex=${String(retryResult.attemptIndex ?? 1)})`,
+          webhookEventId
+        });
+      }
+
+      return buildResponse(200, {
+        ok: true,
+        status: 'rejected',
+        reasonCode: retryResult.reason ?? 'UNKNOWN_REASON',
+        webhookEventId
+      });
+    }
+
+    if (request.method === 'POST' && request.pathname === '/webhooks/slack/events') {
+      if (!slackSigningSecret) {
+        return buildResponse(503, { error: 'SLACK_NOT_CONFIGURED' });
+      }
+
+      const rawBody = request.bodyText ?? '';
+      try {
+        verifySlackSignature({
+          signingSecret: slackSigningSecret,
+          rawBody,
+          slackSignatureHeader: resolveHeader(request.headers, 'x-slack-signature'),
+          slackTimestampHeader: resolveHeader(request.headers, 'x-slack-request-timestamp'),
+          nowSeconds: slackNowSeconds
+        });
+      } catch (error) {
+        const signatureError = error as SlackSignatureError;
+        return buildResponse(signatureError.statusCode ?? 401, { error: signatureError.code ?? 'SLACK_SIGNATURE_INVALID' });
+      }
+
+      const envelope = parseSlackEventEnvelope(rawBody);
+      if (!envelope) {
+        return buildResponse(400, { error: 'INVALID_JSON' });
+      }
+
+      const normalizedPayload = normalizeSlackEventEnvelope(envelope);
+      const webhookEventId = computeSlackWebhookEventId({
+        webhookType: 'slack_events',
+        normalizedPayload
+      });
+
+      if (hasJournalRunId(db, webhookEventId, 'webhook_intake')) {
+        return buildResponse(200, { ok: true, status: 'duplicate_ignored', webhookEventId });
+      }
+
+      appendJournalEntry(db, {
+        run_id: webhookEventId,
+        type: 'webhook_intake',
+        ref_id: `slack_events:${envelope.event_id ?? 'unknown'}`,
+        result_hash: sha256(canonicalStringify(normalizedPayload)),
+        created_at: now()
+      });
+
+      if (envelope.type === 'url_verification' && typeof envelope.challenge === 'string') {
+        return buildResponse(200, { ok: true, challenge: envelope.challenge, webhookEventId });
+      }
+
+      return buildResponse(200, { ok: true, status: 'processed', webhookEventId });
     }
 
     if (request.method === 'GET' && request.pathname.startsWith('/run/')) {
@@ -605,28 +866,36 @@ export function createServiceServer(options: ServiceOptions = {}) {
     const method = req.method ?? 'GET';
     const requestUrl = new URL(req.url ?? '/', 'http://localhost');
     const bodyText = method === 'GET' ? null : await readBody(req);
+    const headers = Object.fromEntries(
+      Object.entries(req.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(',') : value ?? undefined])
+    );
 
     const response = await dispatch({
       method,
       pathname: requestUrl.pathname,
       bodyText,
-      query: requestUrl.searchParams
+      query: requestUrl.searchParams,
+      headers
     });
 
     sendJson(res, response.statusCode, response.payload);
   });
 }
 
-export async function startService(portInput = process.env.SERVICE_PORT): Promise<void> {
+export async function startService(
+  portInput = process.env.PORT ?? process.env.SERVICE_PORT,
+  hostInput = process.env.HOST ?? '127.0.0.1'
+): Promise<void> {
   const parsed = Number.parseInt(portInput ?? `${DEFAULT_SERVICE_PORT}`, 10);
   const port = Number.isNaN(parsed) ? DEFAULT_SERVICE_PORT : parsed;
+  const host = hostInput.trim().length > 0 ? hostInput : '127.0.0.1';
   const server = createServiceServer();
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, host, () => {
       server.off('error', reject);
-      process.stdout.write(`service_started port=${port}\n`);
+      process.stdout.write(`service_started host=${host} port=${port}\n`);
       resolve();
     });
   });

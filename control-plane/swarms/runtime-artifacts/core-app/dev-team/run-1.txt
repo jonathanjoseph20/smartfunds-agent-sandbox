@@ -1,0 +1,4 @@
+executionMode: structured
+projectId: core-app
+swarmId: dev-team
+taskIntent: smoke test: executor run-1

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "entityId": "alpha-entity",
+      "railProfile": "hybrid"
+    }
+  ]
+}

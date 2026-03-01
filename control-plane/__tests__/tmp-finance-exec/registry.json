@@ -1,0 +1,11 @@
+[
+  {
+    "entityId": "alpha-entity",
+    "legalName": "Alpha Entity",
+    "projects": [
+      "alpha-project"
+    ],
+    "complianceProfile": "phase-1",
+    "custodyMode": "non_custodial"
+  }
+]

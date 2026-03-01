@@ -1,8 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import type { ErrorClass } from './error-classification.ts';
+import { assertValidLifecycleTransition, type RunLifecycleState } from './run-lifecycle.ts';
 import type { RunState } from './runState.ts';
-import type { ExecutionRun, ExecutionRunEvent } from './types.ts';
+import { assertValidAttemptIndex, computeAttemptId } from './retry.ts';
+import type { ExecutionRun, ExecutionRunEvent, RunJournalEntry } from './types.ts';
 
 const EXECUTION_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS execution_runs (
@@ -32,6 +35,24 @@ const EXECUTION_SCHEMA_SQL = `
     payload_canonical TEXT NOT NULL,
     payload_hash TEXT NOT NULL,
     attempt_index INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES execution_runs(run_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS execution_run_lifecycle_events (
+    event_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    attempt_index INTEGER NOT NULL,
+    attempt_id TEXT NOT NULL,
+    previous_state TEXT NOT NULL,
+    next_state TEXT NOT NULL,
+    state TEXT NOT NULL,
+    error_class TEXT,
+    failure_signature TEXT,
+    envelope_hash TEXT NOT NULL,
+    result_hash TEXT,
+    mutation_branch TEXT,
+    mutation_pr_number INTEGER,
     created_at TEXT NOT NULL,
     FOREIGN KEY(run_id) REFERENCES execution_runs(run_id)
   );
@@ -101,6 +122,44 @@ export function computeExecutionRunId(argsCanonical: string): string {
 
 export function computeExecutionEventId(runId: string, state: RunState, attemptIndex: number, payloadHash: string): string {
   return sha256(`${runId}\n${state}\n${attemptIndex}\n${payloadHash}`);
+}
+
+export function computeLifecycleEventId(entry: {
+  runId: string;
+  attemptIndex: number;
+  previousState: RunLifecycleState;
+  nextState: RunLifecycleState;
+  errorClass?: ErrorClass;
+  failureSignature?: string;
+  envelopeHash: string;
+}): string {
+  return sha256(canonicalStringify({
+    attemptIndex: entry.attemptIndex,
+    envelopeHash: entry.envelopeHash,
+    errorClass: entry.errorClass ?? null,
+    failureSignature: entry.failureSignature ?? null,
+    nextState: entry.nextState,
+    previousState: entry.previousState,
+    runId: entry.runId
+  }));
+}
+
+function mapRunLifecycleRow(row: Record<string, unknown>): RunJournalEntry {
+  return {
+    eventId: row.event_id as string,
+    runId: row.run_id as string,
+    attemptIndex: row.attempt_index as number,
+    attemptId: row.attempt_id as string,
+    previousState: row.previous_state as RunLifecycleState,
+    nextState: row.next_state as RunLifecycleState,
+    state: row.state as RunLifecycleState,
+    errorClass: asOptionalString(row.error_class) as ErrorClass | undefined,
+    failureSignature: asOptionalString(row.failure_signature),
+    envelopeHash: row.envelope_hash as string,
+    resultHash: asOptionalString(row.result_hash),
+    mutationBranch: asOptionalString(row.mutation_branch),
+    mutationPrNumber: asOptionalNumber(row.mutation_pr_number)
+  };
 }
 
 export function createExecutionJournal(db: DatabaseSync, now: () => string = () => new Date().toISOString()) {
@@ -214,6 +273,105 @@ export function createExecutionJournal(db: DatabaseSync, now: () => string = () 
     }));
   }
 
+  function appendLifecycleEvent(input: {
+    runId: string;
+    attemptIndex: number;
+    previousState: RunLifecycleState;
+    nextState: RunLifecycleState;
+    errorClass?: ErrorClass;
+    failureSignature?: string;
+    envelopeHash: string;
+    resultHash?: string;
+    mutationBranch?: string;
+    mutationPrNumber?: number;
+  }): RunJournalEntry {
+    assertValidAttemptIndex(input.attemptIndex);
+    assertValidLifecycleTransition(input.previousState, input.nextState);
+
+    const eventId = computeLifecycleEventId({
+      runId: input.runId,
+      attemptIndex: input.attemptIndex,
+      previousState: input.previousState,
+      nextState: input.nextState,
+      errorClass: input.errorClass,
+      failureSignature: input.failureSignature,
+      envelopeHash: input.envelopeHash
+    });
+
+    const existing = db.prepare(`
+      SELECT *
+      FROM execution_run_lifecycle_events
+      WHERE event_id = ?
+    `).get(eventId) as Record<string, unknown> | undefined;
+
+    if (existing) {
+      return mapRunLifecycleRow(existing);
+    }
+
+    const attemptId = computeAttemptId(input.runId, input.attemptIndex);
+
+    db.prepare(`
+      INSERT INTO execution_run_lifecycle_events (
+        event_id,
+        run_id,
+        attempt_index,
+        attempt_id,
+        previous_state,
+        next_state,
+        state,
+        error_class,
+        failure_signature,
+        envelope_hash,
+        result_hash,
+        mutation_branch,
+        mutation_pr_number,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      eventId,
+      input.runId,
+      input.attemptIndex,
+      attemptId,
+      input.previousState,
+      input.nextState,
+      input.nextState,
+      input.errorClass ?? null,
+      input.failureSignature ?? null,
+      input.envelopeHash,
+      input.resultHash ?? null,
+      input.mutationBranch ?? null,
+      input.mutationPrNumber ?? null,
+      now()
+    );
+
+    return {
+      eventId,
+      runId: input.runId,
+      attemptIndex: input.attemptIndex,
+      attemptId,
+      previousState: input.previousState,
+      nextState: input.nextState,
+      state: input.nextState,
+      errorClass: input.errorClass,
+      failureSignature: input.failureSignature,
+      envelopeHash: input.envelopeHash,
+      resultHash: input.resultHash,
+      mutationBranch: input.mutationBranch,
+      mutationPrNumber: input.mutationPrNumber
+    };
+  }
+
+  function listLifecycleEvents(runId: string): RunJournalEntry[] {
+    const rows = db.prepare(`
+      SELECT *
+      FROM execution_run_lifecycle_events
+      WHERE run_id = ?
+      ORDER BY rowid ASC
+    `).all(runId) as Array<Record<string, unknown>>;
+
+    return rows.map(mapRunLifecycleRow);
+  }
+
   function setRunState(runId: string, state: RunState): void {
     db.prepare('UPDATE execution_runs SET state = ? WHERE run_id = ?').run(state, runId);
   }
@@ -279,7 +437,9 @@ export function createExecutionJournal(db: DatabaseSync, now: () => string = () 
     createRun,
     getRun,
     appendRunEvent,
+    appendLifecycleEvent,
     listRunEvents,
+    listLifecycleEvents,
     setRunState,
     setRunResult,
     setRunFailure,

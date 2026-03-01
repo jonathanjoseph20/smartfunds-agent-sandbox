@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import { buildExecutionEnvelope, computeEnvelopeHash } from '../execution/envelope.ts';
 import { createServiceDispatcher } from './index.ts';
 import { clearServiceDbRegistryForTests, getServiceDb } from './storage/db.ts';
 import { createExecutionJournal } from '../execution/journal.ts';
@@ -30,6 +31,51 @@ function createFakeSwarmExecutor(callCounter: { count: number }) {
       runIndex: args.runIndex ?? 1
     }));
 
+    return {
+      ok: true,
+      code: 'OK',
+      projectId: args.projectId,
+      swarmId: args.swarmId,
+      executionMode: args.executionMode,
+      runId,
+      branchName: `swarm/${args.projectId}/${args.swarmId}/run-${args.runIndex ?? 1}`,
+      prNumber: 7,
+      prUrl: 'https://example.test/repo/pull/7',
+      appliedPatchId: 'patch-1',
+      mutatedFiles: ['control-plane/swarms/dev-team/run-1.txt'],
+      reportHash: sha256(canonicalStringify({ ok: true, args }))
+    };
+  };
+}
+
+function createRetryingSwarmExecutor(callCounter: { count: number }) {
+  return (args: SwarmExecutionArgs, options: SwarmExecutorOptions = {}): SwarmExecutionResult => {
+    callCounter.count += 1;
+    const runId = sha256(canonicalStringify({
+      projectId: args.projectId,
+      swarmId: args.swarmId,
+      executionMode: args.executionMode,
+      intent: args.intent,
+      runIndex: args.runIndex ?? 1
+    }));
+
+    if (callCounter.count === 1) {
+      options.hooks?.onState?.('VALIDATED', { runIndex: args.runIndex ?? 1 });
+      return {
+        ok: false,
+        code: 'LINT_FAILURE',
+        projectId: args.projectId,
+        swarmId: args.swarmId,
+        executionMode: args.executionMode,
+        runId,
+        branchName: `swarm/${args.projectId}/${args.swarmId}/run-${args.runIndex ?? 1}`,
+        mutatedFiles: [],
+        reportHash: sha256('failed')
+      };
+    }
+
+    options.hooks?.onState?.('VALIDATED', { runIndex: args.runIndex ?? 1 });
+    options.hooks?.onState?.('COMPLETED', { result: 'ok' });
     return {
       ok: true,
       code: 'OK',
@@ -108,12 +154,37 @@ describe.sequential('execution service unit', () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
-    expect(canonicalStringify(first.payload)).toBe(canonicalStringify(second.payload));
     expect(callCounter.count).toBe(1);
 
     const firstRun = first.payload as { runId: string };
-    const secondRun = second.payload as { runId: string };
+    const secondRun = second.payload as { runId: string; alreadyRecorded?: boolean };
     expect(firstRun.runId).toBe(secondRun.runId);
+    expect(secondRun.alreadyRecorded).toBe(true);
+  });
+
+  it('rejects envelope mismatch mutation guard deterministically', async () => {
+    const callCounter = { count: 0 };
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      now: () => FIXED_NOW,
+      swarmExecutor: createFakeSwarmExecutor(callCounter)
+    });
+
+    const response = await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      projectId: 'core-app',
+      swarmId: 'dev-team',
+      mode: 'structured',
+      intent: 'sprint-46',
+      runIndex: 1,
+      mutationEnvelopeHash: 'bad-hash'
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.payload).toEqual({
+      error: 'ERR_ENVELOPE_HASH_MISMATCH',
+      message: expect.stringContaining('Envelope hash mismatch:')
+    });
+    expect(callCounter.count).toBe(0);
   });
 });
 
@@ -179,5 +250,71 @@ describe.sequential('execution service integration', () => {
 
     const eventsAfterReplay = journal.listRunEvents(run.runId);
     expect(eventsAfterReplay).toHaveLength(events.length);
+  });
+
+  it('retries exactly once for retry-eligible failure and keeps replay idempotent', async () => {
+    const callCounter = { count: 0 };
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      now: () => FIXED_NOW,
+      swarmExecutor: createRetryingSwarmExecutor(callCounter)
+    });
+
+    const requestBody = {
+      projectId: 'core-app',
+      swarmId: 'dev-team',
+      mode: 'structured' as const,
+      intent: 'sprint-46-retry',
+      runIndex: 1
+    };
+
+    const first = await dispatchJson(dispatch, 'POST', '/run/swarm', requestBody);
+    expect(first.statusCode).toBe(200);
+    expect((first.payload as { retryAttempted?: boolean }).retryAttempted).toBe(true);
+    expect(callCounter.count).toBe(2);
+
+    const run = first.payload as { runId: string };
+    const db = getServiceDb(TEST_DB_PATH);
+    const journal = createExecutionJournal(db, () => FIXED_NOW);
+    const lifecycleEvents = journal.listLifecycleEvents(run.runId);
+    expect(lifecycleEvents.map((entry) => `${entry.previousState}->${entry.nextState}`)).toEqual([
+      'CREATED->RUNNING',
+      'RUNNING->FAILED',
+      'FAILED->RETRY_SCHEDULED',
+      'RETRY_SCHEDULED->RETRY_RUNNING',
+      'RETRY_RUNNING->RETRY_SUCCEEDED'
+    ]);
+
+    const failedEvent = lifecycleEvents.find((entry) => entry.nextState === 'FAILED');
+    const retryRunningEvent = lifecycleEvents.find((entry) => entry.nextState === 'RETRY_RUNNING');
+    expect(failedEvent?.envelopeHash).toBe(retryRunningEvent?.envelopeHash);
+
+    const replay = await dispatchJson(dispatch, 'POST', '/run/swarm', requestBody);
+    expect(replay.statusCode).toBe(200);
+    expect((replay.payload as { alreadyRecorded?: boolean }).alreadyRecorded).toBe(true);
+    expect(callCounter.count).toBe(2);
+
+    const lifecycleEventsAfterReplay = journal.listLifecycleEvents(run.runId);
+    expect(lifecycleEventsAfterReplay).toHaveLength(lifecycleEvents.length);
+  });
+
+  it('computes deterministic base envelope hash with explicit null failure signature semantics', async () => {
+    const envelopeHash = computeEnvelopeHash(buildExecutionEnvelope({
+      runInput: {
+        intent: 'sprint-46',
+        mode: 'structured',
+        projectId: 'core-app',
+        runIndex: 1,
+        swarmId: 'dev-team'
+      },
+      resolvedTeam: 'dev-team',
+      executionMode: 'structured',
+      impliedTier: 0,
+      declaredTier: 0,
+      normalizedFailureSignature: null
+    }));
+
+    expect(envelopeHash).toBeTypeOf('string');
+    expect(envelopeHash.length).toBe(64);
   });
 });

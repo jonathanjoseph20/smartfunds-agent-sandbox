@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import { sha256 } from '../../finance/determinism.ts';
 
-export type JournalType = 'swarm_execute' | 'event_ingest';
+export type JournalType = 'swarm_execute' | 'event_ingest' | 'webhook_intake' | 'slack_notification';
 
 export interface JournalRecord {
   run_id: string;
@@ -45,4 +45,11 @@ export function getJournalByRunId(db: DatabaseSync, runId: string): JournalRecor
     result_hash: row.result_hash as string,
     created_at: row.created_at as string
   };
+}
+
+export function hasJournalRunId(db: DatabaseSync, runId: string, type?: JournalType): boolean {
+  const row = type
+    ? db.prepare('SELECT 1 AS present FROM execution_journal WHERE run_id = ? AND type = ?').get(runId, type)
+    : db.prepare('SELECT 1 AS present FROM execution_journal WHERE run_id = ?').get(runId);
+  return row !== undefined;
 }

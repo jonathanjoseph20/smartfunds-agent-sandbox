@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { canonicalStringify, sha256 } from '../../finance/determinism.ts';
+import { computeSlackWebhookEventId, normalizeSlackActionPayload } from '../integrations/slack/normalize.ts';
+import { buildLifecycleNotificationId } from '../integrations/slack/notifier.ts';
 import { computeEventId } from './events.ts';
 import { computeEventIngestRunId, computeSwarmRunId } from './journal.ts';
 import { computeTaskId } from './tasks.ts';
@@ -30,5 +32,41 @@ describe('service storage determinism', () => {
     const first = computeEventIngestRunId('test', 'event-1', canonicalHandlerResult);
     const second = computeEventIngestRunId('test', 'event-1', canonicalHandlerResult);
     expect(first).toBe(second);
+  });
+
+  it('computes stable slack webhook event id from normalized payload only', () => {
+    const first = computeSlackWebhookEventId({
+      webhookType: 'slack_actions',
+      normalizedPayload: normalizeSlackActionPayload({
+        type: 'block_actions',
+        team: { id: 'T1' },
+        user: { id: 'U1' },
+        actions: [{ action_id: 'retry_run', value: 'runId:r1' }],
+        trigger_id: 'dynamic-1'
+      })
+    });
+    const second = computeSlackWebhookEventId({
+      webhookType: 'slack_actions',
+      normalizedPayload: normalizeSlackActionPayload({
+        type: 'block_actions',
+        team: { id: 'T1' },
+        user: { id: 'U1' },
+        actions: [{ action_id: 'retry_run', value: 'runId:r1' }],
+        trigger_id: 'dynamic-2'
+      })
+    });
+    expect(first).toBe(second);
+  });
+
+  it('computes stable lifecycle notification id from deterministic inputs', () => {
+    const first = buildLifecycleNotificationId({ runId: 'run-1', state: 'FAILED', attemptIndex: 0 });
+    const second = buildLifecycleNotificationId({ runId: 'run-1', state: 'FAILED', attemptIndex: 0 });
+    expect(first).toBe(second);
+    expect(first).toBe(sha256(canonicalStringify({
+      kind: 'slack_lifecycle',
+      runId: 'run-1',
+      state: 'FAILED',
+      attemptIndex: 0
+    })));
   });
 });

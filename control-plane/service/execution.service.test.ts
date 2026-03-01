@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 
-import { describe, expect, it, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildEnvelopeIdentityV1, computeEnvelopeHash } from '../execution/envelope.ts';
 import { createExecutionJournal } from '../execution/journal.ts';
@@ -12,6 +12,19 @@ import type { SwarmExecutionArgs, SwarmExecutionResult } from '../swarm/types.ts
 import type { SwarmExecutorOptions } from '../swarm/swarm-executor.ts';
 
 const TEST_DB_PATH = ':memory:';
+const ENV_SNAPSHOT = { ...process.env };
+
+function setRateLimitEnv(values: {
+  windowMs: number;
+  maxRequests: number;
+  slackActionMax: number;
+  runCreateMax: number;
+}): void {
+  process.env.RATE_LIMIT_WINDOW_MS = String(values.windowMs);
+  process.env.RATE_LIMIT_MAX_REQUESTS = String(values.maxRequests);
+  process.env.RATE_LIMIT_SLACK_ACTION_MAX = String(values.slackActionMax);
+  process.env.RATE_LIMIT_RUN_CREATE_MAX = String(values.runCreateMax);
+}
 
 function createFakeSwarmExecutor(callCounter: { count: number }) {
   return (args: SwarmExecutionArgs, _options: SwarmExecutorOptions = {}): SwarmExecutionResult => {
@@ -115,6 +128,18 @@ function baseRequestBody() {
   };
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+  for (const key of Object.keys(process.env)) {
+    if (!(key in ENV_SNAPSHOT)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(ENV_SNAPSHOT)) {
+    process.env[key] = value;
+  }
+});
+
 describe.sequential('execution service unit', () => {
   beforeEach(() => {
     clearServiceDbRegistryForTests();
@@ -177,6 +202,31 @@ describe.sequential('execution service unit', () => {
       status: 'ok',
       service: 'execution',
       journalConnectivityOk: true
+    });
+  });
+
+  it('GET /ready returns missing_keys when required env is not present', async () => {
+    delete process.env.RATE_LIMIT_WINDOW_MS;
+    delete process.env.RATE_LIMIT_MAX_REQUESTS;
+    delete process.env.RATE_LIMIT_SLACK_ACTION_MAX;
+    delete process.env.RATE_LIMIT_RUN_CREATE_MAX;
+
+    const dispatch = createServiceDispatcher({ dbPath: TEST_DB_PATH });
+    const response = await dispatch({
+      method: 'GET',
+      pathname: '/ready',
+      bodyText: null
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toEqual({
+      ready: false,
+      checks: {
+        journal: 'ok',
+        slackConfig: 'ok',
+        rateLimiter: 'ok',
+        env: 'missing_keys'
+      }
     });
   });
 });
@@ -282,6 +332,71 @@ describe.sequential('execution service integration', () => {
     expect(attemptOneTransitions).toHaveLength(2);
   });
 
+  it('rate limits POST /run/swarm and does not mutate runtime state when rejected', async () => {
+    setRateLimitEnv({
+      windowMs: 1_000,
+      maxRequests: 1,
+      slackActionMax: 1,
+      runCreateMax: 1
+    });
+
+    const callCounter = { count: 0 };
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      swarmExecutor: createFakeSwarmExecutor(callCounter)
+    });
+
+    const first = await dispatchJson(dispatch, 'POST', '/run/swarm', baseRequestBody());
+    const second = await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      ...baseRequestBody(),
+      runIndex: 2
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    expect(second.payload).toEqual({
+      error: 'rate_limited',
+      reasonCode: 'RATE_LIMIT_EXCEEDED'
+    });
+    expect(callCounter.count).toBe(1);
+
+    const db = getServiceDb(TEST_DB_PATH);
+    const runCount = db.prepare('SELECT COUNT(*) AS count FROM execution_runtime_runs').get() as { count: number };
+    expect(runCount.count).toBe(1);
+  });
+
+  it('rate limit counter resets after window elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T00:00:00.000Z'));
+
+    setRateLimitEnv({
+      windowMs: 1_000,
+      maxRequests: 1,
+      slackActionMax: 1,
+      runCreateMax: 1
+    });
+
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      swarmExecutor: createFakeSwarmExecutor({ count: 0 })
+    });
+
+    const first = await dispatchJson(dispatch, 'POST', '/run/swarm', baseRequestBody());
+    const second = await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      ...baseRequestBody(),
+      runIndex: 2
+    });
+    vi.advanceTimersByTime(1_001);
+    const third = await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      ...baseRequestBody(),
+      runIndex: 3
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(429);
+    expect(third.statusCode).toBe(200);
+  });
+
   it('keeps deterministic envelope hash for sorted changed paths', () => {
     const envelope = buildEnvelopeIdentityV1({
       triggerType: 'manual',
@@ -336,7 +451,7 @@ describe.sequential('execution service integration', () => {
     expect(envelope.diff.teamIdsTouched).toEqual([]);
   });
 
-  it('slack retry action is idempotent and duplicate request is ignored', async () => {
+  it('slack retry action duplicate returns RETRY_ALREADY_CONSUMED and appends duplicate ignored journal event', async () => {
     const signingSecret = 'slack-secret';
     const dispatch = createServiceDispatcher({
       dbPath: TEST_DB_PATH,
@@ -409,10 +524,28 @@ describe.sequential('execution service integration', () => {
       attemptIndex: 1
     });
     expect(second.statusCode).toBe(200);
-    expect(second.payload).toMatchObject({
-      ok: true,
-      status: 'duplicate_ignored'
+    expect(second.payload).toEqual({
+      accepted: false,
+      reasonCode: 'RETRY_ALREADY_CONSUMED'
     });
+
+    const duplicateRows = db.prepare(`
+      SELECT * FROM execution_journal
+      WHERE type = 'WEBHOOK_DUPLICATE_IGNORED'
+    `).all() as Array<{ ref_id: string }>;
+    expect(duplicateRows).toHaveLength(1);
+    expect(duplicateRows[0]?.ref_id.startsWith('slack:action:')).toBe(true);
+
+    const transitions = createExecutionJournal(db)
+      .listRunEvents(runId)
+      .filter((event) => event.eventType === 'STATE_TRANSITION')
+      .map((event) => `${event.previousState}->${event.nextState}`);
+    expect(transitions).toEqual([
+      'CREATED->RUNNING',
+      'RUNNING->FAILED',
+      'FAILED->RETRY_SCHEDULED',
+      'RETRY_SCHEDULED->RETRY_RUNNING'
+    ]);
   });
 
   it('slack retry action returns deterministic rejection when retry is not eligible', async () => {
@@ -485,5 +618,129 @@ describe.sequential('execution service integration', () => {
       status: 'rejected',
       reasonCode: 'NOT_ELIGIBLE'
     });
+  });
+
+  it('slack event duplicate appends WEBHOOK_DUPLICATE_IGNORED without lifecycle transitions', async () => {
+    const signingSecret = 'slack-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      slackSigningSecret: signingSecret,
+      slackNowSeconds: () => 1700000002
+    });
+    const db = getServiceDb(TEST_DB_PATH);
+
+    const eventBody = JSON.stringify({
+      type: 'event_callback',
+      event_id: 'Ev123',
+      team_id: 'T1',
+      event: {
+        type: 'reaction_added',
+        user: 'U1',
+        channel: 'C1',
+        ts: '111.222'
+      }
+    });
+    const timestamp = '1700000002';
+    const headers = {
+      'x-slack-signature': signSlack(signingSecret, timestamp, eventBody),
+      'x-slack-request-timestamp': timestamp
+    };
+
+    const first = await dispatchRaw(dispatch, 'POST', '/webhooks/slack/events', eventBody, headers);
+    const second = await dispatchRaw(dispatch, 'POST', '/webhooks/slack/events', eventBody, headers);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(second.payload).toMatchObject({ status: 'duplicate_ignored' });
+
+    const duplicateRows = db.prepare(`
+      SELECT * FROM execution_journal
+      WHERE type = 'WEBHOOK_DUPLICATE_IGNORED'
+    `).all();
+    expect(duplicateRows).toHaveLength(1);
+
+    const runtimeEvents = db.prepare('SELECT COUNT(*) AS count FROM execution_runtime_events').get() as { count: number };
+    expect(runtimeEvents.count).toBe(0);
+  });
+
+  it('GET /audit/runs returns deterministic, entity-scoped, cursor-based listing', async () => {
+    setRateLimitEnv({
+      windowMs: 10_000,
+      maxRequests: 100,
+      slackActionMax: 100,
+      runCreateMax: 100
+    });
+
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      swarmExecutor: createFakeSwarmExecutor({ count: 0 })
+    });
+
+    await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      ...baseRequestBody(),
+      ref: { base: 'main', head: 'feature/a' }
+    });
+    await dispatchJson(dispatch, 'POST', '/run/swarm', {
+      ...baseRequestBody(),
+      ref: { base: 'main', head: 'feature/b' }
+    });
+
+    const firstPage = await dispatch({
+      method: 'GET',
+      pathname: '/audit/runs',
+      bodyText: null,
+      query: new URLSearchParams({
+        entityId: 'core-entity',
+        limit: '1'
+      })
+    });
+
+    expect(firstPage.statusCode).toBe(200);
+    const firstPayload = firstPage.payload as { cursor: string | null; items: Array<Record<string, unknown>> };
+    expect(firstPayload.items).toHaveLength(1);
+    expect(firstPayload.items[0]).toMatchObject({
+      entityId: 'core-entity',
+      projectId: 'core-app'
+    });
+    expect(Object.keys(firstPayload.items[0] ?? {}).sort((a, b) => a.localeCompare(b))).toEqual([
+      'attemptCount',
+      'entityId',
+      'envelopeHash',
+      'errorClass',
+      'failureSignature',
+      'projectId',
+      'retryConsumed',
+      'runId',
+      'state',
+      'swarmId'
+    ]);
+
+    const secondPage = await dispatch({
+      method: 'GET',
+      pathname: '/audit/runs',
+      bodyText: null,
+      query: new URLSearchParams({
+        entityId: 'core-entity',
+        limit: '10',
+        cursor: firstPayload.cursor ?? ''
+      })
+    });
+
+    const secondPayload = secondPage.payload as { items: Array<{ runId: string }> };
+    expect(secondPage.statusCode).toBe(200);
+    expect(secondPayload.items).toHaveLength(1);
+    expect(secondPayload.items[0]?.runId.localeCompare((firstPayload.items[0] as { runId: string }).runId)).toBeGreaterThan(0);
+
+    const filtered = await dispatch({
+      method: 'GET',
+      pathname: '/audit/runs',
+      bodyText: null,
+      query: new URLSearchParams({
+        entityId: 'core-entity',
+        state: 'FAILED'
+      })
+    });
+    expect(filtered.statusCode).toBe(200);
+    expect((filtered.payload as { items: unknown[] }).items).toHaveLength(0);
   });
 });

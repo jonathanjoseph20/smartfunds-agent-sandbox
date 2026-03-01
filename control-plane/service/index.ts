@@ -8,6 +8,7 @@ import { computeAttemptId } from '../execution/retry.ts';
 import type { RunLifecycleState } from '../execution/run-lifecycle.ts';
 import type { RunRecord, RuntimeEvent } from '../execution/types.ts';
 import { createRuntimeService } from '../execution/runtime-service.ts';
+import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
 import { runSwarmExecutor } from '../swarm/swarm-executor.ts';
 import { extractRunIdFromSlackActionPayload } from './integrations/slack/actions.ts';
@@ -30,12 +31,22 @@ import type { HandlerResult } from './handlers/types.ts';
 import type { SlackNotifier } from './integrations/slack/types.ts';
 import { toSwarmExecutionArgs } from './http/types.ts';
 import { validateExecuteRequestBody, validateWebhookSource } from './http/validation.ts';
+import { evaluateReadiness } from './readiness.ts';
+import {
+  RATE_LIMIT_EXCEEDED_RESPONSE,
+  RateLimiter,
+  resolveRateLimitConfig,
+  resolveRequesterDimension
+} from './rate-limit.ts';
+import { validateStartupInvariants } from './startup-invariants.ts';
 import { getServiceDb } from './storage/db.ts';
 import { computeEventId, getEventById, insertReceivedEvent, updateEventStatus } from './storage/events.ts';
 import {
   appendJournalEntry,
+  countJournalByTypeAndRefId,
   computeEventIngestRunId,
   computeSwarmRunId,
+  computeWebhookDuplicateIgnoredRunId,
   hasJournalRunId
 } from './storage/journal.ts';
 import { computeTaskId, insertQueuedTask, updateTaskStatus } from './storage/tasks.ts';
@@ -232,6 +243,85 @@ function resolveHeader(headers: Record<string, string | undefined> | undefined, 
   return headers[key.toLowerCase()];
 }
 
+type AuditRunItem = {
+  runId: string;
+  state: string;
+  entityId: string | null;
+  projectId: string | null;
+  swarmId: string | null;
+  attemptCount: number;
+  retryConsumed: boolean;
+  errorClass: string | null;
+  failureSignature: string | null;
+  envelopeHash: string;
+};
+
+function parseEnvelopeCanonical(envelopeCanonical: string): {
+  diff?: {
+    projectIdsTouched?: string[];
+    teamIdsTouched?: string[];
+  };
+} {
+  try {
+    return JSON.parse(envelopeCanonical) as {
+      diff?: {
+        projectIdsTouched?: string[];
+        teamIdsTouched?: string[];
+      };
+    };
+  } catch {
+    return {};
+  }
+}
+
+function resolveRunEntity(projectIdsTouched: string[]): string | null {
+  const telemetry = resolveEntityTelemetry(projectIdsTouched);
+  if (telemetry.telemetry.entityOwnershipStatus !== 'ok') {
+    return null;
+  }
+
+  return telemetry.telemetry.entitiesTouched[0] ?? null;
+}
+
+function toAuditRunItem(run: RunRecord): AuditRunItem {
+  const envelope = parseEnvelopeCanonical(run.envelopeCanonical);
+  const projectIds = Array.isArray(envelope.diff?.projectIdsTouched) ? envelope.diff?.projectIdsTouched : [];
+  const teamIds = Array.isArray(envelope.diff?.teamIdsTouched) ? envelope.diff?.teamIdsTouched : [];
+  const latestFailure = [...run.events]
+    .reverse()
+    .find((event) => event.eventType === 'STATE_TRANSITION' && (
+      event.nextState === 'FAILED' || event.nextState === 'RETRY_FAILED'
+    ));
+
+  return {
+    runId: run.runId,
+    state: run.latestState,
+    entityId: resolveRunEntity(projectIds),
+    projectId: projectIds[0] ?? null,
+    swarmId: teamIds[0] ?? null,
+    attemptCount: run.attempts.length,
+    retryConsumed: run.attempts.some((attempt) => attempt.attemptIndex === 1),
+    errorClass: latestFailure?.errorClass ?? null,
+    failureSignature: latestFailure?.failureSignature ?? null,
+    envelopeHash: run.envelopeHash
+  };
+}
+
+function parseLimit(value: string | null, defaultLimit: number, maxLimit: number): number {
+  if (!value) {
+    return defaultLimit;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return defaultLimit;
+  }
+  if (parsed > maxLimit) {
+    return maxLimit;
+  }
+  return parsed;
+}
+
 export function createServiceDispatcher(options: ServiceOptions = {}) {
   const db = getServiceDb(options.dbPath);
   const now = options.now ?? (() => new Date().toISOString());
@@ -250,6 +340,46 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   const executionJournal = createExecutionJournal(db);
   const runtimeService = createRuntimeService(executionJournal);
   const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
+  const rateLimitResolution = resolveRateLimitConfig(process.env);
+  const rateLimiter = new RateLimiter(rateLimitResolution.config.windowMs);
+
+  function shouldRateLimit(
+    request: ServiceDispatchRequest,
+    routeType: 'runs:create' | 'runs:retry' | 'slack:events' | 'slack:actions'
+  ): boolean {
+    const requester = resolveRequesterDimension(request.headers);
+    const key = `${routeType}:${requester}`;
+    let limit = rateLimitResolution.config.maxRequests;
+    if (routeType === 'runs:create') {
+      limit = rateLimitResolution.config.runCreateMax;
+    } else if (routeType === 'slack:actions') {
+      limit = rateLimitResolution.config.slackActionMax;
+    }
+
+    const result = rateLimiter.checkAndIncrement(key, limit);
+    return !result.allowed;
+  }
+
+  function appendWebhookDuplicateIgnored(
+    webhookEventId: string,
+    webhookType: 'action' | 'event'
+  ): void {
+    const refId = `slack:${webhookType}:${webhookEventId}`;
+    const sequence = countJournalByTypeAndRefId(db, 'WEBHOOK_DUPLICATE_IGNORED', refId);
+    const payload = {
+      webhookEventId,
+      source: 'slack',
+      type: webhookType
+    } as const;
+
+    appendJournalEntry(db, {
+      run_id: computeWebhookDuplicateIgnoredRunId(webhookEventId, webhookType, sequence),
+      type: 'WEBHOOK_DUPLICATE_IGNORED',
+      ref_id: refId,
+      result_hash: sha256(canonicalStringify(payload)),
+      created_at: now()
+    });
+  }
 
   async function notifyLifecycleState(
     run: RunRecord,
@@ -341,7 +471,18 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
       });
     }
 
+    if (request.method === 'GET' && request.pathname === '/ready') {
+      return buildResponse(200, evaluateReadiness({
+        db,
+        env: process.env
+      }));
+    }
+
     if (request.method === 'POST' && request.pathname === '/run/swarm') {
+      if (shouldRateLimit(request, 'runs:create')) {
+        return buildResponse(429, RATE_LIMIT_EXCEEDED_RESPONSE);
+      }
+
       const parsed = parseJsonBody(request.bodyText);
       if (!parsed.ok) {
         return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
@@ -548,6 +689,10 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     }
 
     if (request.method === 'POST' && request.pathname.startsWith('/run/') && request.pathname.endsWith('/retry')) {
+      if (shouldRateLimit(request, 'runs:retry')) {
+        return buildResponse(429, RATE_LIMIT_EXCEEDED_RESPONSE);
+      }
+
       const runId = request.pathname.slice('/run/'.length, -'/retry'.length).trim();
       if (runId.length === 0) {
         return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
@@ -564,6 +709,10 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     }
 
     if (request.method === 'POST' && request.pathname === '/webhooks/slack/actions') {
+      if (shouldRateLimit(request, 'slack:actions')) {
+        return buildResponse(429, RATE_LIMIT_EXCEEDED_RESPONSE);
+      }
+
       if (!slackSigningSecret) {
         return buildResponse(503, { error: 'SLACK_NOT_CONFIGURED' });
       }
@@ -594,6 +743,13 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
       });
 
       if (hasJournalRunId(db, webhookEventId, 'webhook_intake')) {
+        appendWebhookDuplicateIgnored(webhookEventId, 'action');
+        const duplicateRunId = extractRunIdFromSlackActionPayload(payload);
+        const duplicateRun = duplicateRunId ? runtimeService.getRun(duplicateRunId) : null;
+        const duplicateRetryConsumed = Boolean(duplicateRun?.attempts.some((attempt) => attempt.attemptIndex === 1));
+        if (duplicateRetryConsumed) {
+          return buildResponse(200, { accepted: false, reasonCode: 'RETRY_ALREADY_CONSUMED' });
+        }
         return buildResponse(200, { ok: true, status: 'duplicate_ignored', webhookEventId });
       }
 
@@ -609,8 +765,26 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         return buildResponse(400, { error: 'ERR_INVALID_ACTION_PAYLOAD', webhookEventId });
       }
 
+      const run = runtimeService.getRun(runId);
+      const retryConsumed = Boolean(run?.attempts.some((attempt) => attempt.attemptIndex === 1));
+      if (retryConsumed) {
+        appendJournalEntry(db, {
+          run_id: webhookEventId,
+          type: 'webhook_intake',
+          ref_id: `slack_actions:${runId}:retry`,
+          result_hash: sha256(canonicalStringify({
+            normalizedPayload,
+            retryResult: { accepted: false, reasonCode: 'RETRY_ALREADY_CONSUMED' }
+          })),
+          created_at: now()
+        });
+        return buildResponse(200, { accepted: false, reasonCode: 'RETRY_ALREADY_CONSUMED' });
+      }
+
       const retryResult = runtimeService.requestRetry(runId);
-      await notifyPendingLifecycleTransitions(runId);
+      if (retryResult.accepted) {
+        await notifyPendingLifecycleTransitions(runId);
+      }
 
       appendJournalEntry(db, {
         run_id: webhookEventId,
@@ -642,6 +816,10 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     }
 
     if (request.method === 'POST' && request.pathname === '/webhooks/slack/events') {
+      if (shouldRateLimit(request, 'slack:events')) {
+        return buildResponse(429, RATE_LIMIT_EXCEEDED_RESPONSE);
+      }
+
       if (!slackSigningSecret) {
         return buildResponse(503, { error: 'SLACK_NOT_CONFIGURED' });
       }
@@ -672,6 +850,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
       });
 
       if (hasJournalRunId(db, webhookEventId, 'webhook_intake')) {
+        appendWebhookDuplicateIgnored(webhookEventId, 'event');
         return buildResponse(200, { ok: true, status: 'duplicate_ignored', webhookEventId });
       }
 
@@ -707,6 +886,30 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     if (request.method === 'GET' && request.pathname === '/runs') {
       const runs = runtimeService.listRuns();
       return buildResponse(200, { runs });
+    }
+
+    if (request.method === 'GET' && request.pathname === '/audit/runs') {
+      const entityId = request.query?.get('entityId')?.trim();
+      if (!entityId) {
+        return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
+      }
+
+      const stateFilter = request.query?.get('state')?.trim();
+      const cursor = request.query?.get('cursor')?.trim();
+      const limit = parseLimit(request.query?.get('limit') ?? null, 50, 200);
+
+      const items = runtimeService
+        .listRuns()
+        .map(toAuditRunItem)
+        .filter((item) => item.entityId === entityId)
+        .filter((item) => !stateFilter || item.state === stateFilter)
+        .filter((item) => !cursor || item.runId > cursor)
+        .slice(0, limit);
+
+      return buildResponse(200, {
+        cursor: items.length > 0 ? items[items.length - 1]?.runId ?? null : null,
+        items
+      });
     }
 
     if (request.method === 'POST' && request.pathname === '/execute') {
@@ -886,6 +1089,7 @@ export async function startService(
   portInput = process.env.PORT ?? process.env.SERVICE_PORT,
   hostInput = process.env.HOST ?? '127.0.0.1'
 ): Promise<void> {
+  validateStartupInvariants();
   const parsed = Number.parseInt(portInput ?? `${DEFAULT_SERVICE_PORT}`, 10);
   const port = Number.isNaN(parsed) ? DEFAULT_SERVICE_PORT : parsed;
   const host = hostInput.trim().length > 0 ? hostInput : '127.0.0.1';

@@ -23,7 +23,7 @@ const SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS execution_journal (
     run_id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK(type IN ('swarm_execute', 'event_ingest', 'webhook_intake', 'slack_notification')),
+    type TEXT NOT NULL CHECK(type IN ('swarm_execute', 'event_ingest', 'webhook_intake', 'slack_notification', 'WEBHOOK_DUPLICATE_IGNORED')),
     ref_id TEXT NOT NULL,
     result_hash TEXT NOT NULL,
     created_at TEXT NOT NULL

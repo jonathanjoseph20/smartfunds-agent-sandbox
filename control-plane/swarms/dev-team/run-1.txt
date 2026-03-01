@@ -1,0 +1,6 @@
+Swarm Run Report
+Project: core-app
+Swarm: dev-team
+Mode: structured
+Intent Hash: 82dfb19bb95a6fb1492c9b5964a96a3f3f7251b46bfa527273ecf5d0298daf41
+Run Index: 1

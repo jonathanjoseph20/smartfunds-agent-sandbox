@@ -1,7 +1,11 @@
+import { createHmac } from 'node:crypto';
+
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { buildEnvelopeIdentityV1, computeEnvelopeHash } from '../execution/envelope.ts';
 import { createExecutionJournal } from '../execution/journal.ts';
+import { computeAttemptId } from '../execution/retry.ts';
+import { createRuntimeService } from '../execution/runtime-service.ts';
 import { createServiceDispatcher } from './index.ts';
 import { clearServiceDbRegistryForTests, getServiceDb } from './storage/db.ts';
 import type { SwarmExecutionArgs, SwarmExecutionResult } from '../swarm/types.ts';
@@ -66,13 +70,34 @@ async function dispatchJson(
   dispatch: ReturnType<typeof createServiceDispatcher>,
   method: string,
   pathname: string,
-  body: unknown
+  body: unknown,
+  headers?: Record<string, string>
 ) {
   return dispatch({
     method,
     pathname,
-    bodyText: body === null ? null : JSON.stringify(body)
+    bodyText: body === null ? null : JSON.stringify(body),
+    headers
   });
+}
+
+async function dispatchRaw(
+  dispatch: ReturnType<typeof createServiceDispatcher>,
+  method: string,
+  pathname: string,
+  bodyText: string,
+  headers: Record<string, string>
+) {
+  return dispatch({
+    method,
+    pathname,
+    bodyText,
+    headers
+  });
+}
+
+function signSlack(secret: string, timestamp: string, bodyText: string): string {
+  return `v0=${createHmac('sha256', secret).update(`v0:${timestamp}:${bodyText}`).digest('hex')}`;
 }
 
 function baseRequestBody() {
@@ -138,6 +163,22 @@ describe.sequential('execution service unit', () => {
     expect(events.map((event) => `${event.previousState}->${event.nextState}`)).toEqual(['CREATED->NO_WORK']);
     expect(events.some((event) => event.errorClass === 'OWNERSHIP_VIOLATION')).toBe(false);
   });
+
+  it('GET /health returns service readiness contract', async () => {
+    const dispatch = createServiceDispatcher({ dbPath: TEST_DB_PATH });
+    const response = await dispatch({
+      method: 'GET',
+      pathname: '/health',
+      bodyText: null
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toMatchObject({
+      status: 'ok',
+      service: 'execution',
+      journalConnectivityOk: true
+    });
+  });
 });
 
 describe.sequential('execution service integration', () => {
@@ -164,6 +205,28 @@ describe.sequential('execution service integration', () => {
     const secondRun = second.payload as { runId: string; alreadyRecorded?: boolean };
     expect(firstRun.runId).toBe(secondRun.runId);
     expect(secondRun.alreadyRecorded).toBe(true);
+  });
+
+  it('emits lifecycle notifications through the notifier hook on state transitions', async () => {
+    const callCounter = { count: 0 };
+    const notifications: string[] = [];
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      swarmExecutor: createFakeSwarmExecutor(callCounter),
+      slackNotifier: {
+        async postLifecycleNotification(runSummary, state) {
+          notifications.push(`${runSummary.runId}:${state}`);
+          return { ok: true };
+        }
+      }
+    });
+
+    const response = await dispatchJson(dispatch, 'POST', '/run/swarm', baseRequestBody());
+    expect(response.statusCode).toBe(200);
+
+    expect(notifications).toHaveLength(2);
+    expect(notifications[0]?.endsWith(':RUNNING')).toBe(true);
+    expect(notifications[1]?.endsWith(':SUCCEEDED')).toBe(true);
   });
 
   it('records attempt 0 failure -> retry scheduled/running -> retry success', async () => {
@@ -271,5 +334,156 @@ describe.sequential('execution service integration', () => {
     expect(envelope.diff.ownershipStatus).toBe('violation');
     expect(envelope.diff.projectIdsTouched).toEqual([]);
     expect(envelope.diff.teamIdsTouched).toEqual([]);
+  });
+
+  it('slack retry action is idempotent and duplicate request is ignored', async () => {
+    const signingSecret = 'slack-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      slackSigningSecret: signingSecret,
+      slackNowSeconds: () => 1700000000
+    });
+    const db = getServiceDb(TEST_DB_PATH);
+    const runtimeService = createRuntimeService(createExecutionJournal(db));
+
+    const envelopeIdentity = buildEnvelopeIdentityV1({
+      triggerType: 'manual',
+      repo: { owner: 'smartfunds', name: 'sandbox' },
+      ref: { base: 'main', head: 'feature/sprint-48' },
+      changedPaths: ['control-plane/service/index.ts'],
+      declaredTier: 3,
+      impliedTier: 3,
+      executionMode: 'structured'
+    }, {
+      loadProjects: () => [{ projectId: 'core-app', ownedPaths: ['**'] }],
+      loadTeams: () => [{ teamId: 'dev-team', projectId: 'core-app', ownedPaths: ['**'] }],
+      resolveOwnership: () => ({
+        projectsTouched: ['core-app'],
+        teamsTouched: ['dev-team'],
+        unownedFiles: [],
+        ownershipStatus: 'ok',
+        nextActions: []
+      })
+    });
+    const { runId, envelopeHash } = runtimeService.createOrGetRun(envelopeIdentity);
+    const attempt0 = computeAttemptId(runId, 0);
+    runtimeService.appendEvent(runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
+      previousState: 'CREATED',
+      nextState: 'RUNNING',
+      envelopeHash
+    });
+    runtimeService.appendEvent(runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
+      previousState: 'RUNNING',
+      nextState: 'FAILED',
+      envelopeHash,
+      errorClass: 'LINT_FAILURE',
+      failureSignature: 'sig-1'
+    });
+
+    const slackPayload = {
+      type: 'block_actions',
+      team: { id: 'T1' },
+      user: { id: 'U1' },
+      actions: [{ action_id: 'retry_run', value: `runId:${runId}` }],
+      channel: { id: 'C1' },
+      message: { ts: '123.456' }
+    };
+    const bodyText = new URLSearchParams({
+      payload: JSON.stringify(slackPayload)
+    }).toString();
+    const timestamp = '1700000000';
+    const headers = {
+      'x-slack-signature': signSlack(signingSecret, timestamp, bodyText),
+      'x-slack-request-timestamp': timestamp
+    };
+
+    const first = await dispatchRaw(dispatch, 'POST', '/webhooks/slack/actions', bodyText, headers);
+    const second = await dispatchRaw(dispatch, 'POST', '/webhooks/slack/actions', bodyText, headers);
+
+    expect(first.statusCode).toBe(200);
+    expect(first.payload).toMatchObject({
+      ok: true,
+      status: 'retry_scheduled',
+      attemptIndex: 1
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.payload).toMatchObject({
+      ok: true,
+      status: 'duplicate_ignored'
+    });
+  });
+
+  it('slack retry action returns deterministic rejection when retry is not eligible', async () => {
+    const signingSecret = 'slack-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      slackSigningSecret: signingSecret,
+      slackNowSeconds: () => 1700000001
+    });
+    const db = getServiceDb(TEST_DB_PATH);
+    const runtimeService = createRuntimeService(createExecutionJournal(db));
+
+    const envelopeIdentity = buildEnvelopeIdentityV1({
+      triggerType: 'manual',
+      repo: { owner: 'smartfunds', name: 'sandbox' },
+      ref: { base: 'main', head: 'feature/sprint-48' },
+      changedPaths: ['control-plane/service/index.ts'],
+      declaredTier: 3,
+      impliedTier: 3,
+      executionMode: 'structured'
+    }, {
+      loadProjects: () => [{ projectId: 'core-app', ownedPaths: ['**'] }],
+      loadTeams: () => [{ teamId: 'dev-team', projectId: 'core-app', ownedPaths: ['**'] }],
+      resolveOwnership: () => ({
+        projectsTouched: ['core-app'],
+        teamsTouched: ['dev-team'],
+        unownedFiles: [],
+        ownershipStatus: 'ok',
+        nextActions: []
+      })
+    });
+    const { runId, envelopeHash } = runtimeService.createOrGetRun(envelopeIdentity);
+    const attempt0 = computeAttemptId(runId, 0);
+    runtimeService.appendEvent(runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
+      previousState: 'CREATED',
+      nextState: 'RUNNING',
+      envelopeHash
+    });
+    runtimeService.appendEvent(runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
+      previousState: 'RUNNING',
+      nextState: 'FAILED',
+      envelopeHash,
+      errorClass: 'OWNERSHIP_VIOLATION',
+      failureSignature: 'sig-2'
+    });
+
+    const slackPayload = {
+      type: 'block_actions',
+      team: { id: 'T1' },
+      user: { id: 'U1' },
+      actions: [{ action_id: 'retry_run', value: `runId:${runId}` }],
+      channel: { id: 'C1' },
+      message: { ts: '123.456' }
+    };
+    const bodyText = new URLSearchParams({
+      payload: JSON.stringify(slackPayload)
+    }).toString();
+    const timestamp = '1700000001';
+    const headers = {
+      'x-slack-signature': signSlack(signingSecret, timestamp, bodyText),
+      'x-slack-request-timestamp': timestamp
+    };
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/slack/actions', bodyText, headers);
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toMatchObject({
+      ok: true,
+      status: 'rejected',
+      reasonCode: 'NOT_ELIGIBLE'
+    });
   });
 });

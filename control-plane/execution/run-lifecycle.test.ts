@@ -7,6 +7,7 @@ import {
 } from './run-lifecycle.ts';
 
 const LEGAL_TRANSITIONS: Array<{ from: RunLifecycleState; to: RunLifecycleState }> = [
+  { from: 'CREATED', to: 'NO_WORK' },
   { from: 'CREATED', to: 'RUNNING' },
   { from: 'RUNNING', to: 'SUCCEEDED' },
   { from: 'RUNNING', to: 'FAILED' },
@@ -36,6 +37,7 @@ describe('run lifecycle', () => {
   });
 
   it('derives terminal states without storing TERMINAL', () => {
+    expect(isTerminalLifecycleState('NO_WORK')).toBe(true);
     expect(isTerminalLifecycleState('SUCCEEDED')).toBe(true);
     expect(isTerminalLifecycleState('RETRY_SUCCEEDED')).toBe(true);
     expect(isTerminalLifecycleState('RETRY_FAILED')).toBe(true);

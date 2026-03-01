@@ -2,8 +2,9 @@ import { createRequire } from 'node:module';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { canonicalStringify, sha256 } from '../finance/determinism.ts';
-import { createExecutionJournal, computeExecutionEventId, computeLifecycleEventId } from './journal.ts';
+import { buildEnvelopeIdentityV1 } from './envelope.ts';
+import { createExecutionJournal } from './journal.ts';
+import { computeAttemptId } from './retry.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -16,6 +17,28 @@ function createInMemoryDb(): DatabaseSync {
   return new SqliteDatabaseSync(':memory:');
 }
 
+function envelope(changedPaths: string[]) {
+  return buildEnvelopeIdentityV1({
+    triggerType: 'manual',
+    repo: { owner: 'smartfunds', name: 'sandbox' },
+    ref: { base: 'main', head: 'feature/x' },
+    changedPaths,
+    declaredTier: 3,
+    impliedTier: 3,
+    executionMode: 'structured'
+  }, {
+    loadProjects: () => [{ projectId: 'core-app', ownedPaths: ['control-plane/**'] }],
+    loadTeams: () => [{ teamId: 'dev-team', projectId: 'core-app', ownedPaths: ['control-plane/**'] }],
+    resolveOwnership: () => ({
+      projectsTouched: ['core-app'],
+      teamsTouched: ['dev-team'],
+      unownedFiles: [],
+      ownershipStatus: 'ok',
+      nextActions: []
+    })
+  });
+}
+
 describe('execution journal', () => {
   let db: DatabaseSync;
 
@@ -23,209 +46,63 @@ describe('execution journal', () => {
     db = createInMemoryDb();
   });
 
-  it('generates deterministic event_id from run-state-attempt-payloadHash', () => {
-    const payloadCanonical = canonicalStringify({ ok: true });
-    const payloadHash = sha256(payloadCanonical);
-    const first = computeExecutionEventId('run-1', 'VALIDATED', 0, payloadHash);
-    const second = computeExecutionEventId('run-1', 'VALIDATED', 0, payloadHash);
+  it('createOrGetRun is idempotent for identical envelope hash', () => {
+    const journal = createExecutionJournal(db);
+    const first = journal.createOrGetRun(envelope(['control-plane/service/index.ts']));
+    const second = journal.createOrGetRun(envelope(['control-plane/service/index.ts']));
 
-    expect(first).toBe(second);
-  });
-
-  it('keeps append-only event ordering', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
-    const created = journal.createRun({
-      runType: 'swarm',
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      mode: 'structured',
-      runIndex: 1,
-      intent: 'run sprint',
-      branchName: 'swarm/core-app/dev-team/run-1'
-    });
-
-    journal.appendRunEvent(created.runId, 'VALIDATED', { step: 1 });
-    journal.appendRunEvent(created.runId, 'COMMITTED', { step: 2 });
-
-    const events = journal.listRunEvents(created.runId);
-    expect(events.map((event) => event.state)).toEqual(['CREATED', 'VALIDATED', 'COMMITTED']);
-  });
-
-  it('produces stable result hash from canonical result', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
-    const created = journal.createRun({
-      runType: 'swarm',
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      mode: 'structured',
-      runIndex: 1,
-      intent: 'run sprint',
-      branchName: 'swarm/core-app/dev-team/run-1'
-    });
-
-    const result = {
-      ok: true,
-      code: 'OK',
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      executionMode: 'structured',
-      runId: 'abc',
-      branchName: 'swarm/core-app/dev-team/run-1',
-      mutatedFiles: ['control-plane/swarms/dev-team/run-1.txt'],
-      reportHash: 'hash'
-    };
-
-    journal.setRunResult(created.runId, result);
-    const stored = journal.getRun(created.runId);
-
-    expect(stored?.resultCanonical).toBe(canonicalStringify(result));
-    expect(stored?.resultHash).toBe(sha256(canonicalStringify(result)));
-  });
-
-  it('createRun is idempotent for the same deterministic args', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
-    const input = {
-      runType: 'swarm' as const,
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      mode: 'structured' as const,
-      runIndex: 1,
-      intent: 'run sprint',
-      branchName: 'swarm/core-app/dev-team/run-1'
-    };
-
-    const first = journal.createRun(input);
-    const second = journal.createRun(input);
-
-    expect(second.runId).toBe(first.runId);
+    expect(first).toEqual(second);
     expect(journal.listRuns()).toHaveLength(1);
-    expect(journal.listRunEvents(first.runId).filter((event) => event.state === 'CREATED')).toHaveLength(1);
   });
 
-  it('listRuns sorts lexicographically by run_id', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
+  it('assigns stable monotonic eventIndex and keeps append-only ordering', () => {
+    const journal = createExecutionJournal(db);
+    const run = journal.createOrGetRun(envelope(['control-plane/service/index.ts']));
+    const attempt0 = computeAttemptId(run.runId, 0);
 
-    journal.createRun({
-      runType: 'swarm',
-      projectId: 'project-b',
-      swarmId: 'swarm-b',
-      mode: 'structured',
-      runIndex: 2,
-      intent: 'b',
-      branchName: 'swarm/project-b/swarm-b/run-2'
-    });
-
-    journal.createRun({
-      runType: 'swarm',
-      projectId: 'project-a',
-      swarmId: 'swarm-a',
-      mode: 'structured',
-      runIndex: 1,
-      intent: 'a',
-      branchName: 'swarm/project-a/swarm-a/run-1'
-    });
-
-    const runs = journal.listRuns();
-    const runIds = runs.map((run) => run.runId);
-
-    expect(runIds).toEqual([...runIds].sort((left, right) => left.localeCompare(right)));
-  });
-
-  it('keeps append-only lifecycle ordering', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
-    const created = journal.createRun({
-      runType: 'swarm',
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      mode: 'structured',
-      runIndex: 1,
-      intent: 'run sprint',
-      branchName: 'swarm/core-app/dev-team/run-1'
-    });
-
-    journal.appendLifecycleEvent({
-      runId: created.runId,
-      attemptIndex: 0,
+    const firstIndex = journal.appendEvent(run.runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
       previousState: 'CREATED',
       nextState: 'RUNNING',
-      envelopeHash: 'env-0'
+      envelopeHash: run.envelopeHash
     });
-    journal.appendLifecycleEvent({
-      runId: created.runId,
-      attemptIndex: 0,
-      previousState: 'RUNNING',
-      nextState: 'FAILED',
+    const secondIndex = journal.appendEvent(run.runId, attempt0, {
+      eventType: 'ERROR_CLASSIFIED',
+      envelopeHash: run.envelopeHash,
       errorClass: 'LINT_FAILURE',
-      failureSignature: 'sig-1',
-      envelopeHash: 'env-1'
-    });
-    journal.appendLifecycleEvent({
-      runId: created.runId,
-      attemptIndex: 0,
-      previousState: 'FAILED',
-      nextState: 'RETRY_SCHEDULED',
-      errorClass: 'LINT_FAILURE',
-      failureSignature: 'sig-1',
-      envelopeHash: 'env-1'
+      failureSignature: 'sig-1'
     });
 
-    const events = journal.listLifecycleEvents(created.runId);
-    expect(events.map((entry) => `${entry.previousState}->${entry.nextState}`)).toEqual([
-      'CREATED->RUNNING',
-      'RUNNING->FAILED',
-      'FAILED->RETRY_SCHEDULED'
-    ]);
+    expect(firstIndex).toBe(0);
+    expect(secondIndex).toBe(1);
+    expect(journal.listRunEvents(run.runId).map((event) => event.eventIndex)).toEqual([0, 1]);
   });
 
-  it('does not duplicate lifecycle entries for idempotent replay', () => {
-    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
-    const created = journal.createRun({
-      runType: 'swarm',
-      projectId: 'core-app',
-      swarmId: 'dev-team',
-      mode: 'structured',
-      runIndex: 1,
-      intent: 'run sprint',
-      branchName: 'swarm/core-app/dev-team/run-1'
+  it('dedupes artifact links by attemptId+artifactType+artifactValue', () => {
+    const journal = createExecutionJournal(db);
+    const run = journal.createOrGetRun(envelope(['control-plane/service/index.ts']));
+    const attempt0 = computeAttemptId(run.runId, 0);
+    journal.appendEvent(run.runId, attempt0, {
+      eventType: 'STATE_TRANSITION',
+      previousState: 'CREATED',
+      nextState: 'RUNNING',
+      envelopeHash: run.envelopeHash
     });
 
-    const input = {
-      runId: created.runId,
-      attemptIndex: 0,
-      previousState: 'RUNNING' as const,
-      nextState: 'FAILED' as const,
-      errorClass: 'LINT_FAILURE' as const,
-      failureSignature: 'sig-1',
-      envelopeHash: 'env-1'
-    };
-
-    journal.appendLifecycleEvent(input);
-    journal.appendLifecycleEvent(input);
-
-    const events = journal.listLifecycleEvents(created.runId);
-    expect(events).toHaveLength(1);
-  });
-
-  it('computes deterministic lifecycle event identity across repeated runs', () => {
-    const first = computeLifecycleEventId({
-      runId: 'run-1',
-      attemptIndex: 0,
-      previousState: 'RUNNING',
-      nextState: 'FAILED',
-      errorClass: 'LINT_FAILURE',
-      failureSignature: 'sig-1',
-      envelopeHash: 'env-1'
+    const first = journal.appendEvent(run.runId, attempt0, {
+      eventType: 'ARTIFACT_LINKED',
+      envelopeHash: run.envelopeHash,
+      artifactType: 'pr_url',
+      artifactValue: 'https://example.test/pr/1'
     });
-    const second = computeLifecycleEventId({
-      runId: 'run-1',
-      attemptIndex: 0,
-      previousState: 'RUNNING',
-      nextState: 'FAILED',
-      errorClass: 'LINT_FAILURE',
-      failureSignature: 'sig-1',
-      envelopeHash: 'env-1'
+    const second = journal.appendEvent(run.runId, attempt0, {
+      eventType: 'ARTIFACT_LINKED',
+      envelopeHash: run.envelopeHash,
+      artifactType: 'pr_url',
+      artifactValue: 'https://example.test/pr/1'
     });
 
     expect(first).toBe(second);
+    expect(journal.listRunEvents(run.runId).filter((event) => event.eventType === 'ARTIFACT_LINKED')).toHaveLength(1);
   });
 });

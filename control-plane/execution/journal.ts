@@ -1,448 +1,295 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import type { EnvelopeIdentityV1 } from './envelope.ts';
+import { computeEnvelopeHash, computeRunId } from './envelope.ts';
 import type { ErrorClass } from './error-classification.ts';
 import { assertValidLifecycleTransition, type RunLifecycleState } from './run-lifecycle.ts';
-import type { RunState } from './runState.ts';
-import { assertValidAttemptIndex, computeAttemptId } from './retry.ts';
-import type { ExecutionRun, ExecutionRunEvent, RunJournalEntry } from './types.ts';
+import { computeAttemptId } from './retry.ts';
+import type { RunEventRecord, RunRecord, RuntimeEvent } from './types.ts';
 
 const EXECUTION_SCHEMA_SQL = `
-  CREATE TABLE IF NOT EXISTS execution_runs (
+  CREATE TABLE IF NOT EXISTS execution_runtime_runs (
     run_id TEXT PRIMARY KEY,
-    run_type TEXT NOT NULL CHECK(run_type = 'swarm'),
-    project_id TEXT NOT NULL,
-    swarm_id TEXT NOT NULL,
-    mode TEXT NOT NULL CHECK(mode IN ('structured', 'autonomous')),
-    run_index INTEGER NOT NULL,
-    intent TEXT NOT NULL,
-    args_canonical TEXT NOT NULL,
-    state TEXT NOT NULL,
-    branch_name TEXT NOT NULL,
-    pr_number INTEGER,
-    pr_url TEXT,
-    result_canonical TEXT,
-    result_hash TEXT,
-    error_code TEXT,
-    error_message TEXT,
-    created_at TEXT NOT NULL
+    envelope_hash TEXT NOT NULL UNIQUE,
+    envelope_canonical TEXT NOT NULL,
+    latest_state TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS execution_run_events (
+  CREATE TABLE IF NOT EXISTS execution_runtime_events (
     event_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
-    state TEXT NOT NULL,
-    payload_canonical TEXT NOT NULL,
-    payload_hash TEXT NOT NULL,
-    attempt_index INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(run_id) REFERENCES execution_runs(run_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS execution_run_lifecycle_events (
-    event_id TEXT PRIMARY KEY,
-    run_id TEXT NOT NULL,
+    event_index INTEGER NOT NULL,
     attempt_index INTEGER NOT NULL,
     attempt_id TEXT NOT NULL,
-    previous_state TEXT NOT NULL,
-    next_state TEXT NOT NULL,
-    state TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    previous_state TEXT,
+    next_state TEXT,
+    envelope_hash TEXT NOT NULL,
     error_class TEXT,
     failure_signature TEXT,
-    envelope_hash TEXT NOT NULL,
     result_hash TEXT,
-    mutation_branch TEXT,
-    mutation_pr_number INTEGER,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY(run_id) REFERENCES execution_runs(run_id)
+    artifact_type TEXT,
+    artifact_value TEXT,
+    artifacts_canonical TEXT,
+    payload_hash TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES execution_runtime_runs(run_id),
+    UNIQUE(run_id, event_index),
+    UNIQUE(attempt_id, artifact_type, artifact_value)
   );
 `;
 
-export interface CreateRunInput {
-  runType: 'swarm';
-  projectId: string;
-  swarmId: string;
-  mode: 'structured' | 'autonomous';
-  runIndex: number;
-  intent: string;
-  branchName: string;
+function toAttemptIndex(runId: string, attemptId: string): number {
+  const attempt0 = computeAttemptId(runId, 0);
+  if (attemptId === attempt0) {
+    return 0;
+  }
+  const attempt1 = computeAttemptId(runId, 1);
+  if (attemptId === attempt1) {
+    return 1;
+  }
+  throw new Error(`Invalid attemptId for runId=${runId}.`);
 }
 
-export interface ListRunsFilter {
-  projectId?: string;
-  swarmId?: string;
-}
-
-function asOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function asOptionalNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
-function mapRunRow(row: Record<string, unknown>): ExecutionRun {
-  return {
-    runId: row.run_id as string,
-    runType: row.run_type as 'swarm',
-    projectId: row.project_id as string,
-    swarmId: row.swarm_id as string,
-    mode: row.mode as 'structured' | 'autonomous',
-    runIndex: row.run_index as number,
-    intent: row.intent as string,
-    argsCanonical: row.args_canonical as string,
-    state: row.state as RunState,
-    branchName: row.branch_name as string,
-    prNumber: asOptionalNumber(row.pr_number),
-    prUrl: asOptionalString(row.pr_url),
-    resultCanonical: asOptionalString(row.result_canonical),
-    resultHash: asOptionalString(row.result_hash),
-    errorCode: asOptionalString(row.error_code),
-    errorMessage: asOptionalString(row.error_message)
-  };
-}
-
-function buildRunRecord(input: CreateRunInput): { runId: string; argsCanonical: string; branchName: string } {
-  const argsCanonical = canonicalStringify({
-    runType: input.runType,
-    projectId: input.projectId,
-    swarmId: input.swarmId,
-    mode: input.mode,
-    runIndex: input.runIndex,
-    intent: input.intent
-  });
-
-  const runId = sha256(`swarm_run\n${argsCanonical}`);
-  return { runId, argsCanonical, branchName: input.branchName };
-}
-
-export function computeExecutionRunId(argsCanonical: string): string {
-  return sha256(`swarm_run\n${argsCanonical}`);
-}
-
-export function computeExecutionEventId(runId: string, state: RunState, attemptIndex: number, payloadHash: string): string {
-  return sha256(`${runId}\n${state}\n${attemptIndex}\n${payloadHash}`);
-}
-
-export function computeLifecycleEventId(entry: {
-  runId: string;
-  attemptIndex: number;
-  previousState: RunLifecycleState;
-  nextState: RunLifecycleState;
-  errorClass?: ErrorClass;
-  failureSignature?: string;
-  envelopeHash: string;
-}): string {
-  return sha256(canonicalStringify({
-    attemptIndex: entry.attemptIndex,
-    envelopeHash: entry.envelopeHash,
-    errorClass: entry.errorClass ?? null,
-    failureSignature: entry.failureSignature ?? null,
-    nextState: entry.nextState,
-    previousState: entry.previousState,
-    runId: entry.runId
-  }));
-}
-
-function mapRunLifecycleRow(row: Record<string, unknown>): RunJournalEntry {
+function mapEventRow(row: Record<string, unknown>): RunEventRecord {
   return {
     eventId: row.event_id as string,
+    eventIndex: row.event_index as number,
     runId: row.run_id as string,
     attemptIndex: row.attempt_index as number,
     attemptId: row.attempt_id as string,
-    previousState: row.previous_state as RunLifecycleState,
-    nextState: row.next_state as RunLifecycleState,
-    state: row.state as RunLifecycleState,
-    errorClass: asOptionalString(row.error_class) as ErrorClass | undefined,
-    failureSignature: asOptionalString(row.failure_signature),
+    eventType: row.event_type as RunEventRecord['eventType'],
+    previousState: (row.previous_state as RunLifecycleState | null) ?? undefined,
+    nextState: (row.next_state as RunLifecycleState | null) ?? undefined,
     envelopeHash: row.envelope_hash as string,
-    resultHash: asOptionalString(row.result_hash),
-    mutationBranch: asOptionalString(row.mutation_branch),
-    mutationPrNumber: asOptionalNumber(row.mutation_pr_number)
+    errorClass: (row.error_class as ErrorClass | null) ?? undefined,
+    failureSignature: (row.failure_signature as string | null) ?? undefined,
+    resultHash: (row.result_hash as string | null) ?? undefined,
+    artifactType: (row.artifact_type as string | null) ?? undefined,
+    artifactValue: (row.artifact_value as string | null) ?? undefined,
+    artifacts: row.artifacts_canonical
+      ? JSON.parse(row.artifacts_canonical as string) as RunEventRecord['artifacts']
+      : undefined
   };
 }
 
-export function createExecutionJournal(db: DatabaseSync, now: () => string = () => new Date().toISOString()) {
+function computeRuntimeEventId(input: {
+  runId: string;
+  attemptId: string;
+  event: RuntimeEvent;
+}): string {
+  return sha256(canonicalStringify({
+    runId: input.runId,
+    attemptId: input.attemptId,
+    eventType: input.event.eventType,
+    previousState: input.event.previousState ?? null,
+    nextState: input.event.nextState ?? null,
+    envelopeHash: input.event.envelopeHash,
+    errorClass: input.event.errorClass ?? null,
+    failureSignature: input.event.failureSignature ?? null,
+    resultHash: input.event.resultHash ?? null,
+    artifactType: input.event.artifactType ?? null,
+    artifactValue: input.event.artifactValue ?? null,
+    artifacts: input.event.artifacts ?? null
+  }));
+}
+
+function buildAttemptSummary(events: RunEventRecord[]): RunRecord['attempts'] {
+  const byAttempt = new Map<number, RunRecord['attempts'][number]>();
+
+  for (const event of events) {
+    const current = byAttempt.get(event.attemptIndex) ?? {
+      attemptIndex: event.attemptIndex,
+      attemptId: event.attemptId,
+      latestState: 'CREATED' as RunLifecycleState
+    };
+    if (event.eventType === 'STATE_TRANSITION' && event.nextState) {
+      current.latestState = event.nextState;
+    }
+    byAttempt.set(event.attemptIndex, current);
+  }
+
+  return Array.from(byAttempt.values()).sort((left, right) => left.attemptIndex - right.attemptIndex);
+}
+
+export function createExecutionJournal(db: DatabaseSync) {
   db.exec(EXECUTION_SCHEMA_SQL);
 
-  function createRun(input: CreateRunInput): { runId: string; argsCanonical: string } {
-    const record = buildRunRecord(input);
-    const existing = getRun(record.runId);
-    if (existing) {
-      return { runId: existing.runId, argsCanonical: existing.argsCanonical };
-    }
-
-    db.prepare(`
-      INSERT INTO execution_runs (
-        run_id,
-        run_type,
-        project_id,
-        swarm_id,
-        mode,
-        run_index,
-        intent,
-        args_canonical,
-        state,
-        branch_name,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.runId,
-      input.runType,
-      input.projectId,
-      input.swarmId,
-      input.mode,
-      input.runIndex,
-      input.intent,
-      record.argsCanonical,
-      'CREATED',
-      record.branchName,
-      now()
-    );
-
-    appendRunEvent(record.runId, 'CREATED', {
-      branchName: record.branchName,
-      mode: input.mode,
-      projectId: input.projectId,
-      runIndex: input.runIndex,
-      swarmId: input.swarmId
-    });
-
-    return { runId: record.runId, argsCanonical: record.argsCanonical };
-  }
-
-  function getRun(runId: string): ExecutionRun | null {
-    const row = db.prepare('SELECT * FROM execution_runs WHERE run_id = ?').get(runId) as Record<string, unknown> | undefined;
-    return row ? mapRunRow(row) : null;
-  }
-
-  function appendRunEvent(runId: string, state: RunState, payload: unknown): ExecutionRunEvent {
-    const payloadCanonical = canonicalStringify(payload);
-    const payloadHash = sha256(payloadCanonical);
-    const attemptRow = db.prepare(
-      'SELECT COUNT(*) AS count FROM execution_run_events WHERE run_id = ? AND state = ? AND payload_hash = ?'
-    ).get(runId, state, payloadHash) as { count: number };
-    const attemptIndex = attemptRow.count;
-    const eventId = computeExecutionEventId(runId, state, attemptIndex, payloadHash);
-
-    db.prepare(`
-      INSERT INTO execution_run_events (
-        event_id,
-        run_id,
-        state,
-        payload_canonical,
-        payload_hash,
-        attempt_index,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      eventId,
-      runId,
-      state,
-      payloadCanonical,
-      payloadHash,
-      attemptIndex,
-      now()
-    );
-
-    return {
-      eventId,
-      runId,
-      state,
-      payloadCanonical,
-      payloadHash,
-      attemptIndex
-    };
-  }
-
-  function listRunEvents(runId: string): ExecutionRunEvent[] {
-    const rows = db.prepare(`
-      SELECT event_id, run_id, state, payload_canonical, payload_hash, attempt_index
-      FROM execution_run_events
-      WHERE run_id = ?
-      ORDER BY rowid ASC
-    `).all(runId) as Array<Record<string, unknown>>;
-
-    return rows.map((row) => ({
-      eventId: row.event_id as string,
-      runId: row.run_id as string,
-      state: row.state as RunState,
-      payloadCanonical: row.payload_canonical as string,
-      payloadHash: row.payload_hash as string,
-      attemptIndex: row.attempt_index as number
-    }));
-  }
-
-  function appendLifecycleEvent(input: {
-    runId: string;
-    attemptIndex: number;
-    previousState: RunLifecycleState;
-    nextState: RunLifecycleState;
-    errorClass?: ErrorClass;
-    failureSignature?: string;
-    envelopeHash: string;
-    resultHash?: string;
-    mutationBranch?: string;
-    mutationPrNumber?: number;
-  }): RunJournalEntry {
-    assertValidAttemptIndex(input.attemptIndex);
-    assertValidLifecycleTransition(input.previousState, input.nextState);
-
-    const eventId = computeLifecycleEventId({
-      runId: input.runId,
-      attemptIndex: input.attemptIndex,
-      previousState: input.previousState,
-      nextState: input.nextState,
-      errorClass: input.errorClass,
-      failureSignature: input.failureSignature,
-      envelopeHash: input.envelopeHash
-    });
-
-    const existing = db.prepare(`
-      SELECT *
-      FROM execution_run_lifecycle_events
-      WHERE event_id = ?
-    `).get(eventId) as Record<string, unknown> | undefined;
+  function createOrGetRun(envelopeIdentity: EnvelopeIdentityV1): { runId: string; envelopeHash: string } {
+    const envelopeCanonical = canonicalStringify(envelopeIdentity);
+    const envelopeHash = computeEnvelopeHash(envelopeIdentity);
+    const existing = db.prepare(
+      'SELECT run_id FROM execution_runtime_runs WHERE envelope_hash = ?'
+    ).get(envelopeHash) as { run_id: string } | undefined;
 
     if (existing) {
-      return mapRunLifecycleRow(existing);
+      return { runId: existing.run_id, envelopeHash };
     }
 
-    const attemptId = computeAttemptId(input.runId, input.attemptIndex);
+    const runId = computeRunId(envelopeHash);
+    db.prepare(`
+      INSERT INTO execution_runtime_runs (
+        run_id,
+        envelope_hash,
+        envelope_canonical,
+        latest_state
+      ) VALUES (?, ?, ?, ?)
+    `).run(runId, envelopeHash, envelopeCanonical, 'CREATED');
+
+    return { runId, envelopeHash };
+  }
+
+  function appendEvent(runId: string, attemptId: string, event: RuntimeEvent): number {
+    const run = db.prepare('SELECT latest_state FROM execution_runtime_runs WHERE run_id = ?').get(runId) as
+      | { latest_state: RunLifecycleState }
+      | undefined;
+    if (!run) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+
+    const eventId = computeRuntimeEventId({ runId, attemptId, event });
+    const existingById = db.prepare(
+      'SELECT event_index FROM execution_runtime_events WHERE event_id = ?'
+    ).get(eventId) as { event_index: number } | undefined;
+    if (existingById) {
+      return existingById.event_index;
+    }
+
+    if (event.eventType === 'ARTIFACT_LINKED' && event.artifactType && event.artifactValue) {
+      const existingArtifact = db.prepare(`
+        SELECT event_index
+        FROM execution_runtime_events
+        WHERE attempt_id = ?
+          AND artifact_type = ?
+          AND artifact_value = ?
+      `).get(attemptId, event.artifactType, event.artifactValue) as { event_index: number } | undefined;
+      if (existingArtifact) {
+        return existingArtifact.event_index;
+      }
+    }
+
+    const attemptIndex = toAttemptIndex(runId, attemptId);
+    if (event.eventType === 'STATE_TRANSITION') {
+      if (!event.previousState || !event.nextState) {
+        throw new Error('STATE_TRANSITION events require previousState and nextState.');
+      }
+      if (run.latest_state !== event.previousState) {
+        throw new Error(`Invalid previous state: expected ${run.latest_state} but received ${event.previousState}.`);
+      }
+      assertValidLifecycleTransition(event.previousState, event.nextState);
+    }
+
+    const eventIndexRow = db.prepare(
+      'SELECT COALESCE(MAX(event_index), -1) AS max_index FROM execution_runtime_events WHERE run_id = ?'
+    ).get(runId) as { max_index: number };
+    const eventIndex = eventIndexRow.max_index + 1;
+    const payloadHash = sha256(canonicalStringify(event));
 
     db.prepare(`
-      INSERT INTO execution_run_lifecycle_events (
+      INSERT INTO execution_runtime_events (
         event_id,
         run_id,
+        event_index,
         attempt_index,
         attempt_id,
+        event_type,
         previous_state,
         next_state,
-        state,
+        envelope_hash,
         error_class,
         failure_signature,
-        envelope_hash,
         result_hash,
-        mutation_branch,
-        mutation_pr_number,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        artifact_type,
+        artifact_value,
+        artifacts_canonical,
+        payload_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       eventId,
-      input.runId,
-      input.attemptIndex,
+      runId,
+      eventIndex,
+      attemptIndex,
       attemptId,
-      input.previousState,
-      input.nextState,
-      input.nextState,
-      input.errorClass ?? null,
-      input.failureSignature ?? null,
-      input.envelopeHash,
-      input.resultHash ?? null,
-      input.mutationBranch ?? null,
-      input.mutationPrNumber ?? null,
-      now()
+      event.eventType,
+      event.previousState ?? null,
+      event.nextState ?? null,
+      event.envelopeHash,
+      event.errorClass ?? null,
+      event.failureSignature ?? null,
+      event.resultHash ?? null,
+      event.artifactType ?? null,
+      event.artifactValue ?? null,
+      event.artifacts ? canonicalStringify(event.artifacts) : null,
+      payloadHash
     );
 
+    if (event.eventType === 'STATE_TRANSITION' && event.nextState) {
+      db.prepare('UPDATE execution_runtime_runs SET latest_state = ? WHERE run_id = ?').run(event.nextState, runId);
+    }
+
+    return eventIndex;
+  }
+
+  function listRunEvents(runId: string): RunEventRecord[] {
+    const rows = db.prepare(`
+      SELECT *
+      FROM execution_runtime_events
+      WHERE run_id = ?
+      ORDER BY event_index ASC
+    `).all(runId) as Array<Record<string, unknown>>;
+
+    return rows.map(mapEventRow);
+  }
+
+  function getRun(runId: string): RunRecord | null {
+    const row = db.prepare(`
+      SELECT run_id, envelope_hash, envelope_canonical, latest_state
+      FROM execution_runtime_runs
+      WHERE run_id = ?
+    `).get(runId) as Record<string, unknown> | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    const events = listRunEvents(runId);
     return {
-      eventId,
-      runId: input.runId,
-      attemptIndex: input.attemptIndex,
-      attemptId,
-      previousState: input.previousState,
-      nextState: input.nextState,
-      state: input.nextState,
-      errorClass: input.errorClass,
-      failureSignature: input.failureSignature,
-      envelopeHash: input.envelopeHash,
-      resultHash: input.resultHash,
-      mutationBranch: input.mutationBranch,
-      mutationPrNumber: input.mutationPrNumber
+      runId: row.run_id as string,
+      envelopeHash: row.envelope_hash as string,
+      envelopeCanonical: row.envelope_canonical as string,
+      latestState: row.latest_state as RunLifecycleState,
+      attempts: buildAttemptSummary(events),
+      events
     };
   }
 
-  function listLifecycleEvents(runId: string): RunJournalEntry[] {
-    const rows = db.prepare(`
-      SELECT *
-      FROM execution_run_lifecycle_events
-      WHERE run_id = ?
-      ORDER BY rowid ASC
-    `).all(runId) as Array<Record<string, unknown>>;
-
-    return rows.map(mapRunLifecycleRow);
-  }
-
-  function setRunState(runId: string, state: RunState): void {
-    db.prepare('UPDATE execution_runs SET state = ? WHERE run_id = ?').run(state, runId);
-  }
-
-  function setRunResult(runId: string, result: unknown): void {
-    const resultCanonical = canonicalStringify(result);
-    const resultHash = sha256(resultCanonical);
-
-    db.prepare(`
-      UPDATE execution_runs
-      SET result_canonical = ?,
-          result_hash = ?,
-          error_code = NULL,
-          error_message = NULL
-      WHERE run_id = ?
-    `).run(resultCanonical, resultHash, runId);
-
-    const resultRecord = result as Record<string, unknown>;
-    const prNumber = typeof resultRecord.prNumber === 'number' ? resultRecord.prNumber : null;
-    const prUrl = typeof resultRecord.prUrl === 'string' ? resultRecord.prUrl : null;
-
-    db.prepare('UPDATE execution_runs SET pr_number = ?, pr_url = ? WHERE run_id = ?').run(prNumber, prUrl, runId);
-  }
-
-  function setRunFailure(runId: string, error: { code: string; message: string }): void {
-    db.prepare(`
-      UPDATE execution_runs
-      SET error_code = ?,
-          error_message = ?,
-          result_canonical = NULL,
-          result_hash = NULL,
-          state = 'FAILED'
-      WHERE run_id = ?
-    `).run(error.code, error.message, runId);
-  }
-
-  function listRuns(filter: ListRunsFilter = {}): ExecutionRun[] {
-    const clauses: string[] = [];
-    const values: string[] = [];
-
-    if (typeof filter.projectId === 'string') {
-      clauses.push('project_id = ?');
-      values.push(filter.projectId);
+  function getRunByEnvelopeHash(envelopeHash: string): RunRecord | null {
+    const row = db.prepare('SELECT run_id FROM execution_runtime_runs WHERE envelope_hash = ?').get(envelopeHash) as
+      | { run_id: string }
+      | undefined;
+    if (!row) {
+      return null;
     }
+    return getRun(row.run_id);
+  }
 
-    if (typeof filter.swarmId === 'string') {
-      clauses.push('swarm_id = ?');
-      values.push(filter.swarmId);
-    }
-
-    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  function listRuns(): RunRecord[] {
     const rows = db.prepare(`
-      SELECT *
-      FROM execution_runs
-      ${whereClause}
+      SELECT run_id
+      FROM execution_runtime_runs
       ORDER BY run_id ASC
-    `).all(...values) as Array<Record<string, unknown>>;
-
-    return rows.map(mapRunRow);
+    `).all() as Array<{ run_id: string }>;
+    return rows
+      .map((row) => getRun(row.run_id))
+      .filter((value): value is RunRecord => value !== null);
   }
 
   return {
-    createRun,
-    getRun,
-    appendRunEvent,
-    appendLifecycleEvent,
+    createOrGetRun,
+    appendEvent,
     listRunEvents,
-    listLifecycleEvents,
-    setRunState,
-    setRunResult,
-    setRunFailure,
+    getRun,
+    getRunByEnvelopeHash,
     listRuns
   };
 }

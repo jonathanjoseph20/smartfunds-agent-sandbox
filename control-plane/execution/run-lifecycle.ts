@@ -1,5 +1,6 @@
 export type RunLifecycleState =
   | 'CREATED'
+  | 'NO_WORK'
   | 'RUNNING'
   | 'FAILED'
   | 'SUCCEEDED'
@@ -8,14 +9,15 @@ export type RunLifecycleState =
   | 'RETRY_FAILED'
   | 'RETRY_SUCCEEDED';
 
-export const TERMINAL_LIFECYCLE_STATES = ['SUCCEEDED', 'RETRY_SUCCEEDED', 'RETRY_FAILED'] as const;
+export const TERMINAL_LIFECYCLE_STATES = ['NO_WORK', 'SUCCEEDED', 'RETRY_SUCCEEDED', 'RETRY_FAILED'] as const;
 
 export const LIFECYCLE_ERROR_CODES = {
   INVALID_TRANSITION: 'ERR_INVALID_RUN_LIFECYCLE_TRANSITION'
 } as const;
 
 const ALLOWED_TRANSITIONS: Readonly<Record<RunLifecycleState, readonly RunLifecycleState[]>> = {
-  CREATED: ['RUNNING'],
+  CREATED: ['NO_WORK', 'RUNNING'],
+  NO_WORK: [],
   RUNNING: ['SUCCEEDED', 'FAILED'],
   FAILED: ['RETRY_SCHEDULED'],
   RETRY_SCHEDULED: ['RETRY_RUNNING'],

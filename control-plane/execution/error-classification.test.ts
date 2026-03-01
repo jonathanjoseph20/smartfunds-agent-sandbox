@@ -2,48 +2,41 @@ import { describe, expect, it } from 'vitest';
 
 import { classifyFailure, computeFailureSignature, type NormalizedFailure } from './error-classification.ts';
 
-function baseFailure(overrides: Partial<NormalizedFailure>): NormalizedFailure {
+function failure(overrides: Partial<NormalizedFailure>): NormalizedFailure {
   return {
-    checkName: 'lint',
-    failureType: 'LINT_FAILURE',
-    normalizedMessage: 'lint failed',
-    tier: 3,
-    impliedTier: 3,
-    requiredChecks: ['lint'],
+    checkName: 'run_swarm',
+    category: 'unknown',
+    normalizedMessage: 'failed',
     ...overrides
   };
 }
 
 describe('error classification', () => {
-  it('locks precedence: governance/ownership/tier/evidence outrank lint/tests', () => {
-    expect(classifyFailure(baseFailure({ checkName: 'governance', failureType: 'LINT_FAILURE' }))).toBe('GOVERNANCE_ERROR');
-    expect(classifyFailure(baseFailure({ checkName: 'ownership', failureType: 'LINT_FAILURE' }))).toBe('OWNERSHIP_VIOLATION');
-    expect(classifyFailure(baseFailure({ checkName: 'tier-check', failureType: 'LINT_FAILURE' }))).toBe('TIER_MISMATCH');
-    expect(classifyFailure(baseFailure({ checkName: 'evidence-parse', failureType: 'LINT_FAILURE' }))).toBe('EVIDENCE_SCHEMA_ERROR');
+  it('maps deterministic categories and governance sub-codes', () => {
+    expect(classifyFailure(failure({ category: 'lint' })).errorClass).toBe('LINT_FAILURE');
+    expect(classifyFailure(failure({ category: 'typecheck' })).errorClass).toBe('TYPECHECK_FAILURE');
+    expect(classifyFailure(failure({ category: 'unit' })).errorClass).toBe('UNIT_TEST_FAILURE');
+    expect(classifyFailure(failure({ category: 'integration' })).errorClass).toBe('INTEGRATION_TEST_FAILURE');
+    expect(classifyFailure(failure({ category: 'schema' })).errorClass).toBe('SCHEMA_VALIDATION_FAILURE');
+    expect(classifyFailure(failure({ category: 'infra' })).errorClass).toBe('TRANSIENT_INFRA_ERROR');
+    expect(classifyFailure(failure({ category: 'unknown' })).errorClass).toBe('UNKNOWN_FAILURE');
+
+    expect(classifyFailure(failure({ category: 'governance', code: 'OWNERSHIP_VIOLATION' })).errorClass).toBe('OWNERSHIP_VIOLATION');
+    expect(classifyFailure(failure({ category: 'governance', code: 'TIER_MISMATCH' })).errorClass).toBe('TIER_MISMATCH');
+    expect(classifyFailure(failure({ category: 'governance', code: 'MISSING_EVIDENCE_BLOCK' })).errorClass).toBe('EVIDENCE_SCHEMA_ERROR');
+    expect(classifyFailure(failure({ category: 'governance', code: 'OTHER' })).errorClass).toBe('GOVERNANCE_ERROR');
   });
 
-  it('maps deterministic check/failure types with no fuzzy behavior', () => {
-    expect(classifyFailure(baseFailure({ checkName: 'lint', failureType: 'LINT_FAILURE' }))).toBe('LINT_FAILURE');
-    expect(classifyFailure(baseFailure({ checkName: 'typecheck', failureType: 'TYPECHECK_FAILURE' }))).toBe('TYPECHECK_FAILURE');
-    expect(classifyFailure(baseFailure({ checkName: 'unit_test', failureType: 'UNIT_TEST_FAILURE' }))).toBe('UNIT_TEST_FAILURE');
-    expect(classifyFailure(baseFailure({ checkName: 'integration_test', failureType: 'INTEGRATION_TEST_FAILURE' }))).toBe('INTEGRATION_TEST_FAILURE');
-    expect(classifyFailure(baseFailure({ checkName: 'schema', failureType: 'SCHEMA_VALIDATION_FAILURE' }))).toBe('SCHEMA_VALIDATION_FAILURE');
-    expect(classifyFailure(baseFailure({ checkName: 'infra', failureType: 'TRANSIENT_INFRA_ERROR' }))).toBe('TRANSIENT_INFRA_ERROR');
-    expect(classifyFailure(baseFailure({ checkName: 'misc', failureType: 'SOMETHING_ELSE' }))).toBe('UNKNOWN_FAILURE');
-  });
-
-  it('computes deterministic failure signatures', () => {
-    const first = computeFailureSignature({
-      errorClass: 'LINT_FAILURE',
-      checkName: 'lint',
-      normalizedMessage: 'failure'
-    });
-    const second = computeFailureSignature({
-      errorClass: 'LINT_FAILURE',
-      checkName: 'lint',
-      normalizedMessage: 'failure'
-    });
-
+  it('produces stable failure signatures including code=null semantics', () => {
+    const first = classifyFailure(failure({ category: 'lint', normalizedMessage: 'x', code: undefined })).failureSignature;
+    const second = classifyFailure(failure({ category: 'lint', normalizedMessage: 'x' })).failureSignature;
     expect(first).toBe(second);
+
+    const signature = computeFailureSignature({
+      errorClass: 'LINT_FAILURE',
+      checkName: 'run_swarm',
+      normalizedMessage: 'x'
+    });
+    expect(signature).toMatchInlineSnapshot(`"fce1faf7b8ff5744afd3b4e463799bfb2659903cd1797b43488606c37f0f1467"`);
   });
 });

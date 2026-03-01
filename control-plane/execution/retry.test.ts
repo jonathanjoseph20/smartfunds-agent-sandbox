@@ -36,13 +36,37 @@ describe('retry', () => {
 
   it('has allowlist-only retry eligibility matrix', () => {
     for (const errorClass of ELIGIBLE_CLASSES) {
-      expect(isRetryEligible({ attemptIndex: 0, errorClass })).toBe(true);
-      expect(() => assertRetryEligible({ attemptIndex: 0, errorClass })).not.toThrow();
+      expect(isRetryEligible({
+        attemptIndex: 0,
+        errorClass,
+        ownershipStatus: 'ok',
+        declaredTier: 3,
+        impliedTier: 3
+      })).toBe(true);
+      expect(() => assertRetryEligible({
+        attemptIndex: 0,
+        errorClass,
+        ownershipStatus: 'ok',
+        declaredTier: 3,
+        impliedTier: 3
+      })).not.toThrow();
     }
 
     for (const errorClass of INELIGIBLE_CLASSES) {
-      expect(isRetryEligible({ attemptIndex: 0, errorClass })).toBe(false);
-      expect(() => assertRetryEligible({ attemptIndex: 0, errorClass })).toThrowError(
+      expect(isRetryEligible({
+        attemptIndex: 0,
+        errorClass,
+        ownershipStatus: 'ok',
+        declaredTier: 3,
+        impliedTier: 3
+      })).toBe(false);
+      expect(() => assertRetryEligible({
+        attemptIndex: 0,
+        errorClass,
+        ownershipStatus: 'ok',
+        declaredTier: 3,
+        impliedTier: 3
+      })).toThrowError(
         `Retry not eligible for attemptIndex=0 and errorClass=${errorClass}.`
       );
     }
@@ -50,8 +74,38 @@ describe('retry', () => {
 
   it('never allows retry for attemptIndex >= 1', () => {
     for (const errorClass of ELIGIBLE_CLASSES) {
-      expect(isRetryEligible({ attemptIndex: 1, errorClass })).toBe(false);
+      expect(isRetryEligible({
+        attemptIndex: 1,
+        errorClass,
+        ownershipStatus: 'ok',
+        declaredTier: 3,
+        impliedTier: 3
+      })).toBe(false);
     }
+  });
+
+  it('disallows retry for no-work, ownership violations, or tier mismatch', () => {
+    expect(isRetryEligible({
+      attemptIndex: 0,
+      errorClass: 'LINT_FAILURE',
+      ownershipStatus: 'no_work',
+      declaredTier: 3,
+      impliedTier: 3
+    })).toBe(false);
+    expect(isRetryEligible({
+      attemptIndex: 0,
+      errorClass: 'LINT_FAILURE',
+      ownershipStatus: 'violation',
+      declaredTier: 3,
+      impliedTier: 3
+    })).toBe(false);
+    expect(isRetryEligible({
+      attemptIndex: 0,
+      errorClass: 'LINT_FAILURE',
+      ownershipStatus: 'ok',
+      declaredTier: 2,
+      impliedTier: 3
+    })).toBe(false);
   });
 
   it('derives deterministic attempt IDs', () => {

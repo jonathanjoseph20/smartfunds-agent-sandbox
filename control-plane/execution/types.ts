@@ -1,47 +1,48 @@
-import type { RunState } from './runState.ts';
 import type { ErrorClass } from './error-classification.ts';
 import type { RunLifecycleState } from './run-lifecycle.ts';
 
-export interface ExecutionRun {
-  runId: string;
-  runType: 'swarm';
-  projectId: string;
-  swarmId: string;
-  mode: 'structured' | 'autonomous';
-  runIndex: number;
-  intent: string;
-  argsCanonical: string;
-  state: RunState;
-  branchName: string;
+export type RuntimeEventType =
+  | 'STATE_TRANSITION'
+  | 'ERROR_CLASSIFIED'
+  | 'ARTIFACT_LINKED';
+
+export type RuntimeEventArtifacts = {
   prNumber?: number;
   prUrl?: string;
-  resultCanonical?: string;
+  branchName?: string;
+  checkRunUrl?: string;
+};
+
+export interface RuntimeEvent {
+  eventType: RuntimeEventType;
+  previousState?: RunLifecycleState;
+  nextState?: RunLifecycleState;
+  envelopeHash: string;
+  errorClass?: ErrorClass;
+  failureSignature?: string;
   resultHash?: string;
-  errorCode?: string;
-  errorMessage?: string;
+  artifactType?: string;
+  artifactValue?: string;
+  artifacts?: RuntimeEventArtifacts;
 }
 
-export interface ExecutionRunEvent {
+export interface RunEventRecord extends RuntimeEvent {
   eventId: string;
-  runId: string;
-  state: RunState;
-  payloadCanonical: string;
-  payloadHash: string;
-  attemptIndex: number;
-}
-
-export interface RunJournalEntry {
-  eventId: string;
+  eventIndex: number;
   runId: string;
   attemptIndex: number;
   attemptId: string;
-  previousState: RunLifecycleState;
-  nextState: RunLifecycleState;
-  state: RunLifecycleState;
-  errorClass?: ErrorClass;
-  failureSignature?: string;
+}
+
+export interface RunRecord {
+  runId: string;
   envelopeHash: string;
-  resultHash?: string;
-  mutationBranch?: string;
-  mutationPrNumber?: number;
+  envelopeCanonical: string;
+  latestState: RunLifecycleState;
+  attempts: Array<{
+    attemptIndex: number;
+    attemptId: string;
+    latestState: RunLifecycleState;
+  }>;
+  events: RunEventRecord[];
 }

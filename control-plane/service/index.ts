@@ -1,12 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
-import { createExecutionJournal, computeExecutionRunId } from '../execution/journal.ts';
-import { classifyFailure, computeFailureSignature, type NormalizedFailure } from '../execution/error-classification.ts';
-import { assertEnvelopeHashMatch, buildExecutionEnvelope, computeEnvelopeHash } from '../execution/envelope.ts';
-import { isRetryEligible, MAX_RETRY_ATTEMPTS } from '../execution/retry.ts';
+import { createExecutionJournal } from '../execution/journal.ts';
+import type { NormalizedFailure } from '../execution/error-classification.ts';
+import { assertEnvelopeHashMatch, buildEnvelopeIdentityV1 } from '../execution/envelope.ts';
+import { computeAttemptId } from '../execution/retry.ts';
+import { createRuntimeService } from '../execution/runtime-service.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
-import { runSwarmExecutor, type ExecutionHooks } from '../swarm/swarm-executor.ts';
+import { runSwarmExecutor } from '../swarm/swarm-executor.ts';
 import { resolveHandlerRoute } from './handlers/router.ts';
 import type { HandlerResult } from './handlers/types.ts';
 import { toSwarmExecutionArgs } from './http/types.ts';
@@ -78,11 +79,12 @@ interface RunSwarmRequestBody {
   mode: 'structured' | 'autonomous';
   intent: string;
   runIndex: number;
-  attemptIndex?: number;
+  changedPaths: string[];
+  triggerType?: 'manual' | 'ci_failure' | 'webhook' | 'preflight';
+  repo?: { owner: string; name: string };
+  ref?: { base: string; head: string };
   impliedTier?: number;
   declaredTier?: number;
-  requiredChecks?: string[];
-  resolvedTeam?: string;
   mutationEnvelopeHash?: string;
 }
 
@@ -108,11 +110,12 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
   const mode = value.mode;
   const intent = value.intent;
   const runIndex = value.runIndex;
-  const attemptIndex = value.attemptIndex;
+  const changedPaths = value.changedPaths;
+  const triggerType = value.triggerType;
+  const repo = value.repo;
+  const ref = value.ref;
   const impliedTier = value.impliedTier;
   const declaredTier = value.declaredTier;
-  const requiredChecks = value.requiredChecks;
-  const resolvedTeam = value.resolvedTeam;
   const mutationEnvelopeHash = value.mutationEnvelopeHash;
 
   if (!isNonEmptyString(projectId) || !isNonEmptyString(swarmId) || !isNonEmptyString(intent)) {
@@ -124,19 +127,22 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
   if (!Number.isInteger(runIndex) || runIndex < 1) {
     return { ok: false };
   }
-  if (attemptIndex !== undefined && !isNonNegativeInteger(attemptIndex)) {
+  if (!Array.isArray(changedPaths) || changedPaths.some((entry) => typeof entry !== 'string')) {
+    return { ok: false };
+  }
+  if (triggerType !== undefined && triggerType !== 'manual' && triggerType !== 'ci_failure' && triggerType !== 'webhook' && triggerType !== 'preflight') {
+    return { ok: false };
+  }
+  if (repo !== undefined && (!isPlainObject(repo) || !isNonEmptyString(repo.owner) || !isNonEmptyString(repo.name))) {
+    return { ok: false };
+  }
+  if (ref !== undefined && (!isPlainObject(ref) || !isNonEmptyString(ref.base) || !isNonEmptyString(ref.head))) {
     return { ok: false };
   }
   if (impliedTier !== undefined && !isNonNegativeInteger(impliedTier)) {
     return { ok: false };
   }
   if (declaredTier !== undefined && !isNonNegativeInteger(declaredTier)) {
-    return { ok: false };
-  }
-  if (requiredChecks !== undefined && (!Array.isArray(requiredChecks) || requiredChecks.some((entry) => typeof entry !== 'string'))) {
-    return { ok: false };
-  }
-  if (resolvedTeam !== undefined && !isNonEmptyString(resolvedTeam)) {
     return { ok: false };
   }
   if (mutationEnvelopeHash !== undefined && !isNonEmptyString(mutationEnvelopeHash)) {
@@ -151,58 +157,48 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
       mode,
       intent,
       runIndex,
-      ...(attemptIndex !== undefined ? { attemptIndex } : {}),
+      changedPaths,
+      ...(triggerType !== undefined ? { triggerType } : {}),
+      ...(repo !== undefined ? { repo: { owner: repo.owner, name: repo.name } } : {}),
+      ...(ref !== undefined ? { ref: { base: ref.base, head: ref.head } } : {}),
       ...(impliedTier !== undefined ? { impliedTier } : {}),
       ...(declaredTier !== undefined ? { declaredTier } : {}),
-      ...(requiredChecks !== undefined ? { requiredChecks } : {}),
-      ...(resolvedTeam !== undefined ? { resolvedTeam } : {}),
       ...(mutationEnvelopeHash !== undefined ? { mutationEnvelopeHash } : {})
     }
   };
 }
 
-function toNormalizedFailure(input: {
-  request: RunSwarmRequestBody;
-  failure: { code: string; message: string };
-}): NormalizedFailure {
-  return {
-    checkName: 'checkName' in (input.failure as Record<string, unknown>) && typeof (input.failure as Record<string, unknown>).checkName === 'string'
-      ? (input.failure as Record<string, unknown>).checkName as string
-      : 'run_swarm',
-    failureType: 'failureType' in (input.failure as Record<string, unknown>) && typeof (input.failure as Record<string, unknown>).failureType === 'string'
-      ? (input.failure as Record<string, unknown>).failureType as string
-      : input.failure.code,
-    normalizedMessage: input.failure.message,
-    tier: input.request.declaredTier ?? 0,
-    impliedTier: input.request.impliedTier ?? 0,
-    requiredChecks: [...(input.request.requiredChecks ?? [])].sort((left, right) => left.localeCompare(right))
-  };
-}
-
-function buildRunEnvelopeHash(input: {
-  request: RunSwarmRequestBody;
-  normalizedFailureSignature: string | null;
-}): string {
-  return computeEnvelopeHash(buildExecutionEnvelope({
-    runInput: {
-      intent: input.request.intent,
-      mode: input.request.mode,
-      projectId: input.request.projectId,
-      runIndex: input.request.runIndex,
-      swarmId: input.request.swarmId
-    },
-    resolvedTeam: input.request.resolvedTeam ?? input.request.swarmId,
-    executionMode: input.request.mode,
-    impliedTier: input.request.impliedTier ?? 0,
-    declaredTier: input.request.declaredTier ?? 0,
-    normalizedFailureSignature: input.normalizedFailureSignature
-  }));
+function toFailureCategory(code: string): NormalizedFailure['category'] {
+  const normalized = code.trim().toUpperCase();
+  if (normalized.includes('GOVERNANCE') || normalized.includes('OWNERSHIP') || normalized.includes('TIER') || normalized.includes('EVIDENCE')) {
+    return 'governance';
+  }
+  if (normalized.includes('LINT')) {
+    return 'lint';
+  }
+  if (normalized.includes('TYPECHECK') || normalized.includes('TSC')) {
+    return 'typecheck';
+  }
+  if (normalized.includes('UNIT')) {
+    return 'unit';
+  }
+  if (normalized.includes('INTEGRATION')) {
+    return 'integration';
+  }
+  if (normalized.includes('SCHEMA')) {
+    return 'schema';
+  }
+  if (normalized.includes('INFRA')) {
+    return 'infra';
+  }
+  return 'unknown';
 }
 
 export function createServiceDispatcher(options: ServiceOptions = {}) {
   const db = getServiceDb(options.dbPath);
   const now = options.now ?? (() => new Date().toISOString());
-  const executionJournal = createExecutionJournal(db, now);
+  const executionJournal = createExecutionJournal(db);
+  const runtimeService = createRuntimeService(executionJournal);
   const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
 
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
@@ -224,55 +220,23 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
       }
 
-      const requestAttemptIndex = validated.value.attemptIndex ?? 0;
-      if (requestAttemptIndex > MAX_RETRY_ATTEMPTS) {
-        return buildResponse(409, {
-          error: 'ERR_INVALID_ATTEMPT_INDEX',
-          message: `Invalid attempt index: ${requestAttemptIndex}. Max allowed is ${MAX_RETRY_ATTEMPTS}.`
-        });
-      }
-      if (requestAttemptIndex !== 0) {
-        return buildResponse(409, {
-          error: 'ERR_INVALID_ATTEMPT_INDEX',
-          message: 'Retry attempts must be triggered by deterministic intake only.'
-        });
-      }
-
-      const argsCanonical = canonicalStringify({
-        runType: 'swarm',
-        projectId: validated.value.projectId,
-        swarmId: validated.value.swarmId,
-        mode: validated.value.mode,
-        runIndex: validated.value.runIndex,
-        intent: validated.value.intent
+      const envelopeIdentity = buildEnvelopeIdentityV1({
+        triggerType: validated.value.triggerType ?? 'manual',
+        repo: validated.value.repo ?? { owner: 'local', name: 'smartfunds-agent-sandbox' },
+        ref: validated.value.ref ?? { base: 'main', head: 'HEAD' },
+        changedPaths: validated.value.changedPaths,
+        declaredTier: validated.value.declaredTier ?? 0,
+        impliedTier: validated.value.impliedTier ?? 0,
+        executionMode: validated.value.mode,
+        errorClass: null,
+        failureSignature: null
       });
-      const runId = computeExecutionRunId(argsCanonical);
-      const existing = executionJournal.getRun(runId);
-      if (existing) {
-        return buildResponse(200, {
-          ...existing,
-          alreadyRecorded: true
-        });
-      }
-
-      executionJournal.createRun({
-        runType: 'swarm',
-        projectId: validated.value.projectId,
-        swarmId: validated.value.swarmId,
-        mode: validated.value.mode,
-        runIndex: validated.value.runIndex,
-        intent: validated.value.intent,
-        branchName: `swarm/${validated.value.projectId}/${validated.value.swarmId}/run-${validated.value.runIndex}`
-      });
-
-      const baseEnvelopeHash = buildRunEnvelopeHash({
-        request: validated.value,
-        normalizedFailureSignature: null
-      });
+      const created = runtimeService.createOrGetRun(envelopeIdentity);
+      const runId = created.runId;
 
       if (validated.value.mutationEnvelopeHash) {
         try {
-          assertEnvelopeHashMatch(baseEnvelopeHash, validated.value.mutationEnvelopeHash);
+          assertEnvelopeHashMatch(created.envelopeHash, validated.value.mutationEnvelopeHash);
         } catch (error) {
           return buildResponse(409, {
             error: (error as { code?: string }).code ?? 'ERR_ENVELOPE_HASH_MISMATCH',
@@ -281,20 +245,32 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         }
       }
 
-      executionJournal.appendLifecycleEvent({
-        runId,
-        attemptIndex: 0,
+      const existing = runtimeService.getRun(runId);
+      if (existing && existing.events.length > 0) {
+        return buildResponse(200, {
+          ...existing,
+          alreadyRecorded: true
+        });
+      }
+
+      const attempt0Id = computeAttemptId(runId, 0);
+      if (validated.value.changedPaths.length === 0) {
+        runtimeService.appendEvent(runId, attempt0Id, {
+          eventType: 'STATE_TRANSITION',
+          previousState: 'CREATED',
+          nextState: 'NO_WORK',
+          envelopeHash: created.envelopeHash
+        });
+        const noWorkRun = runtimeService.getRun(runId);
+        return buildResponse(200, noWorkRun ?? { runId, envelopeHash: created.envelopeHash });
+      }
+
+      runtimeService.appendEvent(runId, attempt0Id, {
+        eventType: 'STATE_TRANSITION',
         previousState: 'CREATED',
         nextState: 'RUNNING',
-        envelopeHash: baseEnvelopeHash
+        envelopeHash: created.envelopeHash
       });
-
-      const hooks: ExecutionHooks = {
-        onState: (state, payload) => {
-          executionJournal.setRunState(runId, state);
-          executionJournal.appendRunEvent(runId, state, payload ?? {});
-        }
-      };
 
       try {
         const result = runExecutor({
@@ -303,59 +279,37 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
           executionMode: validated.value.mode,
           intent: validated.value.intent,
           runIndex: validated.value.runIndex
-        }, { hooks });
+        }, {});
 
         if (!result.ok) {
           const failure = { code: result.code, message: result.code };
-          const normalizedFailure = toNormalizedFailure({
-            request: validated.value,
-            failure
-          });
-          const errorClass = classifyFailure(normalizedFailure);
-          const failureSignature = computeFailureSignature({
-            errorClass,
-            checkName: normalizedFailure.checkName,
-            normalizedMessage: normalizedFailure.normalizedMessage
-          });
-          const failureEnvelopeHash = buildRunEnvelopeHash({
-            request: validated.value,
-            normalizedFailureSignature: failureSignature
+          const normalizedFailure: NormalizedFailure = {
+            checkName: 'run_swarm',
+            category: toFailureCategory(failure.code),
+            normalizedMessage: failure.message,
+            code: failure.code
+          };
+          const classified = runtimeService.classifyFailure(normalizedFailure);
+
+          runtimeService.appendEvent(runId, attempt0Id, {
+            eventType: 'ERROR_CLASSIFIED',
+            envelopeHash: created.envelopeHash,
+            errorClass: classified.errorClass,
+            failureSignature: classified.failureSignature
           });
 
-          executionJournal.appendLifecycleEvent({
-            runId,
-            attemptIndex: 0,
+          runtimeService.appendEvent(runId, attempt0Id, {
+            eventType: 'STATE_TRANSITION',
             previousState: 'RUNNING',
             nextState: 'FAILED',
-            errorClass,
-            failureSignature,
-            envelopeHash: failureEnvelopeHash
+            envelopeHash: created.envelopeHash,
+            errorClass: classified.errorClass,
+            failureSignature: classified.failureSignature
           });
 
-          executionJournal.setRunFailure(runId, {
-            code: failure.code,
-            message: failure.message
-          });
-
-          if (isRetryEligible({ attemptIndex: 0, errorClass })) {
-            executionJournal.appendLifecycleEvent({
-              runId,
-              attemptIndex: 0,
-              previousState: 'FAILED',
-              nextState: 'RETRY_SCHEDULED',
-              errorClass,
-              failureSignature,
-              envelopeHash: failureEnvelopeHash
-            });
-            executionJournal.appendLifecycleEvent({
-              runId,
-              attemptIndex: 1,
-              previousState: 'RETRY_SCHEDULED',
-              nextState: 'RETRY_RUNNING',
-              errorClass,
-              failureSignature,
-              envelopeHash: failureEnvelopeHash
-            });
+          const retryRequest = runtimeService.requestRetry(runId);
+          if (retryRequest.accepted && retryRequest.attemptIndex === 1) {
+            const attempt1Id = computeAttemptId(runId, 1);
 
             const retryResult = runExecutor({
               projectId: validated.value.projectId,
@@ -363,103 +317,116 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
               executionMode: validated.value.mode,
               intent: validated.value.intent,
               runIndex: validated.value.runIndex
-            }, { hooks });
+            }, {});
 
             if (retryResult.ok) {
               const retryCanonical = canonicalStringify(retryResult);
-              executionJournal.setRunResult(runId, retryResult);
-              executionJournal.setRunState(runId, 'COMPLETED');
-              executionJournal.appendLifecycleEvent({
-                runId,
-                attemptIndex: 1,
+              runtimeService.appendEvent(runId, attempt1Id, {
+                eventType: 'STATE_TRANSITION',
                 previousState: 'RETRY_RUNNING',
                 nextState: 'RETRY_SUCCEEDED',
-                envelopeHash: failureEnvelopeHash,
+                envelopeHash: created.envelopeHash,
                 resultHash: sha256(retryCanonical)
               });
 
-              const completed = executionJournal.getRun(runId);
+              const completed = runtimeService.getRun(runId);
               return buildResponse(200, {
                 ...completed,
                 retryAttempted: true
               });
             }
 
-            executionJournal.setRunFailure(runId, {
-              code: retryResult.code,
-              message: retryResult.code
+            const retryFailure = runtimeService.classifyFailure({
+              checkName: 'run_swarm_retry',
+              category: toFailureCategory(retryResult.code),
+              normalizedMessage: retryResult.code,
+              code: retryResult.code
             });
-            executionJournal.appendLifecycleEvent({
-              runId,
-              attemptIndex: 1,
+            runtimeService.appendEvent(runId, attempt1Id, {
+              eventType: 'ERROR_CLASSIFIED',
+              envelopeHash: created.envelopeHash,
+              errorClass: retryFailure.errorClass,
+              failureSignature: retryFailure.failureSignature
+            });
+            runtimeService.appendEvent(runId, attempt1Id, {
+              eventType: 'STATE_TRANSITION',
               previousState: 'RETRY_RUNNING',
               nextState: 'RETRY_FAILED',
-              errorClass,
-              failureSignature,
-              envelopeHash: failureEnvelopeHash
+              envelopeHash: created.envelopeHash,
+              errorClass: retryFailure.errorClass,
+              failureSignature: retryFailure.failureSignature
+            });
+
+            const failedAfterRetry = runtimeService.getRun(runId);
+            return buildResponse(409, {
+              error: 'ERR_EXECUTION_FAILED',
+              retryEligible: true,
+              run: failedAfterRetry
             });
           }
 
-          const failed = executionJournal.getRun(runId);
+          const failed = runtimeService.getRun(runId);
           return buildResponse(409, {
             error: 'ERR_EXECUTION_FAILED',
-            retryEligible: isRetryEligible({ attemptIndex: 0, errorClass }),
+            retryEligible: retryRequest.accepted,
+            retryReason: retryRequest.reason,
             run: failed
           });
         }
 
         const resultCanonical = canonicalStringify(result);
-        executionJournal.setRunResult(runId, result);
-        executionJournal.setRunState(runId, 'COMPLETED');
-        executionJournal.appendLifecycleEvent({
-          runId,
-          attemptIndex: 0,
+        runtimeService.appendEvent(runId, attempt0Id, {
+          eventType: 'STATE_TRANSITION',
           previousState: 'RUNNING',
           nextState: 'SUCCEEDED',
-          envelopeHash: baseEnvelopeHash,
+          envelopeHash: created.envelopeHash,
           resultHash: sha256(resultCanonical)
         });
-        const completed = executionJournal.getRun(runId);
+        const completed = runtimeService.getRun(runId);
         return buildResponse(200, completed ?? { error: 'ERR_EXECUTION_FAILED' });
       } catch {
-        const fallbackFailure = {
+        const fallbackFailure: NormalizedFailure = {
           checkName: 'run_swarm',
-          failureType: 'UNKNOWN_FAILURE',
+          category: 'unknown',
           normalizedMessage: 'ERR_EXECUTION_FAILED',
-          tier: validated.value.declaredTier ?? 0,
-          impliedTier: validated.value.impliedTier ?? 0,
-          requiredChecks: [...(validated.value.requiredChecks ?? [])].sort((left, right) => left.localeCompare(right))
-        } satisfies NormalizedFailure;
-        const fallbackErrorClass = classifyFailure(fallbackFailure);
-        const fallbackFailureSignature = computeFailureSignature({
-          errorClass: fallbackErrorClass,
-          checkName: fallbackFailure.checkName,
-          normalizedMessage: fallbackFailure.normalizedMessage
+          code: 'ERR_EXECUTION_FAILED'
+        };
+        const classified = runtimeService.classifyFailure(fallbackFailure);
+        runtimeService.appendEvent(runId, attempt0Id, {
+          eventType: 'ERROR_CLASSIFIED',
+          envelopeHash: created.envelopeHash,
+          errorClass: classified.errorClass,
+          failureSignature: classified.failureSignature
         });
-        const fallbackEnvelopeHash = buildRunEnvelopeHash({
-          request: validated.value,
-          normalizedFailureSignature: fallbackFailureSignature
-        });
-        executionJournal.appendLifecycleEvent({
-          runId,
-          attemptIndex: 0,
+        runtimeService.appendEvent(runId, attempt0Id, {
+          eventType: 'STATE_TRANSITION',
           previousState: 'RUNNING',
           nextState: 'FAILED',
-          errorClass: fallbackErrorClass,
-          failureSignature: fallbackFailureSignature,
-          envelopeHash: fallbackEnvelopeHash
+          envelopeHash: created.envelopeHash,
+          errorClass: classified.errorClass,
+          failureSignature: classified.failureSignature
         });
-        executionJournal.appendRunEvent(runId, 'FAILED', { code: 'ERR_EXECUTION_FAILED' });
-        executionJournal.setRunFailure(runId, {
-          code: 'ERR_EXECUTION_FAILED',
-          message: 'ERR_EXECUTION_FAILED'
-        });
-        const failed = executionJournal.getRun(runId);
+        const failed = runtimeService.getRun(runId);
         return buildResponse(500, {
           error: 'ERR_EXECUTION_FAILED',
           run: failed
         });
       }
+    }
+
+    if (request.method === 'POST' && request.pathname.startsWith('/run/') && request.pathname.endsWith('/retry')) {
+      const runId = request.pathname.slice('/run/'.length, -'/retry'.length).trim();
+      if (runId.length === 0) {
+        return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
+      }
+
+      const run = runtimeService.getRun(runId);
+      if (!run) {
+        return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
+      }
+
+      const retryResult = runtimeService.requestRetry(runId);
+      return buildResponse(200, retryResult);
     }
 
     if (request.method === 'GET' && request.pathname.startsWith('/run/')) {
@@ -468,7 +435,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
       }
 
-      const run = executionJournal.getRun(runId);
+      const run = runtimeService.getRun(runId);
       if (!run) {
         return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
       }
@@ -477,12 +444,7 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     }
 
     if (request.method === 'GET' && request.pathname === '/runs') {
-      const projectId = request.query?.get('projectId') ?? undefined;
-      const swarmId = request.query?.get('swarmId') ?? undefined;
-      const runs = executionJournal.listRuns({
-        ...(projectId ? { projectId } : {}),
-        ...(swarmId ? { swarmId } : {})
-      });
+      const runs = runtimeService.listRuns();
       return buildResponse(200, { runs });
     }
 

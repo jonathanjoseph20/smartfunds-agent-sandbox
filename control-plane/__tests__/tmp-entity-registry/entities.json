@@ -1,0 +1,11 @@
+[
+  {
+    "entityId": "alpha-entity",
+    "legalName": "Alpha Holdings",
+    "projects": [
+      "project-a"
+    ],
+    "complianceProfile": "phase-1",
+    "custodyMode": "managed"
+  }
+]

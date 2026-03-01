@@ -2,6 +2,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
 import { createExecutionJournal, computeExecutionRunId } from '../execution/journal.ts';
+import { classifyFailure, computeFailureSignature, type NormalizedFailure } from '../execution/error-classification.ts';
+import { assertEnvelopeHashMatch, buildExecutionEnvelope, computeEnvelopeHash } from '../execution/envelope.ts';
+import { isRetryEligible, MAX_RETRY_ATTEMPTS } from '../execution/retry.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
 import { runSwarmExecutor, type ExecutionHooks } from '../swarm/swarm-executor.ts';
 import { resolveHandlerRoute } from './handlers/router.ts';
@@ -75,6 +78,12 @@ interface RunSwarmRequestBody {
   mode: 'structured' | 'autonomous';
   intent: string;
   runIndex: number;
+  attemptIndex?: number;
+  impliedTier?: number;
+  declaredTier?: number;
+  requiredChecks?: string[];
+  resolvedTeam?: string;
+  mutationEnvelopeHash?: string;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -83,6 +92,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
 }
 
 function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwarmRequestBody } | { ok: false } {
@@ -95,6 +108,12 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
   const mode = value.mode;
   const intent = value.intent;
   const runIndex = value.runIndex;
+  const attemptIndex = value.attemptIndex;
+  const impliedTier = value.impliedTier;
+  const declaredTier = value.declaredTier;
+  const requiredChecks = value.requiredChecks;
+  const resolvedTeam = value.resolvedTeam;
+  const mutationEnvelopeHash = value.mutationEnvelopeHash;
 
   if (!isNonEmptyString(projectId) || !isNonEmptyString(swarmId) || !isNonEmptyString(intent)) {
     return { ok: false };
@@ -105,6 +124,24 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
   if (!Number.isInteger(runIndex) || runIndex < 1) {
     return { ok: false };
   }
+  if (attemptIndex !== undefined && !isNonNegativeInteger(attemptIndex)) {
+    return { ok: false };
+  }
+  if (impliedTier !== undefined && !isNonNegativeInteger(impliedTier)) {
+    return { ok: false };
+  }
+  if (declaredTier !== undefined && !isNonNegativeInteger(declaredTier)) {
+    return { ok: false };
+  }
+  if (requiredChecks !== undefined && (!Array.isArray(requiredChecks) || requiredChecks.some((entry) => typeof entry !== 'string'))) {
+    return { ok: false };
+  }
+  if (resolvedTeam !== undefined && !isNonEmptyString(resolvedTeam)) {
+    return { ok: false };
+  }
+  if (mutationEnvelopeHash !== undefined && !isNonEmptyString(mutationEnvelopeHash)) {
+    return { ok: false };
+  }
 
   return {
     ok: true,
@@ -113,9 +150,53 @@ function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwar
       swarmId,
       mode,
       intent,
-      runIndex
+      runIndex,
+      ...(attemptIndex !== undefined ? { attemptIndex } : {}),
+      ...(impliedTier !== undefined ? { impliedTier } : {}),
+      ...(declaredTier !== undefined ? { declaredTier } : {}),
+      ...(requiredChecks !== undefined ? { requiredChecks } : {}),
+      ...(resolvedTeam !== undefined ? { resolvedTeam } : {}),
+      ...(mutationEnvelopeHash !== undefined ? { mutationEnvelopeHash } : {})
     }
   };
+}
+
+function toNormalizedFailure(input: {
+  request: RunSwarmRequestBody;
+  failure: { code: string; message: string };
+}): NormalizedFailure {
+  return {
+    checkName: 'checkName' in (input.failure as Record<string, unknown>) && typeof (input.failure as Record<string, unknown>).checkName === 'string'
+      ? (input.failure as Record<string, unknown>).checkName as string
+      : 'run_swarm',
+    failureType: 'failureType' in (input.failure as Record<string, unknown>) && typeof (input.failure as Record<string, unknown>).failureType === 'string'
+      ? (input.failure as Record<string, unknown>).failureType as string
+      : input.failure.code,
+    normalizedMessage: input.failure.message,
+    tier: input.request.declaredTier ?? 0,
+    impliedTier: input.request.impliedTier ?? 0,
+    requiredChecks: [...(input.request.requiredChecks ?? [])].sort((left, right) => left.localeCompare(right))
+  };
+}
+
+function buildRunEnvelopeHash(input: {
+  request: RunSwarmRequestBody;
+  normalizedFailureSignature: string | null;
+}): string {
+  return computeEnvelopeHash(buildExecutionEnvelope({
+    runInput: {
+      intent: input.request.intent,
+      mode: input.request.mode,
+      projectId: input.request.projectId,
+      runIndex: input.request.runIndex,
+      swarmId: input.request.swarmId
+    },
+    resolvedTeam: input.request.resolvedTeam ?? input.request.swarmId,
+    executionMode: input.request.mode,
+    impliedTier: input.request.impliedTier ?? 0,
+    declaredTier: input.request.declaredTier ?? 0,
+    normalizedFailureSignature: input.normalizedFailureSignature
+  }));
 }
 
 export function createServiceDispatcher(options: ServiceOptions = {}) {
@@ -143,6 +224,20 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
       }
 
+      const requestAttemptIndex = validated.value.attemptIndex ?? 0;
+      if (requestAttemptIndex > MAX_RETRY_ATTEMPTS) {
+        return buildResponse(409, {
+          error: 'ERR_INVALID_ATTEMPT_INDEX',
+          message: `Invalid attempt index: ${requestAttemptIndex}. Max allowed is ${MAX_RETRY_ATTEMPTS}.`
+        });
+      }
+      if (requestAttemptIndex !== 0) {
+        return buildResponse(409, {
+          error: 'ERR_INVALID_ATTEMPT_INDEX',
+          message: 'Retry attempts must be triggered by deterministic intake only.'
+        });
+      }
+
       const argsCanonical = canonicalStringify({
         runType: 'swarm',
         projectId: validated.value.projectId,
@@ -154,7 +249,10 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
       const runId = computeExecutionRunId(argsCanonical);
       const existing = executionJournal.getRun(runId);
       if (existing) {
-        return buildResponse(200, existing);
+        return buildResponse(200, {
+          ...existing,
+          alreadyRecorded: true
+        });
       }
 
       executionJournal.createRun({
@@ -165,6 +263,30 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         runIndex: validated.value.runIndex,
         intent: validated.value.intent,
         branchName: `swarm/${validated.value.projectId}/${validated.value.swarmId}/run-${validated.value.runIndex}`
+      });
+
+      const baseEnvelopeHash = buildRunEnvelopeHash({
+        request: validated.value,
+        normalizedFailureSignature: null
+      });
+
+      if (validated.value.mutationEnvelopeHash) {
+        try {
+          assertEnvelopeHashMatch(baseEnvelopeHash, validated.value.mutationEnvelopeHash);
+        } catch (error) {
+          return buildResponse(409, {
+            error: (error as { code?: string }).code ?? 'ERR_ENVELOPE_HASH_MISMATCH',
+            message: (error as Error).message
+          });
+        }
+      }
+
+      executionJournal.appendLifecycleEvent({
+        runId,
+        attemptIndex: 0,
+        previousState: 'CREATED',
+        nextState: 'RUNNING',
+        envelopeHash: baseEnvelopeHash
       });
 
       const hooks: ExecutionHooks = {
@@ -184,22 +306,149 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
         }, { hooks });
 
         if (!result.ok) {
-          executionJournal.setRunFailure(runId, {
-            code: result.code,
-            message: result.code
+          const failure = { code: result.code, message: result.code };
+          const normalizedFailure = toNormalizedFailure({
+            request: validated.value,
+            failure
           });
+          const errorClass = classifyFailure(normalizedFailure);
+          const failureSignature = computeFailureSignature({
+            errorClass,
+            checkName: normalizedFailure.checkName,
+            normalizedMessage: normalizedFailure.normalizedMessage
+          });
+          const failureEnvelopeHash = buildRunEnvelopeHash({
+            request: validated.value,
+            normalizedFailureSignature: failureSignature
+          });
+
+          executionJournal.appendLifecycleEvent({
+            runId,
+            attemptIndex: 0,
+            previousState: 'RUNNING',
+            nextState: 'FAILED',
+            errorClass,
+            failureSignature,
+            envelopeHash: failureEnvelopeHash
+          });
+
+          executionJournal.setRunFailure(runId, {
+            code: failure.code,
+            message: failure.message
+          });
+
+          if (isRetryEligible({ attemptIndex: 0, errorClass })) {
+            executionJournal.appendLifecycleEvent({
+              runId,
+              attemptIndex: 0,
+              previousState: 'FAILED',
+              nextState: 'RETRY_SCHEDULED',
+              errorClass,
+              failureSignature,
+              envelopeHash: failureEnvelopeHash
+            });
+            executionJournal.appendLifecycleEvent({
+              runId,
+              attemptIndex: 1,
+              previousState: 'RETRY_SCHEDULED',
+              nextState: 'RETRY_RUNNING',
+              errorClass,
+              failureSignature,
+              envelopeHash: failureEnvelopeHash
+            });
+
+            const retryResult = runExecutor({
+              projectId: validated.value.projectId,
+              swarmId: validated.value.swarmId,
+              executionMode: validated.value.mode,
+              intent: validated.value.intent,
+              runIndex: validated.value.runIndex
+            }, { hooks });
+
+            if (retryResult.ok) {
+              const retryCanonical = canonicalStringify(retryResult);
+              executionJournal.setRunResult(runId, retryResult);
+              executionJournal.setRunState(runId, 'COMPLETED');
+              executionJournal.appendLifecycleEvent({
+                runId,
+                attemptIndex: 1,
+                previousState: 'RETRY_RUNNING',
+                nextState: 'RETRY_SUCCEEDED',
+                envelopeHash: failureEnvelopeHash,
+                resultHash: sha256(retryCanonical)
+              });
+
+              const completed = executionJournal.getRun(runId);
+              return buildResponse(200, {
+                ...completed,
+                retryAttempted: true
+              });
+            }
+
+            executionJournal.setRunFailure(runId, {
+              code: retryResult.code,
+              message: retryResult.code
+            });
+            executionJournal.appendLifecycleEvent({
+              runId,
+              attemptIndex: 1,
+              previousState: 'RETRY_RUNNING',
+              nextState: 'RETRY_FAILED',
+              errorClass,
+              failureSignature,
+              envelopeHash: failureEnvelopeHash
+            });
+          }
+
           const failed = executionJournal.getRun(runId);
           return buildResponse(409, {
             error: 'ERR_EXECUTION_FAILED',
+            retryEligible: isRetryEligible({ attemptIndex: 0, errorClass }),
             run: failed
           });
         }
 
+        const resultCanonical = canonicalStringify(result);
         executionJournal.setRunResult(runId, result);
         executionJournal.setRunState(runId, 'COMPLETED');
+        executionJournal.appendLifecycleEvent({
+          runId,
+          attemptIndex: 0,
+          previousState: 'RUNNING',
+          nextState: 'SUCCEEDED',
+          envelopeHash: baseEnvelopeHash,
+          resultHash: sha256(resultCanonical)
+        });
         const completed = executionJournal.getRun(runId);
         return buildResponse(200, completed ?? { error: 'ERR_EXECUTION_FAILED' });
       } catch {
+        const fallbackFailure = {
+          checkName: 'run_swarm',
+          failureType: 'UNKNOWN_FAILURE',
+          normalizedMessage: 'ERR_EXECUTION_FAILED',
+          tier: validated.value.declaredTier ?? 0,
+          impliedTier: validated.value.impliedTier ?? 0,
+          requiredChecks: [...(validated.value.requiredChecks ?? [])].sort((left, right) => left.localeCompare(right))
+        } satisfies NormalizedFailure;
+        const fallbackErrorClass = classifyFailure(fallbackFailure);
+        const fallbackFailureSignature = computeFailureSignature({
+          errorClass: fallbackErrorClass,
+          checkName: fallbackFailure.checkName,
+          normalizedMessage: fallbackFailure.normalizedMessage
+        });
+        const fallbackEnvelopeHash = buildRunEnvelopeHash({
+          request: validated.value,
+          normalizedFailureSignature: fallbackFailureSignature
+        });
+        executionJournal.appendLifecycleEvent({
+          runId,
+          attemptIndex: 0,
+          previousState: 'RUNNING',
+          nextState: 'FAILED',
+          errorClass: fallbackErrorClass,
+          failureSignature: fallbackFailureSignature,
+          envelopeHash: fallbackEnvelopeHash
+        });
         executionJournal.appendRunEvent(runId, 'FAILED', { code: 'ERR_EXECUTION_FAILED' });
         executionJournal.setRunFailure(runId, {
           code: 'ERR_EXECUTION_FAILED',

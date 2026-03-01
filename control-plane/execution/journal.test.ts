@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
-import { createExecutionJournal, computeExecutionEventId } from './journal.ts';
+import { createExecutionJournal, computeExecutionEventId, computeLifecycleEventId } from './journal.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -129,5 +129,103 @@ describe('execution journal', () => {
     const runIds = runs.map((run) => run.runId);
 
     expect(runIds).toEqual([...runIds].sort((left, right) => left.localeCompare(right)));
+  });
+
+  it('keeps append-only lifecycle ordering', () => {
+    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
+    const created = journal.createRun({
+      runType: 'swarm',
+      projectId: 'core-app',
+      swarmId: 'dev-team',
+      mode: 'structured',
+      runIndex: 1,
+      intent: 'run sprint',
+      branchName: 'swarm/core-app/dev-team/run-1'
+    });
+
+    journal.appendLifecycleEvent({
+      runId: created.runId,
+      attemptIndex: 0,
+      previousState: 'CREATED',
+      nextState: 'RUNNING',
+      envelopeHash: 'env-0'
+    });
+    journal.appendLifecycleEvent({
+      runId: created.runId,
+      attemptIndex: 0,
+      previousState: 'RUNNING',
+      nextState: 'FAILED',
+      errorClass: 'LINT_FAILURE',
+      failureSignature: 'sig-1',
+      envelopeHash: 'env-1'
+    });
+    journal.appendLifecycleEvent({
+      runId: created.runId,
+      attemptIndex: 0,
+      previousState: 'FAILED',
+      nextState: 'RETRY_SCHEDULED',
+      errorClass: 'LINT_FAILURE',
+      failureSignature: 'sig-1',
+      envelopeHash: 'env-1'
+    });
+
+    const events = journal.listLifecycleEvents(created.runId);
+    expect(events.map((entry) => `${entry.previousState}->${entry.nextState}`)).toEqual([
+      'CREATED->RUNNING',
+      'RUNNING->FAILED',
+      'FAILED->RETRY_SCHEDULED'
+    ]);
+  });
+
+  it('does not duplicate lifecycle entries for idempotent replay', () => {
+    const journal = createExecutionJournal(db, () => '2026-03-01T00:00:00.000Z');
+    const created = journal.createRun({
+      runType: 'swarm',
+      projectId: 'core-app',
+      swarmId: 'dev-team',
+      mode: 'structured',
+      runIndex: 1,
+      intent: 'run sprint',
+      branchName: 'swarm/core-app/dev-team/run-1'
+    });
+
+    const input = {
+      runId: created.runId,
+      attemptIndex: 0,
+      previousState: 'RUNNING' as const,
+      nextState: 'FAILED' as const,
+      errorClass: 'LINT_FAILURE' as const,
+      failureSignature: 'sig-1',
+      envelopeHash: 'env-1'
+    };
+
+    journal.appendLifecycleEvent(input);
+    journal.appendLifecycleEvent(input);
+
+    const events = journal.listLifecycleEvents(created.runId);
+    expect(events).toHaveLength(1);
+  });
+
+  it('computes deterministic lifecycle event identity across repeated runs', () => {
+    const first = computeLifecycleEventId({
+      runId: 'run-1',
+      attemptIndex: 0,
+      previousState: 'RUNNING',
+      nextState: 'FAILED',
+      errorClass: 'LINT_FAILURE',
+      failureSignature: 'sig-1',
+      envelopeHash: 'env-1'
+    });
+    const second = computeLifecycleEventId({
+      runId: 'run-1',
+      attemptIndex: 0,
+      previousState: 'RUNNING',
+      nextState: 'FAILED',
+      errorClass: 'LINT_FAILURE',
+      failureSignature: 'sig-1',
+      envelopeHash: 'env-1'
+    });
+
+    expect(first).toBe(second);
   });
 });

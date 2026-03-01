@@ -28,10 +28,15 @@
     "demo:scenario": "bash scripts/demo.sh --scenario",
     "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts",
     "swarm:run": "node --experimental-strip-types control-plane/cli/swarm-run.ts",
-    "service:start": "node --experimental-strip-types control-plane/service/index.ts"
+    "service:start": "node --experimental-strip-types control-plane/service/index.ts",
+    "lint_tier0": "npm run lint --workspaces --if-present",
+    "lint": "npm run lint_tier0"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.4"
   }
 }

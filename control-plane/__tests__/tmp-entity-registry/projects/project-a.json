@@ -1,0 +1,6 @@
+{
+  "projectId": "project-a",
+  "ownedPaths": [
+    "project-a/**"
+  ]
+}

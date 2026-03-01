@@ -1,0 +1,6 @@
+{
+  "projectId": "alpha-project",
+  "ownedPaths": [
+    "control-plane/**"
+  ]
+}

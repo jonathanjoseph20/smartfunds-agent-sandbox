@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 
 import {
   buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
+  extractTierFromLabels,
   extractTierLabelFromBody,
   extractTierFromEvidence,
   getRequiredChecksForTier,
@@ -18,6 +18,13 @@ import {
   type GovernanceReport,
   type Tier
 } from '../governance/diagnostics.ts';
+import {
+  MARKDOWN_DEPRECATION_WARNING,
+  readEvidenceContract,
+  resolveImpliedExecutionMode,
+  validateEvidenceAgainstComputedState
+} from '../governance/evidence-contract.ts';
+import { defaultGitExec, getChangedFilesFromMain } from '../governance/changed-files.ts';
 import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
@@ -74,21 +81,6 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-function defaultGitExec(args: string[]): string {
-  try {
-    return execFileSync('git', args, { encoding: 'utf8' }).trim();
-  } catch (error) {
-    const stdout = (error as { stdout?: string | Buffer }).stdout;
-    if (typeof stdout === 'string') {
-      return stdout.trim();
-    }
-    if (Buffer.isBuffer(stdout)) {
-      return stdout.toString('utf8').trim();
-    }
-    throw error;
-  }
-}
-
 function parseArgs(argv: string[]): ParsedArgs {
   let bodyFile: string | undefined;
   let labelsFile: string | undefined;
@@ -133,18 +125,6 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { bodyFile, labelsFile };
 }
 
-function getChangedFiles(execGit: GitExec): string[] {
-  const output = execGit(['diff', '--name-only', 'main...HEAD']);
-  if (!output) {
-    return [];
-  }
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-}
-
 function getBranchName(execGit: GitExec): string {
   return execGit(['rev-parse', '--abbrev-ref', 'HEAD']);
 }
@@ -186,6 +166,7 @@ function resolveOwnershipResult(
 }
 
 function buildNextActions(params: {
+  useLegacyEvidence: boolean;
   declaredTier: Tier | null;
   impliedTier: Tier;
   evidenceErrors: string[];
@@ -198,15 +179,20 @@ function buildNextActions(params: {
 }): string[] {
   const actions: string[] = [];
 
-  if (!params.tierBodyLabel) {
+  if (params.useLegacyEvidence && !params.tierBodyLabel) {
     actions.push('Add unfenced PR body tier declaration (tier-0..tier-3).');
   }
 
-  if (params.missingEvidenceFields.length > 0 || params.evidenceErrors.length > 0) {
+  if (params.useLegacyEvidence && (params.missingEvidenceFields.length > 0 || params.evidenceErrors.length > 0)) {
     actions.push(buildEvidenceBlockAction());
   }
 
-  if (params.tierBody !== undefined && params.tierBodyLabel !== undefined && params.tierBody !== params.tierBodyLabel) {
+  if (
+    params.useLegacyEvidence &&
+    params.tierBody !== undefined &&
+    params.tierBodyLabel !== undefined &&
+    params.tierBody !== params.tierBodyLabel
+  ) {
     actions.push(`Update PR body evidence Risk Tier to ${params.tierBodyLabel}.`);
   }
 
@@ -244,37 +230,65 @@ export function buildPreflightReport(
   const errors: string[] = [];
   const branchName = deps.branchName ?? 'main';
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
-
-  const evidenceValidation = validateEvidenceBlockSchema(body);
-  const evidenceErrors = [...evidenceValidation.errors];
-  const missingEvidenceFields = evidenceValidation.missingFields;
-  errors.push(...evidenceErrors);
-
-  let tierBodyLabel: Tier | undefined;
-  try {
-    tierBodyLabel = extractTierLabelFromBody(body);
-  } catch (error) {
-    errors.push((error as Error).message);
-  }
-
-  if (tierBodyLabel === undefined) {
-    errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
-  }
-
-  const tierBody = extractTierFromEvidence(body);
-  if (evidenceValidation.evidence && tierBody === undefined) {
-    errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
-  }
-
-  if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
-    errors.push(
-      `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
-    );
-  }
-
   const { impliedTier, escalationFiles } = inferImpliedTier(changedFiles, contract);
-  const declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
-  const labelTier = declaredTier;
+  const warnings: string[] = [];
+  const evidenceContract = readEvidenceContract({
+    readFile: deps.readFile,
+    existsSync: deps.existsSync
+  });
+  const useLegacyEvidence = !evidenceContract.exists;
+  const evidenceErrors: string[] = [];
+  let missingEvidenceFields: string[] = [];
+  let tierBodyLabel: Tier | undefined;
+  let tierBody: Tier | undefined;
+  let declaredTier: Tier | null = null;
+  let labelTier: Tier | null = null;
+  let explicitLabelTier: Tier | null = null;
+
+  if (evidenceContract.exists) {
+    if ('evidence' in evidenceContract) {
+      const evidence = evidenceContract.evidence;
+      declaredTier = evidence.tier;
+      try {
+        explicitLabelTier = extractTierFromLabels(labelNames) ?? null;
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
+      labelTier = explicitLabelTier ?? declaredTier;
+    } else {
+      errors.push(...evidenceContract.errors);
+    }
+  } else {
+    warnings.push(MARKDOWN_DEPRECATION_WARNING);
+    const evidenceValidation = validateEvidenceBlockSchema(body);
+    evidenceErrors.push(...evidenceValidation.errors);
+    missingEvidenceFields = evidenceValidation.missingFields;
+    errors.push(...evidenceErrors);
+
+    try {
+      tierBodyLabel = extractTierLabelFromBody(body);
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+
+    if (tierBodyLabel === undefined) {
+      errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
+    }
+
+    tierBody = extractTierFromEvidence(body);
+    if (evidenceValidation.evidence && tierBody === undefined) {
+      errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
+    }
+
+    if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
+      errors.push(
+        `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
+      );
+    }
+
+    declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
+    labelTier = declaredTier;
+  }
 
   if (labelTier !== null && labelTier < impliedTier) {
     errors.push(
@@ -284,13 +298,19 @@ export function buildPreflightReport(
 
   const tier3ApprovalRequired = declaredTier === 3;
   const tier3ApprovalSatisfied = tier3ApprovalRequired
-    ? hasUnfencedToken(body, 'tier-3-approved') || labelNames.includes('tier-3-approved')
+    ? (useLegacyEvidence
+      ? hasUnfencedToken(body, 'tier-3-approved') || labelNames.includes('tier-3-approved')
+      : labelNames.includes('tier-3-approved'))
     : true;
 
   if (tier3ApprovalRequired && !tier3ApprovalSatisfied) {
-    errors.push(
-      "Tier 3 requires tier-3-approved. Add an unfenced line 'tier-3-approved' to .pr-body.md (local only) or create .pr-labels.txt listing tier-3-approved."
-    );
+    if (useLegacyEvidence) {
+      errors.push(
+        "Tier 3 requires tier-3-approved. Add an unfenced line 'tier-3-approved' to .pr-body.md (local only) or create .pr-labels.txt listing tier-3-approved."
+      );
+    } else {
+      errors.push('Tier 3 requires `tier-3-approved` label.');
+    }
   }
 
   const requiredChecks = labelTier !== null ? getRequiredChecksForTier(labelTier, contract) : [];
@@ -340,17 +360,31 @@ export function buildPreflightReport(
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
+
+  if (evidenceContract.exists && 'evidence' in evidenceContract) {
+    const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
+    errors.push(
+      ...validateEvidenceAgainstComputedState({
+        evidence: evidenceContract.evidence,
+        changedFiles,
+        labelTier: explicitLabelTier,
+        impliedMode
+      })
+    );
+  }
+
   const enforceModePolicy = modePolicy.violation !== 'mixed_execution_modes';
   if (modePolicy.status === 'failed' && modePolicy.message && enforceModePolicy) {
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-
-  const warnings = shouldWarnStalePayload(errors)
-    ? ['GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.']
-    : [];
+  const stalePayloadWarning = shouldWarnStalePayload(errors);
+  if (stalePayloadWarning) {
+    warnings.push('GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.');
+  }
 
   const nextActions = buildNextActions({
+    useLegacyEvidence,
     declaredTier,
     impliedTier,
     evidenceErrors,
@@ -372,7 +406,7 @@ export function buildPreflightReport(
   nextActions.push(...railBindingResult.nextActions);
   nextActions.push(...isolation.nextActions);
 
-  if (warnings.length > 0) {
+  if (stalePayloadWarning) {
     nextActions.push(...buildStalePayloadActions());
   }
 
@@ -502,6 +536,9 @@ function renderSummary(result: PreflightResult, branch: string): string {
   lines.push(
     `Mode Enforcement: ${result.report.modeEnforcementStatus}${result.report.modeViolation ? ` (${result.report.modeViolation})` : ''}`
   );
+  if (result.warnings.length > 0) {
+    lines.push(`Warnings: ${result.warnings.join(' | ')}`);
+  }
   if (result.report.requiredMinimumTier !== null) {
     lines.push(`Mode Required Minimum Tier: ${result.report.requiredMinimumTier}`);
   }
@@ -537,7 +574,7 @@ async function main(): Promise<void> {
   const existsSync = (filePath: string) => fs.existsSync(filePath);
 
   const branch = getBranchName(gitExec);
-  const changedFiles = getChangedFiles(gitExec);
+  const changedFiles = getChangedFilesFromMain(gitExec);
   
 if (changedFiles.length === 0) {
   console.log('No changed files detected. Skipping governance validation.');

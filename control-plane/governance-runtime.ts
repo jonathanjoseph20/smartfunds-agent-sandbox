@@ -25,6 +25,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   const result = await runGovernanceValidation();
   writeStepSummary(result.summaryText);
+  for (const warning of result.report.warnings) {
+    console.warn(`Warning: ${warning}`);
+  }
 
   if (!result.ok) {
     console.error('Governance validation failed.');

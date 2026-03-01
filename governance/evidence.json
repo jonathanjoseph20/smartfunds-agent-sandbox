@@ -1,0 +1,25 @@
+{
+  "affectedPaths": [
+    "control-plane/cli/governance-emit.test.ts",
+    "control-plane/cli/governance-emit.ts",
+    "control-plane/cli/governance-preflight.test.ts",
+    "control-plane/cli/governance-preflight.ts",
+    "control-plane/cli/governance-sync-pr-body.test.ts",
+    "control-plane/cli/governance-sync-pr-body.ts",
+    "control-plane/governance-check.ts",
+    "control-plane/governance-runtime.ts",
+    "control-plane/governance/changed-files.ts",
+    "control-plane/governance/evidence-contract.test.ts",
+    "control-plane/governance/evidence-contract.ts",
+    "control-plane/governance/validate.test.ts",
+    "control-plane/governance/validate.ts",
+    "governance/evidence.json",
+    "governance/schema/evidence.schema.json",
+    "package.json"
+  ],
+  "autonomyScopeExpanded": false,
+  "determinismStatement": "No identity surfaces mutated. No randomness introduced.",
+  "mode": "structured",
+  "retrySemanticsModified": false,
+  "tier": 3
+}

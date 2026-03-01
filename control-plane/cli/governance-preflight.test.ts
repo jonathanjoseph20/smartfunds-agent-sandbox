@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { stringifyGovernanceReport } from '../governance/diagnostics';
@@ -43,6 +45,9 @@ describe('governance:preflight', () => {
     expect(result.report.executionModesTouched).toEqual(['autonomous']);
     expect(result.report.swarmOrchestrationStatus).toBe('ok');
     expect(result.report.swarmOrchestrationViolations).toEqual([]);
+    expect(result.warnings).toContain(
+      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
+    );
   });
 
   it('fails when evidence block is missing', () => {
@@ -141,7 +146,32 @@ Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted 
     });
 
     const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{"declaredTier":1,"impliedTier":1,"labelTier":1,"missingLabels":[],"missingEvidenceFields":[],"requiredChecks":["lint_tier0","unit_tests"],"projectsTouched":["project-a","project-b"],"teamsTouched":["product-app"],"swarmsDeclared":[],"swarmsTouched":[],"swarmOrchestrationStatus":"ok","swarmOrchestrationViolations":[],"swarmDependencyEdges":[],"swarmTopologicalOrder":[],"swarmPhaseBySwarm":{},"swarmWarnings":[],"swarmMode":null,"swarmTeamId":null,"unownedFiles":[],"ownershipStatus":"ok","entitiesTouched":[],"entityOwnershipStatus":"unknown_entity_mapping","unmappedProjects":["project-a","project-b"],"entityByProject":{"project-a":null,"project-b":null},"entityRailProfileByEntity":{},"entitiesMissingRailProfile":[],"railBindingStatus":"ok","railViolations":[],"autonomousContextDetected":false,"branchNamespaceValid":true,"structuredPathsTouched":[],"autonomousPathsTouched":[],"isolationStatus":"ok","isolationViolations":[],"nextActions":["Add missing projectId to control-plane/entities/registry.json."],"warnings":[],"executionModesTouched":["autonomous"],"modeBoundaryStatus":"ok","conflictingTeams":[],"conflictingPaths":[],"swarmExecutionModesTouched":[],"modeWarnings":[],"unownedPaths":[],"ambiguousPaths":[],"modeEnforcementStatus":"ok","modeViolation":null,"requiredMinimumTier":null,"errors":[],"metadataSource":{"bodySource":"stub","bodyPath":null,"labelSource":"stub","labelsPath":null,"commentSource":"none"},"commentEvidenceDetected":false,"commentEvidenceCount":0,"sealWarnings":[],"executionContext":{"context":"local","executionMode":"unknown","retryEnabled":false},"retryTrace":{"attempted":false,"retryCount":0,"initialStatus":"passed","finalStatus":"passed","triggerErrorCode":null,"retryable":false,"patchApplied":null}}"`);
+    expect(json).toMatchInlineSnapshot(`"{"declaredTier":1,"impliedTier":1,"labelTier":1,"missingLabels":[],"missingEvidenceFields":[],"requiredChecks":["lint_tier0","unit_tests"],"projectsTouched":["project-a","project-b"],"teamsTouched":["product-app"],"swarmsDeclared":[],"swarmsTouched":[],"swarmOrchestrationStatus":"ok","swarmOrchestrationViolations":[],"swarmDependencyEdges":[],"swarmTopologicalOrder":[],"swarmPhaseBySwarm":{},"swarmWarnings":[],"swarmMode":null,"swarmTeamId":null,"unownedFiles":[],"ownershipStatus":"ok","entitiesTouched":[],"entityOwnershipStatus":"unknown_entity_mapping","unmappedProjects":["project-a","project-b"],"entityByProject":{"project-a":null,"project-b":null},"entityRailProfileByEntity":{},"entitiesMissingRailProfile":[],"railBindingStatus":"ok","railViolations":[],"autonomousContextDetected":false,"branchNamespaceValid":true,"structuredPathsTouched":[],"autonomousPathsTouched":[],"isolationStatus":"ok","isolationViolations":[],"nextActions":["Add missing projectId to control-plane/entities/registry.json."],"warnings":["Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback)."],"executionModesTouched":["autonomous"],"modeBoundaryStatus":"ok","conflictingTeams":[],"conflictingPaths":[],"swarmExecutionModesTouched":[],"modeWarnings":[],"unownedPaths":[],"ambiguousPaths":[],"modeEnforcementStatus":"ok","modeViolation":null,"requiredMinimumTier":null,"errors":[],"metadataSource":{"bodySource":"stub","bodyPath":null,"labelSource":"stub","labelsPath":null,"commentSource":"none"},"commentEvidenceDetected":false,"commentEvidenceCount":0,"sealWarnings":[],"executionContext":{"context":"local","executionMode":"unknown","retryEnabled":false},"retryTrace":{"attempted":false,"retryCount":0,"initialStatus":"passed","finalStatus":"passed","triggerErrorCode":null,"retryable":false,"patchApplied":null}}"`);
+  });
+
+  it('uses JSON evidence when governance/evidence.json exists and ignores markdown parsing', () => {
+    const invalidBody = 'invalid markdown payload';
+    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
+    const evidence = JSON.stringify({
+      tier: 1,
+      mode: 'autonomous',
+      affectedPaths: ['apps/api/src/index.ts'],
+      determinismStatement: 'No identity surfaces mutated.',
+      retrySemanticsModified: false,
+      autonomyScopeExpanded: false
+    });
+    const result = buildPreflightReport(invalidBody, ['apps/api/src/index.ts'], ['tier-1'], {
+      existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
+      readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
+      loadProjects: () => [],
+      loadTeams: () => [],
+      resolveOwnership: () => makeOwnership()
+    });
+
+    expect(result.errors.join('\n')).not.toContain('Missing fenced evidence block');
+    expect(result.warnings).not.toContain(
+      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
+    );
   });
 
   it('reports swarms touched for project-level mappings', () => {

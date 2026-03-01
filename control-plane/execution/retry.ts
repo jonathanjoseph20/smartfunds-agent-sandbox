@@ -47,8 +47,19 @@ export function computeAttemptId(runId: string, attemptIndex: number): string {
 export function isRetryEligible(args: {
   attemptIndex: number;
   errorClass: ErrorClass;
+  ownershipStatus: 'ok' | 'no_work' | 'violation';
+  declaredTier: number;
+  impliedTier: number;
 }): boolean {
   if (args.attemptIndex !== 0) {
+    return false;
+  }
+
+  if (args.ownershipStatus !== 'ok') {
+    return false;
+  }
+
+  if (args.declaredTier !== args.impliedTier) {
     return false;
   }
 
@@ -58,6 +69,9 @@ export function isRetryEligible(args: {
 export function assertRetryEligible(args: {
   attemptIndex: number;
   errorClass: ErrorClass;
+  ownershipStatus: 'ok' | 'no_work' | 'violation';
+  declaredTier: number;
+  impliedTier: number;
 }): void {
   if (!isRetryEligible(args)) {
     throw new RetryEligibilityError(args.attemptIndex, args.errorClass);

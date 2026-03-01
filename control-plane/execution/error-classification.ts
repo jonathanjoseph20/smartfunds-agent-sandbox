@@ -1,14 +1,5 @@
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
 
-export type NormalizedFailure = {
-  checkName: string;
-  failureType: string;
-  normalizedMessage: string;
-  tier: number;
-  impliedTier: number;
-  requiredChecks: string[];
-};
-
 export type ErrorClass =
   | 'GOVERNANCE_ERROR'
   | 'EVIDENCE_SCHEMA_ERROR'
@@ -22,104 +13,85 @@ export type ErrorClass =
   | 'TRANSIENT_INFRA_ERROR'
   | 'UNKNOWN_FAILURE';
 
-function normalizeToken(value: string): string {
-  return value.trim().toUpperCase();
-}
+export type FailureCategory =
+  | 'governance'
+  | 'lint'
+  | 'typecheck'
+  | 'unit'
+  | 'integration'
+  | 'schema'
+  | 'infra'
+  | 'unknown';
 
-function includesAny(value: string, tokens: readonly string[]): boolean {
-  return tokens.some((token) => value.includes(token));
-}
+export type NormalizedFailure = {
+  checkName: string;
+  category: FailureCategory;
+  normalizedMessage: string;
+  code?: string;
+};
 
-function isGovernanceFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['GOVERNANCE', 'POLICY_VALIDATION', 'VALIDATOR'])
-    || includesAny(checkName, ['GOVERNANCE', 'PR_BODY', 'PR:VERIFY', 'POLICY', 'VALIDATE_PR']);
-}
+const CATEGORY_TO_CLASS: Readonly<Record<FailureCategory, ErrorClass>> = {
+  governance: 'GOVERNANCE_ERROR',
+  lint: 'LINT_FAILURE',
+  typecheck: 'TYPECHECK_FAILURE',
+  unit: 'UNIT_TEST_FAILURE',
+  integration: 'INTEGRATION_TEST_FAILURE',
+  schema: 'SCHEMA_VALIDATION_FAILURE',
+  infra: 'TRANSIENT_INFRA_ERROR',
+  unknown: 'UNKNOWN_FAILURE'
+};
 
-function isOwnershipViolation(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['OWNERSHIP_VIOLATION', 'UNOWNED_PATHS'])
-    || includesAny(checkName, ['OWNERSHIP', 'UNOWNED']);
-}
+const GOVERNANCE_CODE_TO_CLASS: Readonly<Record<string, ErrorClass>> = {
+  OWNERSHIP_VIOLATION: 'OWNERSHIP_VIOLATION',
+  UNOWNED_PATHS: 'OWNERSHIP_VIOLATION',
+  AMBIGUOUS_OWNERSHIP: 'OWNERSHIP_VIOLATION',
+  TIER_MISMATCH: 'TIER_MISMATCH',
+  MISSING_EVIDENCE_BLOCK: 'EVIDENCE_SCHEMA_ERROR',
+  MISSING_EVIDENCE_FIELDS: 'EVIDENCE_SCHEMA_ERROR',
+  EVIDENCE_FORMAT_ERROR: 'EVIDENCE_SCHEMA_ERROR'
+};
 
-function isTierMismatch(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['TIER_MISMATCH', 'MISSING_TIER_LABEL'])
-    || includesAny(checkName, ['TIER']);
-}
-
-function isEvidenceSchemaFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['EVIDENCE_SCHEMA', 'MISSING_EVIDENCE', 'EVIDENCE_FORMAT'])
-    || includesAny(checkName, ['EVIDENCE']);
-}
-
-function isLintFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['LINT_FAILURE', 'ESLINT']) || checkName === 'LINT';
-}
-
-function isTypecheckFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['TYPECHECK_FAILURE', 'TSC']) || includesAny(checkName, ['TYPECHECK', 'TSC']);
-}
-
-function isUnitTestFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['UNIT_TEST_FAILURE']) || includesAny(checkName, ['UNIT_TEST', 'UNIT']);
-}
-
-function isIntegrationTestFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['INTEGRATION_TEST_FAILURE']) || includesAny(checkName, ['INTEGRATION_TEST', 'INTEGRATION']);
-}
-
-function isSchemaValidationFailure(failureType: string, checkName: string): boolean {
-  return includesAny(failureType, ['SCHEMA_VALIDATION_FAILURE', 'SCHEMA_VALIDATION']) || includesAny(checkName, ['SCHEMA']);
-}
-
-function isTransientInfraFailure(failureType: string): boolean {
-  return failureType === 'TRANSIENT_INFRA_ERROR';
-}
-
-export function classifyFailure(failure: NormalizedFailure): ErrorClass {
-  const failureType = normalizeToken(failure.failureType);
-  const checkName = normalizeToken(failure.checkName);
-
-  if (isGovernanceFailure(failureType, checkName)) {
-    return 'GOVERNANCE_ERROR';
+function normalizeCode(code: string | undefined): string | null {
+  if (!code) {
+    return null;
   }
-  if (isOwnershipViolation(failureType, checkName)) {
-    return 'OWNERSHIP_VIOLATION';
-  }
-  if (isTierMismatch(failureType, checkName)) {
-    return 'TIER_MISMATCH';
-  }
-  if (isEvidenceSchemaFailure(failureType, checkName)) {
-    return 'EVIDENCE_SCHEMA_ERROR';
-  }
-  if (isLintFailure(failureType, checkName)) {
-    return 'LINT_FAILURE';
-  }
-  if (isTypecheckFailure(failureType, checkName)) {
-    return 'TYPECHECK_FAILURE';
-  }
-  if (isUnitTestFailure(failureType, checkName)) {
-    return 'UNIT_TEST_FAILURE';
-  }
-  if (isIntegrationTestFailure(failureType, checkName)) {
-    return 'INTEGRATION_TEST_FAILURE';
-  }
-  if (isSchemaValidationFailure(failureType, checkName)) {
-    return 'SCHEMA_VALIDATION_FAILURE';
-  }
-  if (isTransientInfraFailure(failureType)) {
-    return 'TRANSIENT_INFRA_ERROR';
-  }
+  const normalized = code.trim().toUpperCase();
+  return normalized.length > 0 ? normalized : null;
+}
 
-  return 'UNKNOWN_FAILURE';
+function resolveErrorClass(failure: NormalizedFailure): ErrorClass {
+  if (failure.category === 'governance') {
+    const code = normalizeCode(failure.code);
+    if (code && code in GOVERNANCE_CODE_TO_CLASS) {
+      return GOVERNANCE_CODE_TO_CLASS[code];
+    }
+  }
+  return CATEGORY_TO_CLASS[failure.category] ?? 'UNKNOWN_FAILURE';
 }
 
 export function computeFailureSignature(input: {
   errorClass: ErrorClass;
   checkName: string;
   normalizedMessage: string;
+  code?: string;
 }): string {
   return sha256(canonicalStringify({
-    checkName: input.checkName,
     errorClass: input.errorClass,
-    normalizedMessage: input.normalizedMessage
+    checkName: input.checkName,
+    normalizedMessage: input.normalizedMessage,
+    code: normalizeCode(input.code)
   }));
+}
+
+export function classifyFailure(failure: NormalizedFailure): { errorClass: ErrorClass; failureSignature: string } {
+  const errorClass = resolveErrorClass(failure);
+  return {
+    errorClass,
+    failureSignature: computeFailureSignature({
+      errorClass,
+      checkName: failure.checkName,
+      normalizedMessage: failure.normalizedMessage,
+      code: failure.code
+    })
+  };
 }

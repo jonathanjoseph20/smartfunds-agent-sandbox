@@ -1,3 +1,3 @@
 # Sprint 26 — Swarm Runtime Executor v1
 
-- Adds deterministic swarm executor + CLI + offline tests.
+- Code already merged to main; this PR exists as an audit/trace artifact.

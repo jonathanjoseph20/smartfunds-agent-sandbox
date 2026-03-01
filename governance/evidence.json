@@ -13,6 +13,7 @@
     "control-plane/governance/evidence-contract.ts",
     "control-plane/governance/validate.test.ts",
     "control-plane/governance/validate.ts",
+    "governance/evidence.json",
     "governance/schema/evidence.schema.json",
     "package.json"
   ],

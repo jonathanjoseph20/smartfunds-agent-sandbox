@@ -538,7 +538,13 @@ async function main(): Promise<void> {
 
   const branch = getBranchName(gitExec);
   const changedFiles = getChangedFiles(gitExec);
-  const resolvedMetadata = resolveLocalMetadata({
+  
+if (changedFiles.length === 0) {
+  console.log('No changed files detected. Skipping governance validation.');
+  return;
+}
+
+const resolvedMetadata = resolveLocalMetadata({
     bodyFile: args.bodyFile,
     labelsFile: args.labelsFile,
     readFile,

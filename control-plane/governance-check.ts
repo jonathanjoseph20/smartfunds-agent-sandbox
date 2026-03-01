@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 
 import {
   buildBootstrapActions,
   buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
+  extractTierFromLabels,
   extractTierLabelFromBody,
   extractTierFromEvidence,
   getRequiredChecksForTier,
@@ -19,6 +19,12 @@ import {
   type GovernanceReport,
   type Tier
 } from './governance/diagnostics.ts';
+import {
+  MARKDOWN_DEPRECATION_WARNING,
+  readEvidenceContract,
+  resolveImpliedExecutionMode,
+  validateEvidenceAgainstComputedState
+} from './governance/evidence-contract.ts';
 import { resolveLocalMetadata } from './governance/metadata-resolution.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
@@ -35,6 +41,7 @@ import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 import { classifyIsolation, type ClassifyIsolationArgs } from './isolation/path-classifier.ts';
 import type { IsolationClassification } from './isolation/types.ts';
+import { defaultGitExec, getChangedFilesFromBase } from './governance/changed-files.ts';
 
 type GitExec = (args: string[]) => string;
 
@@ -59,10 +66,6 @@ export const ISOLATION_REMEDIATION_ACTION =
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-}
-
-function defaultGitExec(args: string[]): string {
-  return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
 function getBranchName(execGit: GitExec): string {
@@ -129,11 +132,7 @@ function resolveMergeBase(execGit: GitExec): string {
 }
 
 function collectChangedFiles(execGit: GitExec, baseSha: string): string[] {
-  const output = execGit(['diff', '--name-only', baseSha, 'HEAD']);
-  if (!output) {
-    return [];
-  }
-  return output.split('\n').map((line) => line.trim()).filter(Boolean);
+  return getChangedFilesFromBase(execGit, baseSha);
 }
 
 function buildIsolationErrorMessage(classification: IsolationClassification): string {
@@ -226,6 +225,7 @@ function buildWarnings(hasLabelCheck: boolean): string[] {
 }
 
 function buildNextActions(
+  useLegacyEvidence: boolean,
   declaredTier: Tier | null,
   impliedTier: Tier,
   evidenceErrors: string[],
@@ -237,15 +237,15 @@ function buildNextActions(
 ): string[] {
   const actions: string[] = [];
 
-  if (!tierBodyLabel) {
+  if (useLegacyEvidence && !tierBodyLabel) {
     actions.push('Add unfenced PR body tier declaration (tier-0..tier-3).');
   }
 
-  if (missingEvidenceFields.length > 0 || evidenceErrors.length > 0) {
+  if (useLegacyEvidence && (missingEvidenceFields.length > 0 || evidenceErrors.length > 0)) {
     actions.push(buildEvidenceBlockAction());
   }
 
-  if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
+  if (useLegacyEvidence && tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
     actions.push(`Update PR body evidence Risk Tier to ${tierBodyLabel}.`);
   }
 
@@ -271,7 +271,21 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 }> {
   const gitExec = options.gitExec ?? defaultGitExec;
   const readFile = options.readFile ?? ((filePath: string) => fs.readFileSync(filePath, 'utf8'));
-  const existsSync = options.existsSync ?? (options.readFile ? (() => true) : ((filePath: string) => fs.existsSync(filePath)));
+  const existsSync = options.existsSync ?? ((filePath: string) => {
+    if (!options.readFile) {
+      return fs.existsSync(filePath);
+    }
+    const knownStubbedPaths = new Set([
+      options.bodyFile ?? 'pr-body.md',
+      options.bodyFile ?? '.pr-body.md',
+      options.labelsFile ?? '.pr-labels.txt',
+      options.labelsFile ?? 'pr-labels.txt'
+    ]);
+    if (knownStubbedPaths.has(filePath)) {
+      return true;
+    }
+    return fs.existsSync(filePath);
+  });
   const fetchImpl = options.fetchImpl ?? fetch;
   const repo = options.repo ?? process.env.GITHUB_REPOSITORY;
   const token = options.token ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
@@ -288,10 +302,11 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const changedFiles = collectChangedFiles(gitExec, baseSha);
   const branchName = options.branchName ?? getBranchName(gitExec);
 
-  const evidenceValidation = validateEvidenceBlockSchema(body);
-  const evidenceErrors = [...evidenceValidation.errors];
-  const missingEvidenceFields = evidenceValidation.missingFields;
-  const errors: string[] = [...evidenceErrors];
+  const evidenceContract = readEvidenceContract({ readFile, existsSync });
+  const useLegacyEvidence = !evidenceContract.exists;
+  const evidenceErrors: string[] = [];
+  let missingEvidenceFields: string[] = [];
+  const errors: string[] = [];
 
   let ownershipResult: OwnershipResult;
   let projects: Project[] = [];
@@ -318,31 +333,53 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   errors.push(...buildOwnershipErrors(ownershipResult));
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
-  let tierBodyLabel: Tier | undefined;
-  try {
-    tierBodyLabel = extractTierLabelFromBody(body);
-  } catch (error) {
-    errors.push((error as Error).message);
-  }
-
-  if (tierBodyLabel === undefined) {
-    errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
-  }
-
-  const tierBody = extractTierFromEvidence(body);
-  if (evidenceValidation.evidence && tierBody === undefined) {
-    errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
-  }
-
-  if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
-    errors.push(
-      `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
-    );
-  }
-
   const { impliedTier } = inferImpliedTier(changedFiles, contract);
-  const declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
-  const labelTier = declaredTier;
+  let tierBodyLabel: Tier | undefined;
+  let tierBody: Tier | undefined;
+  let declaredTier: Tier | null = null;
+  let labelTier: Tier | null = null;
+  let explicitLabelTier: Tier | null = null;
+  if (evidenceContract.exists) {
+    if ('evidence' in evidenceContract) {
+      declaredTier = evidenceContract.evidence.tier;
+      try {
+        explicitLabelTier = extractTierFromLabels(resolvedMetadata.labels) ?? null;
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
+      labelTier = explicitLabelTier ?? declaredTier;
+    } else {
+      errors.push(...evidenceContract.errors);
+    }
+  } else {
+    const evidenceValidation = validateEvidenceBlockSchema(body);
+    evidenceErrors.push(...evidenceValidation.errors);
+    missingEvidenceFields = evidenceValidation.missingFields;
+    errors.push(...evidenceErrors);
+    try {
+      tierBodyLabel = extractTierLabelFromBody(body);
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+
+    if (tierBodyLabel === undefined) {
+      errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
+    }
+
+    tierBody = extractTierFromEvidence(body);
+    if (evidenceValidation.evidence && tierBody === undefined) {
+      errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
+    }
+
+    if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
+      errors.push(
+        `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
+      );
+    }
+
+    declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
+    labelTier = declaredTier;
+  }
 
   if (labelTier !== null && labelTier < impliedTier) {
     errors.push(`Declared tier-${labelTier} is below implied tier-${impliedTier}.`);
@@ -361,6 +398,9 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   const warnings = buildWarnings(hasLabelCheck);
+  if (useLegacyEvidence) {
+    warnings.push(MARKDOWN_DEPRECATION_WARNING);
+  }
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
   const swarmMetadata = parseSwarmEvidenceMetadata(body);
   const swarmPolicy = evaluateSwarmPolicy({
@@ -383,11 +423,23 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
+  if (evidenceContract.exists && 'evidence' in evidenceContract) {
+    const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
+    errors.push(
+      ...validateEvidenceAgainstComputedState({
+        evidence: evidenceContract.evidence,
+        changedFiles,
+        labelTier: explicitLabelTier,
+        impliedMode
+      })
+    );
+  }
   if (modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const nextActions = buildNextActions(
+    useLegacyEvidence,
     declaredTier,
     impliedTier,
     evidenceErrors,

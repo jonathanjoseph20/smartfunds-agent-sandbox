@@ -6,7 +6,10 @@ import {
   buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
+  extractTierFromLabels,
   getMissingTierLabels,
+  getRequiredChecksForTier,
+  inferImpliedTier,
   loadRiskContract,
   resolveDeclaredTier,
   selectPrimaryAction,
@@ -17,6 +20,12 @@ import {
   type PullRequestData,
   type RiskContract
 } from './diagnostics.ts';
+import {
+  MARKDOWN_DEPRECATION_WARNING,
+  readEvidenceContract,
+  resolveImpliedExecutionMode,
+  validateEvidenceAgainstComputedState
+} from './evidence-contract.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
 import { scanCommentsForEvidence } from '../pr-body/comment-scan.ts';
@@ -32,6 +41,7 @@ import { evaluateSwarmOrchestration } from '../swarms/orchestration.ts';
 import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 import { buildIsolationEnforcement } from '../governance-check.ts';
+import { normalizeChangedFiles } from './changed-files.ts';
 
 type GovernanceValidationResult = {
   ok: boolean;
@@ -70,25 +80,31 @@ function needsBootstrapAction(missingLabels: string[]): boolean {
 }
 
 function buildNextActions(
+  useLegacyEvidence: boolean,
   result: ReturnType<typeof validatePrData>,
   pr: PullRequestData,
   repo?: string
 ): string[] {
   const actions: string[] = [];
 
-  if (result.tierLabel === undefined) {
+  if (useLegacyEvidence && result.tierLabel === undefined) {
     actions.push('Add exactly one label: tier-0, tier-1, tier-2, tier-3.');
   }
 
-  if (result.tierLabel !== undefined && result.tierBodyLabel !== undefined && result.tierBodyLabel !== result.tierLabel) {
+  if (
+    useLegacyEvidence &&
+    result.tierLabel !== undefined &&
+    result.tierBodyLabel !== undefined &&
+    result.tierBodyLabel !== result.tierLabel
+  ) {
     actions.push(`Update unfenced PR body declaration to tier-${result.tierLabel}.`);
   }
 
-  if (result.tierLabel !== undefined && result.tierBody !== undefined && result.tierBody !== result.tierLabel) {
+  if (useLegacyEvidence && result.tierLabel !== undefined && result.tierBody !== undefined && result.tierBody !== result.tierLabel) {
     actions.push(`Update PR body evidence Risk Tier to ${result.tierLabel}.`);
   }
 
-  if (result.missingEvidenceFields.length > 0) {
+  if (useLegacyEvidence && result.missingEvidenceFields.length > 0) {
     actions.push(buildEvidenceBlockAction());
   }
 
@@ -108,8 +124,11 @@ function buildNextActions(
   return actions;
 }
 
-function buildWarnings(errors: string[]): string[] {
+function buildWarnings(errors: string[], useLegacyEvidence: boolean): string[] {
   const warnings: string[] = [];
+  if (useLegacyEvidence) {
+    warnings.push(MARKDOWN_DEPRECATION_WARNING);
+  }
   if (shouldWarnStalePayload(errors)) {
     warnings.push(
       'GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.'
@@ -228,14 +247,70 @@ async function buildReport(
   },
   commentFetcher: (args: { prNumber: number; repository: string }) => Promise<Array<{ id: number; body: string }>>
 ): Promise<{ report: GovernanceReport; errors: string[] }> {
-  const result = validatePrData(prData, contract);
+  const evidenceContract = readEvidenceContract();
+  const useLegacyEvidence = !evidenceContract.exists;
+  const result = useLegacyEvidence ? validatePrData(prData, contract) : null;
   let ownershipResult: OwnershipResult;
   let projects: Project[] = [];
   let teams: Team[] = [];
   let swarms: SwarmDefinition[] = [];
-  const errors: string[] = [...result.errors];
+  const errors: string[] = useLegacyEvidence && result ? [...result.errors] : [];
   const sealWarnings: string[] = [];
   const additionalErrors: GovernanceError[] = [];
+  let declaredTier: number | null = null;
+  let labelTier: number | null = null;
+  let impliedTier: number = 0;
+  let missingEvidenceFields: string[] = [];
+  let requiredChecks: string[] = [];
+  let missingLabels: string[] = [];
+
+  if (useLegacyEvidence && result) {
+    declaredTier = resolveDeclaredTier({ tierBody: result.tierBody, tierBodyLabel: result.tierBodyLabel });
+    labelTier = result.tierLabel ?? null;
+    impliedTier = result.impliedTier;
+    missingEvidenceFields = result.missingEvidenceFields;
+    requiredChecks = result.requiredChecks;
+    missingLabels = [
+      ...getMissingTierLabels(labelTier),
+      ...(labelTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
+    ];
+  } else if (evidenceContract.exists && 'evidence' in evidenceContract) {
+    let explicitLabelTier: number | null = null;
+    try {
+      explicitLabelTier = extractTierFromLabels(prData.labels) ?? null;
+    } catch (error) {
+      errors.push((error as Error).message);
+    }
+    if (explicitLabelTier === null) {
+      errors.push('Missing risk tier label. Add exactly one: tier-0, tier-1, tier-2, tier-3.');
+    }
+    const inferred = inferImpliedTier(prData.changedFiles, contract);
+    impliedTier = inferred.impliedTier;
+    declaredTier = evidenceContract.evidence.tier;
+    labelTier = explicitLabelTier;
+    if (declaredTier < impliedTier) {
+      errors.push(
+        `Declared tier-${declaredTier} is below implied tier-${impliedTier}. Escalating files: ${inferred.escalationFiles.join(', ')}.`
+      );
+    }
+    if (labelTier !== null && labelTier !== declaredTier) {
+      errors.push(
+        `Risk tier mismatch: label tier is ${labelTier}; governance/evidence.json tier must be ${labelTier}.`
+      );
+    }
+    requiredChecks = getRequiredChecksForTier((labelTier ?? declaredTier) as Tier, contract);
+    missingLabels = [
+      ...getMissingTierLabels(labelTier),
+      ...(declaredTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
+    ];
+    if (declaredTier === 3 && !prData.labels.includes('tier-3-approved')) {
+      errors.push(
+        'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/body, push a new commit to refresh the PR payload.'
+      );
+    }
+  } else if (evidenceContract.exists) {
+    errors.push(...evidenceContract.errors);
+  }
 
   try {
     projects = loadProjectsFromDir('control-plane/projects');
@@ -255,13 +330,6 @@ async function buildReport(
   }
   errors.push(...buildOwnershipErrors(ownershipResult));
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
-  const declaredTier = resolveDeclaredTier({ tierBody: result.tierBody, tierBodyLabel: result.tierBodyLabel });
-  const labelTier = result.tierLabel ?? null;
-  const impliedTier = result.impliedTier;
-  const missingLabels = [
-    ...getMissingTierLabels(labelTier),
-    ...(labelTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
-  ];
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
   const swarmMetadata = parseSwarmEvidenceMetadata(prData.body);
@@ -285,19 +353,31 @@ async function buildReport(
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
+  if (evidenceContract.exists && 'evidence' in evidenceContract) {
+    const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
+    errors.push(
+      ...validateEvidenceAgainstComputedState({
+        evidence: evidenceContract.evidence,
+        changedFiles: prData.changedFiles,
+        labelTier: labelTier as Tier | null,
+        impliedMode
+      })
+    );
+  }
   if (modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  const nextActions = buildNextActions(result, prData, context.repo);
+  const nextActions = useLegacyEvidence && result ? buildNextActions(useLegacyEvidence, result, prData, context.repo) : [];
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
   nextActions.push(...isolation.nextActions);
 
+  const stalePayloadWarning = shouldWarnStalePayload(useLegacyEvidence && result ? result.errors : errors);
   const warnings = [
-    ...buildWarnings(result.errors),
+    ...buildWarnings(useLegacyEvidence && result ? result.errors : errors, useLegacyEvidence),
     ...swarmPolicy.swarmWarnings,
     ...entityTelemetryResult.warnings,
     ...railBindingResult.warnings
@@ -307,6 +387,8 @@ async function buildReport(
   let commentEvidenceCount = 0;
   let commentSource: 'gh' | 'none' | 'unknown' = 'none';
   if (
+    useLegacyEvidence &&
+    result !== null &&
     shouldScanForCommentEvidence(result) &&
     context.prNumber !== null &&
     context.repository
@@ -350,7 +432,7 @@ async function buildReport(
     }
   }
 
-  if (warnings.length > 0) {
+  if (stalePayloadWarning) {
     nextActions.push(...buildStalePayloadActions());
   }
 
@@ -374,8 +456,8 @@ async function buildReport(
       impliedTier,
       labelTier,
       missingLabels,
-      missingEvidenceFields: result.missingEvidenceFields,
-      requiredChecks: result.requiredChecks,
+      missingEvidenceFields,
+      requiredChecks,
       projectsTouched: Array.isArray(ownershipResult.projectsTouched) ? ownershipResult.projectsTouched : [],
       teamsTouched: Array.isArray(teamResolution.teamsTouched) ? teamResolution.teamsTouched : [],
       swarmsDeclared: swarmMetadata.swarmsDeclared,
@@ -470,6 +552,10 @@ export async function runGovernanceValidation(options: GovernanceValidationOptio
   }
 
   const repo = options.repo ?? repository ?? undefined;
+  prData = {
+    ...prData,
+    changedFiles: normalizeChangedFiles(prData.changedFiles)
+  };
   const { report, errors } = await buildReport(
     prData,
     contract,

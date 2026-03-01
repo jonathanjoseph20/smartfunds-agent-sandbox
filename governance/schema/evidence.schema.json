@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "smartfunds/governance/evidence.schema.json",
+  "title": "Governance Evidence Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tier",
+    "mode",
+    "affectedPaths",
+    "determinismStatement",
+    "retrySemanticsModified",
+    "autonomyScopeExpanded"
+  ],
+  "properties": {
+    "tier": {
+      "type": "number"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "structured",
+        "autonomous"
+      ]
+    },
+    "affectedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "determinismStatement": {
+      "type": "string"
+    },
+    "retrySemanticsModified": {
+      "type": "boolean"
+    },
+    "autonomyScopeExpanded": {
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "railImpacted": {
+      "type": "boolean"
+    },
+    "entityRegistryImpacted": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { runGovernanceValidation } from './validate.ts';
@@ -98,5 +100,68 @@ describe('governance validate isolation parity', () => {
     expect(result.report.metadataSource.commentSource).toBe('none');
     expect(result.report.commentEvidenceDetected).toBe(false);
     expect(result.report.commentEvidenceCount).toBe(0);
+  });
+
+  it('uses JSON evidence when governance/evidence.json exists and skips markdown parsing', async () => {
+    const originalExistsSync = fs.existsSync.bind(fs);
+    const originalReadFileSync = fs.readFileSync.bind(fs);
+    const schema = originalReadFileSync('governance/schema/evidence.schema.json', 'utf8');
+    const evidence = JSON.stringify({
+      tier: 2,
+      mode: 'autonomous',
+      affectedPaths: ['apps/api/src/index.ts'],
+      determinismStatement: 'No identity surfaces mutated.',
+      retrySemanticsModified: false,
+      autonomyScopeExpanded: false
+    });
+    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
+      const normalized = String(filePath);
+      if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
+        return true;
+      }
+      return originalExistsSync(filePath);
+    });
+    vi.spyOn(fs, 'readFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
+      const normalized = String(filePath);
+      if (normalized === 'governance/evidence.json') {
+        return evidence;
+      }
+      if (normalized === 'governance/schema/evidence.schema.json') {
+        return schema;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return originalReadFileSync(filePath as any, options as any);
+    });
+
+    try {
+      const result = await runGovernanceValidation({
+        prData: {
+          body: 'invalid markdown body',
+          labels: ['tier-2'],
+          changedFiles: ['apps/api/src/index.ts']
+        }
+      });
+
+      expect(result.errors.join('\n')).not.toContain('Missing fenced evidence block');
+      expect(result.report.warnings).not.toContain(
+        'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('falls back to markdown when governance/evidence.json is missing and emits deprecation warning', async () => {
+    const result = await runGovernanceValidation({
+      prData: {
+        body: makeValidBody(),
+        labels: ['tier-2'],
+        changedFiles: ['apps/api/src/index.ts']
+      }
+    });
+
+    expect(result.report.warnings).toContain(
+      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
+    );
   });
 });

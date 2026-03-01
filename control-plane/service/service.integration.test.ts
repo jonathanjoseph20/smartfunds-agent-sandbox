@@ -5,6 +5,13 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import {
+  ERR_ALREADY_FUNDED,
+  ERR_AMOUNT_MISMATCH,
+  ERR_DUPLICATE_RECEIPT,
+  ERR_PAYER_UNAUTHORIZED,
+  OK_RECEIPT_ACCEPTED
+} from '../domain/receipt-validator.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
 import { createServiceDispatcher } from './index.ts';
 import type { ServiceDispatchResponse } from './index.ts';
@@ -12,10 +19,12 @@ import { resolveHandlerRoute } from './handlers/router.ts';
 import { clearServiceDbRegistryForTests, getServiceDb } from './storage/db.ts';
 import { computeEventId, getEventById } from './storage/events.ts';
 import { countJournalByRefId, computeSwarmRunId, getJournalByRunId } from './storage/journal.ts';
+import { getIssuanceById, getReceiptById } from './storage/receipts.ts';
 import { computeTaskId, getTaskById } from './storage/tasks.ts';
 
 const TEST_ADAPTER_KEY = '__SMARTFUNDS_SWARM_EXECUTION_ADAPTER__';
 const TEST_DB_PATH = ':memory:';
+const FIXED_NOW = '2026-02-28T00:00:00.000Z';
 
 interface TestAdapter {
   branchExistsLocal: (branchName: string) => boolean;
@@ -102,6 +111,81 @@ function createAdapter(): TestAdapter {
   };
 }
 
+function seedReceiptRegistry(): void {
+  const db = getServiceDb(TEST_DB_PATH);
+
+  db.prepare(`
+    INSERT INTO deals (deal_id, receiving_account_ref)
+    VALUES (?, ?)
+  `).run('deal_001', 'acct_001');
+
+  db.prepare(`
+    INSERT INTO subscriptions (
+      subscription_id,
+      deal_id,
+      entity_id,
+      expected_amount,
+      rail_type,
+      currency,
+      authorized_wallets_canonical,
+      expected_wire_sender_ref
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'sub_001',
+    'deal_001',
+    'entity_001',
+    '1000.00',
+    'evm_usdc',
+    'USDC',
+    '["0xwallet_1","0xwallet_2"]',
+    null
+  );
+
+  db.prepare(`
+    INSERT INTO subscriptions (
+      subscription_id,
+      deal_id,
+      entity_id,
+      expected_amount,
+      rail_type,
+      currency,
+      authorized_wallets_canonical,
+      expected_wire_sender_ref
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'sub_002',
+    'deal_001',
+    'entity_001',
+    '1000.00',
+    'evm_usdc',
+    'USDC',
+    '["0xwallet_1"]',
+    null
+  );
+}
+
+function buildReceiptPayload(overrides: Partial<Record<keyof ReturnType<typeof baseReceiptPayload>, unknown>> = {}) {
+  return {
+    ...baseReceiptPayload(),
+    ...overrides
+  };
+}
+
+function baseReceiptPayload() {
+  return {
+    subscriptionId: 'sub_001',
+    dealId: 'deal_001',
+    entityId: 'entity_001',
+    railType: 'evm_usdc' as const,
+    amount: '1000.00',
+    currency: 'USDC' as const,
+    payerRef: '0xwallet_1',
+    receiptRef: 'rcpt_001',
+    toAccountRef: 'acct_001',
+    chainId: 1
+  };
+}
+
 describe.sequential('service integration', () => {
   let previousCwd = '';
   let fixtureRoot = '';
@@ -114,12 +198,14 @@ describe.sequential('service integration', () => {
     process.chdir(fixtureRoot);
     (globalThis as Record<string, unknown>)[TEST_ADAPTER_KEY] = createAdapter();
 
-    const runtimeDispatch = createServiceDispatcher({ dbPath: TEST_DB_PATH, now: () => '2026-02-28T00:00:00.000Z' });
+    const runtimeDispatch = createServiceDispatcher({ dbPath: TEST_DB_PATH, now: () => FIXED_NOW });
     dispatch = (method, pathname, body) => runtimeDispatch({
       method,
       pathname,
       bodyText: body === null ? null : JSON.stringify(body)
     });
+
+    seedReceiptRegistry();
   });
 
   afterEach(() => {
@@ -168,19 +254,17 @@ describe.sequential('service integration', () => {
     expect(journal?.result_hash).toBe((serviceResponse?.payload as { deterministicHash: string }).deterministicHash);
   });
 
-  it('POST /webhooks/test persists deterministic event/task and enforces idempotency', async () => {
-    const firstPayload = {
-      alpha: 1,
-      nested: {
-        b: true,
-        a: 'x'
-      }
-    };
+  it('POST /webhooks/test persists deterministic payment receipt and issuance intent', async () => {
+    const payload = buildReceiptPayload();
+    const response = await dispatch?.('POST', '/webhooks/test', payload);
 
-    const first = await dispatch?.('POST', '/webhooks/test', firstPayload);
-    expect(first?.statusCode).toBe(200);
+    expect(response?.statusCode).toBe(200);
+    expect(response?.payload).toMatchObject({
+      ok: true,
+      code: OK_RECEIPT_ACCEPTED
+    });
 
-    const canonicalPayload = canonicalStringify(firstPayload);
+    const canonicalPayload = canonicalStringify(payload);
     const eventId = computeEventId('test', canonicalPayload);
     const route = resolveHandlerRoute('test');
     expect(route).not.toBeNull();
@@ -191,37 +275,84 @@ describe.sequential('service integration', () => {
     const eventRow = getEventById(db, eventId);
     const taskRow = getTaskById(db, taskId);
 
-    expect(eventRow).not.toBeNull();
     expect(eventRow?.status).toBe('processed');
-    expect(taskRow).not.toBeNull();
     expect(taskRow?.status).toBe('done');
-    expect(taskRow?.result_canonical).toBe(canonicalStringify(first?.payload));
     expect(countJournalByRefId(db, eventId)).toBe(1);
 
-    const secondPayload = {
-      nested: {
-        a: 'x',
-        b: true
-      },
-      alpha: 1
+    const successPayload = response?.payload as {
+      ok: true;
+      code: string;
+      receiptId: string;
+      issuanceId: string;
+      summaryCanonical: string;
     };
 
-    const second = await dispatch?.('POST', '/webhooks/test', secondPayload);
+    const receiptRow = getReceiptById(db, successPayload.receiptId);
+    const issuanceRow = getIssuanceById(db, successPayload.issuanceId);
+
+    expect(receiptRow).not.toBeNull();
+    expect(receiptRow?.subscription_id).toBe('sub_001');
+    expect(receiptRow?.receipt_ref).toBe('rcpt_001');
+    expect(receiptRow?.source_event_id).toBe(eventId);
+    expect(receiptRow?.observed_at).toBe(FIXED_NOW);
+
+    expect(issuanceRow).not.toBeNull();
+    expect(issuanceRow?.subscription_id).toBe('sub_001');
+    expect(issuanceRow?.receipt_id).toBe(successPayload.receiptId);
+    expect(issuanceRow?.status).toBe('pending');
+    expect(issuanceRow?.created_at).toBe(FIXED_NOW);
+
+    expect(canonicalStringify(response?.payload)).toMatchInlineSnapshot(
+      `"{"code":"OK_RECEIPT_ACCEPTED","issuanceId":"f5a0a8aecf397ad55f839ae1f6d543594144558007221f72b610fa4317f50344","ok":true,"receiptId":"d2d804656b222011a392d4c955a7280d4cc5994c2b382a2d17cae072276b7a90","summaryCanonical":"{\\"code\\":\\"OK_RECEIPT_ACCEPTED\\",\\"issuanceId\\":\\"f5a0a8aecf397ad55f839ae1f6d543594144558007221f72b610fa4317f50344\\",\\"ok\\":true,\\"receiptId\\":\\"d2d804656b222011a392d4c955a7280d4cc5994c2b382a2d17cae072276b7a90\\"}"}"`
+    );
+  });
+
+  it('POST /webhooks/test rejects amount mismatch', async () => {
+    const response = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload({ amount: '1000.01' }));
+
+    expect(response?.statusCode).toBe(200);
+    expect(response?.payload).toEqual({
+      ok: false,
+      code: ERR_AMOUNT_MISMATCH,
+      summaryCanonical: canonicalStringify({ ok: false, code: ERR_AMOUNT_MISMATCH })
+    });
+  });
+
+  it('POST /webhooks/test rejects unauthorized payer', async () => {
+    const response = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload({ payerRef: '0xwallet_denied' }));
+
+    expect(response?.statusCode).toBe(200);
+    expect(response?.payload).toEqual({
+      ok: false,
+      code: ERR_PAYER_UNAUTHORIZED,
+      summaryCanonical: canonicalStringify({ ok: false, code: ERR_PAYER_UNAUTHORIZED })
+    });
+  });
+
+  it('POST /webhooks/test rejects duplicate receipt_ref', async () => {
+    const first = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload());
+    expect(first?.payload).toMatchObject({ ok: true, code: OK_RECEIPT_ACCEPTED });
+
+    const second = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload({ subscriptionId: 'sub_002' }));
     expect(second?.statusCode).toBe(200);
     expect(second?.payload).toEqual({
-      ok: true,
-      code: 'idempotent_replay',
-      summaryCanonical: canonicalStringify({
-        source: 'test',
-        event_id: eventId,
-        status: 'processed',
-        message: 'duplicate_ignored'
-      })
+      ok: false,
+      code: ERR_DUPLICATE_RECEIPT,
+      summaryCanonical: canonicalStringify({ ok: false, code: ERR_DUPLICATE_RECEIPT })
     });
+  });
 
-    expect(countJournalByRefId(db, eventId)).toBe(1);
-    expect(getEventById(db, eventId)?.event_id).toBe(eventId);
-    expect(getTaskById(db, taskId)?.task_id).toBe(taskId);
+  it('POST /webhooks/test rejects second funding for same subscription', async () => {
+    const first = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload());
+    expect(first?.payload).toMatchObject({ ok: true, code: OK_RECEIPT_ACCEPTED });
+
+    const second = await dispatch?.('POST', '/webhooks/test', buildReceiptPayload({ receiptRef: 'rcpt_002' }));
+    expect(second?.statusCode).toBe(200);
+    expect(second?.payload).toEqual({
+      ok: false,
+      code: ERR_ALREADY_FUNDED,
+      summaryCanonical: canonicalStringify({ ok: false, code: ERR_ALREADY_FUNDED })
+    });
   });
 
   it('produces identical IDs for repeated identical logical webhook input', () => {

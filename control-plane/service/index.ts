@@ -177,6 +177,9 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
           event_id: eventId,
           source: sourceValidation.source,
           payload_canonical: canonicalPayload
+        }, {
+          db,
+          now: createdAt
         });
       } catch {
         statusCode = 500;

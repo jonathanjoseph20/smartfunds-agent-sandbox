@@ -3,7 +3,7 @@ import { canonicalStringify } from '../../finance/determinism.ts';
 import type { HandlerResult, IngestedEvent, ServiceHandler } from './types.ts';
 
 export const EreborHandler: ServiceHandler = {
-  handle(event: IngestedEvent): HandlerResult {
+  handle(event: IngestedEvent, _context): HandlerResult {
     return {
       ok: true,
       code: 'stub_ok',

@@ -28,6 +28,49 @@ const SCHEMA_SQL = `
     result_hash TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    subscription_id TEXT PRIMARY KEY,
+    deal_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    expected_amount TEXT NOT NULL,
+    rail_type TEXT NOT NULL CHECK(rail_type IN ('evm_usdc', 'wire')),
+    currency TEXT NOT NULL CHECK(currency IN ('USDC', 'USD')),
+    authorized_wallets_canonical TEXT NOT NULL,
+    expected_wire_sender_ref TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS deals (
+    deal_id TEXT PRIMARY KEY,
+    receiving_account_ref TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS payment_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    subscription_id TEXT NOT NULL,
+    deal_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    rail_type TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    payer_ref TEXT NOT NULL,
+    receipt_ref TEXT NOT NULL,
+    to_account_ref TEXT NOT NULL,
+    chain_id INTEGER,
+    source_event_id TEXT NOT NULL,
+    observed_at TEXT,
+    UNIQUE(subscription_id),
+    UNIQUE(receipt_ref)
+  );
+
+  CREATE TABLE IF NOT EXISTS issuance_intents (
+    issuance_id TEXT PRIMARY KEY,
+    subscription_id TEXT NOT NULL,
+    receipt_id TEXT NOT NULL,
+    issuance_plan_hash TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `;
 
 export function ensureServiceSchema(db: DatabaseSync): void {

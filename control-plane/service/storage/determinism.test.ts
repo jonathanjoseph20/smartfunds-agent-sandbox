@@ -4,7 +4,7 @@ import { canonicalStringify, sha256 } from '../../finance/determinism.ts';
 import { computeSlackWebhookEventId, normalizeSlackActionPayload } from '../integrations/slack/normalize.ts';
 import { buildLifecycleNotificationId } from '../integrations/slack/notifier.ts';
 import { computeEventId } from './events.ts';
-import { computeEventIngestRunId, computeSwarmRunId } from './journal.ts';
+import { computeEventIngestRunId, computeSwarmRunId, computeWebhookDuplicateIgnoredRunId } from './journal.ts';
 import { computeTaskId } from './tasks.ts';
 
 describe('service storage determinism', () => {
@@ -68,5 +68,12 @@ describe('service storage determinism', () => {
       state: 'FAILED',
       attemptIndex: 0
     })));
+  });
+
+  it('computes stable duplicate ignored webhook run_id from deterministic inputs', () => {
+    const first = computeWebhookDuplicateIgnoredRunId('webhook-id-1', 'action', 0);
+    const second = computeWebhookDuplicateIgnoredRunId('webhook-id-1', 'action', 0);
+    expect(first).toBe(second);
+    expect(first).toBe(sha256('WEBHOOK_DUPLICATE_IGNORED\naction\nwebhook-id-1\n0'));
   });
 });

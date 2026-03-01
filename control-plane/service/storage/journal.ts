@@ -2,7 +2,12 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import { sha256 } from '../../finance/determinism.ts';
 
-export type JournalType = 'swarm_execute' | 'event_ingest' | 'webhook_intake' | 'slack_notification';
+export type JournalType =
+  | 'swarm_execute'
+  | 'event_ingest'
+  | 'webhook_intake'
+  | 'slack_notification'
+  | 'WEBHOOK_DUPLICATE_IGNORED';
 
 export interface JournalRecord {
   run_id: string;
@@ -20,6 +25,10 @@ export function computeEventIngestRunId(source: string, eventId: string, canonic
   return sha256(`event_ingest\n${source}\n${eventId}\n${canonicalHandlerResult}`);
 }
 
+export function computeWebhookDuplicateIgnoredRunId(webhookEventId: string, webhookType: 'action' | 'event', sequence: number): string {
+  return sha256(`WEBHOOK_DUPLICATE_IGNORED\n${webhookType}\n${webhookEventId}\n${String(sequence)}`);
+}
+
 export function appendJournalEntry(db: DatabaseSync, entry: JournalRecord): void {
   db.prepare(`
     INSERT INTO execution_journal (run_id, type, ref_id, result_hash, created_at)
@@ -29,6 +38,11 @@ export function appendJournalEntry(db: DatabaseSync, entry: JournalRecord): void
 
 export function countJournalByRefId(db: DatabaseSync, refId: string): number {
   const row = db.prepare('SELECT COUNT(*) AS count FROM execution_journal WHERE ref_id = ?').get(refId) as { count: number };
+  return row.count;
+}
+
+export function countJournalByTypeAndRefId(db: DatabaseSync, type: JournalType, refId: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM execution_journal WHERE type = ? AND ref_id = ?').get(type, refId) as { count: number };
   return row.count;
 }
 

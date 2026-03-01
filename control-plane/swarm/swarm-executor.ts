@@ -7,6 +7,7 @@ import { mutationKernel } from '../pr/mutationKernel.ts';
 import { loadProjectsFromDir, loadTeamsFromDir } from '../studio/registry.ts';
 import { resolveOwnership } from '../studio/ownership.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
+import type { RunState } from '../execution/runState.ts';
 import type { SwarmExecutionArgs, SwarmExecutionResult } from './types.ts';
 
 type ExecutionMode = 'structured' | 'autonomous';
@@ -295,13 +296,41 @@ function writePrBodyFile(runId: string, body: string): string {
 
 export type SwarmExecutorOptions = {
   commandRunner?: CommandRunner;
+  hooks?: ExecutionHooks;
 };
+
+export interface ExecutionHooks {
+  onState?: (state: RunState, payload?: object) => void;
+}
 
 export function runSwarmExecutor(args: SwarmExecutionArgs, options: SwarmExecutorOptions = {}): SwarmExecutionResult {
   const runner = options.commandRunner ?? defaultCommandRunner;
+  const hooks = options.hooks;
   const safeRunIndex = Number.isInteger(args.runIndex) && (args.runIndex as number) > 0 ? (args.runIndex as number) : 1;
   const safeRunId = buildRunId(args, safeRunIndex);
   const safeBranchName = buildBranchName(args, safeRunIndex);
+  const emitState = (state: RunState, payload?: object): void => {
+    if (!hooks?.onState) {
+      return;
+    }
+
+    try {
+      hooks.onState(state, payload);
+    } catch {
+      // Hooks must not alter executor behavior.
+    }
+  };
+  const buildFailureResult = (code: string, runIndex: number, runId: string, branchName: string): SwarmExecutionResult => {
+    emitState('FAILED', { code, runId });
+    return buildResult({
+      request: args,
+      runIndex,
+      runId,
+      branchName,
+      code,
+      mutatedFiles: []
+    });
+  };
 
   try {
     if (!isNonEmptyString(args.projectId) || !isNonEmptyString(args.swarmId) || !isNonEmptyString(args.intent)) {
@@ -321,60 +350,25 @@ export function runSwarmExecutor(args: SwarmExecutionArgs, options: SwarmExecuto
 
     const project = projects.find((entry) => entry.projectId === args.projectId);
     if (!project) {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_PROJECT_NOT_FOUND',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_PROJECT_NOT_FOUND', runIndex, runId, branchName);
     }
 
     const swarm = swarms.find((entry) => entry.swarmId === args.swarmId);
     if (!swarm) {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_SWARM_NOT_FOUND',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_SWARM_NOT_FOUND', runIndex, runId, branchName);
     }
 
     if (swarm.project !== args.projectId) {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_SWARM_PROJECT_MISMATCH',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_SWARM_PROJECT_MISMATCH', runIndex, runId, branchName);
     }
 
     const projectMode = inferProjectModeHint(args.projectId, teams);
     if (projectMode === 'structured-only' && args.executionMode === 'autonomous') {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_MODE_MISMATCH',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_MODE_MISMATCH', runIndex, runId, branchName);
     }
 
     if (swarm.executionMode === 'autonomous' && args.executionMode === 'structured') {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_MODE_MISMATCH',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_MODE_MISMATCH', runIndex, runId, branchName);
     }
 
     const targetFile = buildTargetFile(args, runIndex);
@@ -385,36 +379,27 @@ export function runSwarmExecutor(args: SwarmExecutionArgs, options: SwarmExecuto
     });
 
     if (ownership.ownershipStatus !== 'ok' || ownership.projectsTouched.length !== 1 || ownership.projectsTouched[0] !== args.projectId) {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_OWNERSHIP_VIOLATION',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_OWNERSHIP_VIOLATION', runIndex, runId, branchName);
     }
 
     if (branchExists(runner, branchName)) {
-      return buildResult({
-        request: args,
-        runIndex,
-        runId,
-        branchName,
-        code: 'ERR_GIT_BRANCH_EXISTS',
-        mutatedFiles: []
-      });
+      return buildFailureResult('ERR_GIT_BRANCH_EXISTS', runIndex, runId, branchName);
     }
 
+    emitState('VALIDATED', { runId, branchName });
     runOrFail(runner, 'git', ['checkout', '-b', branchName], 'ERR_GIT_CHECKOUT_FAILED');
+    emitState('BRANCH_CREATED', { runId, branchName });
 
     const content = buildArtifactContent(args, runIndex);
     fs.mkdirSync(path.dirname(targetFile), { recursive: true });
     fs.writeFileSync(targetFile, content, 'utf8');
+    emitState('PATCH_APPLIED', { runId, targetFile });
 
     runOrFail(runner, 'git', ['add', targetFile], 'ERR_GIT_ADD_FAILED');
     runOrFail(runner, 'git', ['commit', '-m', DEFAULT_COMMIT_MESSAGE], 'ERR_GIT_COMMIT_FAILED');
+    emitState('COMMITTED', { runId, branchName });
     runOrFail(runner, 'git', ['push', '--set-upstream', 'origin', branchName], 'ERR_GIT_PUSH_FAILED');
+    emitState('PUSHED', { runId, branchName });
 
     const intentHash = sha256(args.intent);
     const prView = runner('gh', ['pr', 'view', '--head', branchName, '--json', 'number,url,body']);
@@ -471,6 +456,8 @@ export function runSwarmExecutor(args: SwarmExecutionArgs, options: SwarmExecuto
 
       runOrFail(runner, 'gh', ['pr', 'edit', String(prNumber), '--add-label', 'tier-3'], 'ERR_GH_PR_CREATE_FAILED');
     }
+    emitState('PR_OPENED', { runId, prNumber, prUrl });
+    emitState('COMPLETED', { runId });
 
     return buildResult({
       request: args,
@@ -485,15 +472,7 @@ export function runSwarmExecutor(args: SwarmExecutionArgs, options: SwarmExecuto
     });
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : 'ERR_SWARM_EXECUTION_FAILED';
-
-    return buildResult({
-      request: args,
-      runIndex: safeRunIndex,
-      runId: safeRunId,
-      branchName: safeBranchName,
-      code: message,
-      mutatedFiles: []
-    });
+    return buildFailureResult(message, safeRunIndex, safeRunId, safeBranchName);
   }
 }
 

@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import { createExecutionJournal, computeExecutionRunId } from '../execution/journal.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
+import { runSwarmExecutor, type ExecutionHooks } from '../swarm/swarm-executor.ts';
 import { resolveHandlerRoute } from './handlers/router.ts';
 import type { HandlerResult } from './handlers/types.ts';
 import { toSwarmExecutionArgs } from './http/types.ts';
@@ -16,12 +18,14 @@ const DEFAULT_SERVICE_PORT = 3000;
 export interface ServiceOptions {
   dbPath?: string;
   now?: () => string;
+  swarmExecutor?: typeof runSwarmExecutor;
 }
 
 export interface ServiceDispatchRequest {
   method: string;
   pathname: string;
   bodyText: string | null;
+  query?: URLSearchParams;
 }
 
 export interface ServiceDispatchResponse {
@@ -65,17 +69,172 @@ function buildResponse(statusCode: number, payload: unknown): ServiceDispatchRes
   return { statusCode, payload };
 }
 
+interface RunSwarmRequestBody {
+  projectId: string;
+  swarmId: string;
+  mode: 'structured' | 'autonomous';
+  intent: string;
+  runIndex: number;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateRunSwarmRequestBody(value: unknown): { ok: true; value: RunSwarmRequestBody } | { ok: false } {
+  if (!isPlainObject(value)) {
+    return { ok: false };
+  }
+
+  const projectId = value.projectId;
+  const swarmId = value.swarmId;
+  const mode = value.mode;
+  const intent = value.intent;
+  const runIndex = value.runIndex;
+
+  if (!isNonEmptyString(projectId) || !isNonEmptyString(swarmId) || !isNonEmptyString(intent)) {
+    return { ok: false };
+  }
+  if (mode !== 'structured' && mode !== 'autonomous') {
+    return { ok: false };
+  }
+  if (!Number.isInteger(runIndex) || runIndex < 1) {
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    value: {
+      projectId,
+      swarmId,
+      mode,
+      intent,
+      runIndex
+    }
+  };
+}
+
 export function createServiceDispatcher(options: ServiceOptions = {}) {
   const db = getServiceDb(options.dbPath);
   const now = options.now ?? (() => new Date().toISOString());
+  const executionJournal = createExecutionJournal(db, now);
+  const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
 
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
     if (request.method === 'GET' && request.pathname === '/health') {
       return buildResponse(200, {
         status: 'ok',
-        service: 'smartfunds-agent-sandbox',
-        version: 'v1'
+        service: 'execution'
       });
+    }
+
+    if (request.method === 'POST' && request.pathname === '/run/swarm') {
+      const parsed = parseJsonBody(request.bodyText);
+      if (!parsed.ok) {
+        return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
+      }
+
+      const validated = validateRunSwarmRequestBody(parsed.value);
+      if (!validated.ok) {
+        return buildResponse(400, { error: 'ERR_INVALID_REQUEST' });
+      }
+
+      const argsCanonical = canonicalStringify({
+        runType: 'swarm',
+        projectId: validated.value.projectId,
+        swarmId: validated.value.swarmId,
+        mode: validated.value.mode,
+        runIndex: validated.value.runIndex,
+        intent: validated.value.intent
+      });
+      const runId = computeExecutionRunId(argsCanonical);
+      const existing = executionJournal.getRun(runId);
+      if (existing) {
+        return buildResponse(200, existing);
+      }
+
+      executionJournal.createRun({
+        runType: 'swarm',
+        projectId: validated.value.projectId,
+        swarmId: validated.value.swarmId,
+        mode: validated.value.mode,
+        runIndex: validated.value.runIndex,
+        intent: validated.value.intent,
+        branchName: `swarm/${validated.value.projectId}/${validated.value.swarmId}/run-${validated.value.runIndex}`
+      });
+
+      const hooks: ExecutionHooks = {
+        onState: (state, payload) => {
+          executionJournal.setRunState(runId, state);
+          executionJournal.appendRunEvent(runId, state, payload ?? {});
+        }
+      };
+
+      try {
+        const result = runExecutor({
+          projectId: validated.value.projectId,
+          swarmId: validated.value.swarmId,
+          executionMode: validated.value.mode,
+          intent: validated.value.intent,
+          runIndex: validated.value.runIndex
+        }, { hooks });
+
+        if (!result.ok) {
+          executionJournal.setRunFailure(runId, {
+            code: result.code,
+            message: result.code
+          });
+          const failed = executionJournal.getRun(runId);
+          return buildResponse(409, {
+            error: 'ERR_EXECUTION_FAILED',
+            run: failed
+          });
+        }
+
+        executionJournal.setRunResult(runId, result);
+        executionJournal.setRunState(runId, 'COMPLETED');
+        const completed = executionJournal.getRun(runId);
+        return buildResponse(200, completed ?? { error: 'ERR_EXECUTION_FAILED' });
+      } catch {
+        executionJournal.appendRunEvent(runId, 'FAILED', { code: 'ERR_EXECUTION_FAILED' });
+        executionJournal.setRunFailure(runId, {
+          code: 'ERR_EXECUTION_FAILED',
+          message: 'ERR_EXECUTION_FAILED'
+        });
+        const failed = executionJournal.getRun(runId);
+        return buildResponse(500, {
+          error: 'ERR_EXECUTION_FAILED',
+          run: failed
+        });
+      }
+    }
+
+    if (request.method === 'GET' && request.pathname.startsWith('/run/')) {
+      const runId = request.pathname.slice('/run/'.length).trim();
+      if (runId.length === 0) {
+        return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
+      }
+
+      const run = executionJournal.getRun(runId);
+      if (!run) {
+        return buildResponse(404, { error: 'ERR_RUN_NOT_FOUND' });
+      }
+
+      return buildResponse(200, run);
+    }
+
+    if (request.method === 'GET' && request.pathname === '/runs') {
+      const projectId = request.query?.get('projectId') ?? undefined;
+      const swarmId = request.query?.get('swarmId') ?? undefined;
+      const runs = executionJournal.listRuns({
+        ...(projectId ? { projectId } : {}),
+        ...(swarmId ? { swarmId } : {})
+      });
+      return buildResponse(200, { runs });
     }
 
     if (request.method === 'POST' && request.pathname === '/execute') {
@@ -239,7 +398,8 @@ export function createServiceServer(options: ServiceOptions = {}) {
     const response = await dispatch({
       method,
       pathname: requestUrl.pathname,
-      bodyText
+      bodyText,
+      query: requestUrl.searchParams
     });
 
     sendJson(res, response.statusCode, response.payload);

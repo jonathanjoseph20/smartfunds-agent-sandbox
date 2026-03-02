@@ -1,0 +1,9 @@
+{
+  "repository": { "full_name": "smartfunds/sandbox" },
+  "check_run": {
+    "name": "Unit Tests",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "conclusion": "failure",
+    "pull_requests": [{ "number": 42 }]
+  }
+}

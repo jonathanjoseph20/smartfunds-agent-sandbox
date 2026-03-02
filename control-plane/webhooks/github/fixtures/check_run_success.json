@@ -1,0 +1,9 @@
+{
+  "repository": { "full_name": "smartfunds/sandbox" },
+  "check_run": {
+    "name": "Lint",
+    "head_sha": "2222222222222222222222222222222222222222",
+    "conclusion": "success",
+    "pull_requests": [{ "number": 42 }]
+  }
+}

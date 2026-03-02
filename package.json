@@ -31,6 +31,7 @@
     "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts",
     "swarm:run": "node --experimental-strip-types control-plane/cli/swarm-run.ts",
     "service:start": "node --experimental-strip-types control-plane/service/index.ts",
+    "webhook:simulate": "node --experimental-strip-types control-plane/cli/webhook-simulate.ts",
     "lint_tier0": "npm run lint --workspaces --if-present",
     "lint": "npm run lint_tier0"
   },

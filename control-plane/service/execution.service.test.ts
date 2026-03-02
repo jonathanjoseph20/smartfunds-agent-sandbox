@@ -8,6 +8,7 @@ import { computeAttemptId } from '../execution/retry.ts';
 import { createRuntimeService } from '../execution/runtime-service.ts';
 import { createServiceDispatcher } from './index.ts';
 import { clearServiceDbRegistryForTests, getServiceDb } from './storage/db.ts';
+import { resetGithubWebhookDedupeForTests } from '../webhooks/github/dedupe.ts';
 import type { SwarmExecutionArgs, SwarmExecutionResult } from '../swarm/types.ts';
 import type { SwarmExecutorOptions } from '../swarm/swarm-executor.ts';
 
@@ -113,6 +114,10 @@ function signSlack(secret: string, timestamp: string, bodyText: string): string 
   return `v0=${createHmac('sha256', secret).update(`v0:${timestamp}:${bodyText}`).digest('hex')}`;
 }
 
+function signGithub(secret: string, bodyText: string): string {
+  return `sha256=${createHmac('sha256', secret).update(bodyText).digest('hex')}`;
+}
+
 function baseRequestBody() {
   return {
     projectId: 'core-app',
@@ -143,6 +148,7 @@ afterEach(() => {
 describe.sequential('execution service unit', () => {
   beforeEach(() => {
     clearServiceDbRegistryForTests();
+    resetGithubWebhookDedupeForTests();
   });
 
   it('validates /run/swarm request schema', async () => {
@@ -234,6 +240,7 @@ describe.sequential('execution service unit', () => {
 describe.sequential('execution service integration', () => {
   beforeEach(() => {
     clearServiceDbRegistryForTests();
+    resetGithubWebhookDedupeForTests();
   });
 
   it('duplicate trigger returns same run without duplicate events', async () => {
@@ -742,5 +749,197 @@ describe.sequential('execution service integration', () => {
     });
     expect(filtered.statusCode).toBe(200);
     expect((filtered.payload as { items: unknown[] }).items).toHaveLength(0);
+  });
+
+  it('github webhook rejects missing signature with 401', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({
+      repository: { full_name: 'smartfunds/sandbox' },
+      check_run: {
+        name: 'Unit Tests',
+        head_sha: 'abc123',
+        conclusion: 'failure',
+        pull_requests: [{ number: 42 }]
+      }
+    });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'application/json',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-1'
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.payload).toEqual({ error: 'unauthorized: missing_signature' });
+  });
+
+  it('github webhook rejects invalid signature with 401', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({
+      repository: { full_name: 'smartfunds/sandbox' },
+      check_run: {
+        name: 'Unit Tests',
+        head_sha: 'abc123',
+        conclusion: 'failure',
+        pull_requests: [{ number: 42 }]
+      }
+    });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'application/json',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-1',
+      'x-hub-signature-256': 'sha256=0000000000000000000000000000000000000000000000000000000000000000'
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.payload).toEqual({ error: 'unauthorized: invalid_signature' });
+  });
+
+  it('github webhook returns 204 for unsupported events', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({ repository: { full_name: 'smartfunds/sandbox' } });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'application/json',
+      'x-github-event': 'push',
+      'x-hub-signature-256': signGithub(secret, bodyText)
+    });
+
+    expect(response.statusCode).toBe(204);
+  });
+
+  it('github webhook enforces content type', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({
+      repository: { full_name: 'smartfunds/sandbox' }
+    });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'text/plain',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-1',
+      'x-hub-signature-256': signGithub(secret, bodyText)
+    });
+
+    expect(response.statusCode).toBe(415);
+    expect(response.payload).toEqual({ error: 'unsupported_media_type: expected_application_json' });
+  });
+
+  it('github webhook enforces body size limit', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({
+      payload: 'x'.repeat(1024 * 1024 + 32)
+    });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'application/json',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-1',
+      'x-hub-signature-256': signGithub(secret, bodyText)
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.payload).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('github webhook processes supported success event deterministically', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret
+    });
+    const bodyText = JSON.stringify({
+      repository: { full_name: 'smartfunds/sandbox' },
+      check_run: {
+        name: 'Lint',
+        head_sha: 'abc123',
+        conclusion: 'success',
+        pull_requests: [{ number: 42 }]
+      }
+    });
+
+    const response = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, {
+      'content-type': 'application/json; charset=utf-8',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-success',
+      'x-hub-signature-256': signGithub(secret, bodyText)
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.payload).toMatchObject({
+      ok: true,
+      status: 'processed',
+      retry: {
+        accepted: false,
+        reason: 'non_failure_conclusion'
+      }
+    });
+  });
+
+  it('github webhook dedupes repeated payload and does not retrigger retry callback path', async () => {
+    const secret = 'github-secret';
+    const dispatch = createServiceDispatcher({
+      dbPath: TEST_DB_PATH,
+      githubWebhookSecret: secret,
+      githubCiContextResolver: () => ({
+        prNumber: 42,
+        tier: 2,
+        executionMode: 'structured',
+        entityIds: [],
+        railBindingStatus: 'ok',
+        retryCount: 0,
+        runId: 'missing-run'
+      })
+    });
+    const bodyText = JSON.stringify({
+      repository: { full_name: 'smartfunds/sandbox' },
+      check_run: {
+        name: 'Unit Tests',
+        head_sha: 'abc123',
+        conclusion: 'failure',
+        pull_requests: [{ number: 42 }]
+      }
+    });
+    const headers = {
+      'content-type': 'application/json',
+      'x-github-event': 'check_run',
+      'x-github-delivery': 'delivery-dedupe',
+      'x-hub-signature-256': signGithub(secret, bodyText)
+    };
+
+    const first = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, headers);
+    const second = await dispatchRaw(dispatch, 'POST', '/webhooks/github', bodyText, headers);
+
+    expect(first.statusCode).toBe(200);
+    expect((first.payload as { retry: { reason: string } }).retry.reason).toBe('RUN_NOT_FOUND');
+    expect(second.statusCode).toBe(200);
+    expect(second.payload).toMatchObject({
+      status: 'duplicate_ignored',
+      retry: {
+        accepted: false,
+        reason: 'duplicate_ignored'
+      }
+    });
   });
 });

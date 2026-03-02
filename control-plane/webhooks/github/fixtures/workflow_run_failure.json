@@ -1,0 +1,9 @@
+{
+  "repository": { "full_name": "smartfunds/sandbox" },
+  "workflow_run": {
+    "name": "Integration Tests",
+    "head_sha": "3333333333333333333333333333333333333333",
+    "conclusion": "failure",
+    "pull_requests": [{ "number": 42 }]
+  }
+}

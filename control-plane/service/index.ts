@@ -11,6 +11,9 @@ import { createRuntimeService } from '../execution/runtime-service.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { runSwarmExecution } from '../swarms/swarmExecutor.ts';
 import { runSwarmExecutor } from '../swarm/swarm-executor.ts';
+import { processGithubWebhookEvent } from '../webhooks/github/process.ts';
+import { verifyGithubSignature, type GithubSignatureError } from '../webhooks/github/signature.ts';
+import type { CiContextResolver, SupportedGithubEventType } from '../webhooks/github/types.ts';
 import { extractRunIdFromSlackActionPayload } from './integrations/slack/actions.ts';
 import {
   computeSlackWebhookEventId,
@@ -52,6 +55,7 @@ import {
 import { computeTaskId, insertQueuedTask, updateTaskStatus } from './storage/tasks.ts';
 
 const DEFAULT_SERVICE_PORT = 3000;
+const GITHUB_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
 
 export interface ServiceOptions {
   dbPath?: string;
@@ -60,6 +64,8 @@ export interface ServiceOptions {
   slackNotifier?: SlackNotifier;
   slackSigningSecret?: string;
   slackNowSeconds?: () => number;
+  githubWebhookSecret?: string;
+  githubCiContextResolver?: CiContextResolver;
 }
 
 export interface ServiceDispatchRequest {
@@ -243,6 +249,15 @@ function resolveHeader(headers: Record<string, string | undefined> | undefined, 
   return headers[key.toLowerCase()];
 }
 
+function isJsonContentType(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'application/json' || normalized.startsWith('application/json;');
+}
+
 type AuditRunItem = {
   runId: string;
   state: string;
@@ -332,6 +347,8 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
     defaultChannel: process.env.SLACK_DEFAULT_CHANNEL
   });
   const slackSigningSecret = options.slackSigningSecret ?? process.env.SLACK_SIGNING_SECRET ?? '';
+  const githubWebhookSecret = options.githubWebhookSecret ?? process.env.GITHUB_WEBHOOK_SECRET ?? '';
+  const githubCiContextResolver = options.githubCiContextResolver;
   const serviceBaseUrl = process.env.SERVICE_BASE_URL;
   const slackConfigured = Boolean(
     (process.env.SLACK_BOT_TOKEN && process.env.SLACK_DEFAULT_CHANNEL) ||
@@ -453,6 +470,64 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   }
 
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
+    if (request.method === 'POST' && request.pathname === '/webhooks/github') {
+      if (!isJsonContentType(resolveHeader(request.headers, 'content-type'))) {
+        return buildResponse(415, { error: 'unsupported_media_type: expected_application_json' });
+      }
+
+      const rawBody = request.bodyText ?? '';
+      if (Buffer.byteLength(rawBody, 'utf8') > GITHUB_WEBHOOK_MAX_BODY_BYTES) {
+        return buildResponse(413, { error: 'payload_too_large' });
+      }
+
+      try {
+        verifyGithubSignature({
+          secret: githubWebhookSecret,
+          rawBody,
+          signatureHeader: resolveHeader(request.headers, 'x-hub-signature-256')
+        });
+      } catch (error) {
+        const signatureError = error as GithubSignatureError;
+        return buildResponse(signatureError.statusCode ?? 401, { error: signatureError.code ?? 'unauthorized: invalid_signature' });
+      }
+
+      const githubEvent = resolveHeader(request.headers, 'x-github-event')?.trim();
+      if (githubEvent !== 'check_run' && githubEvent !== 'workflow_run') {
+        return buildResponse(204, { ok: true, status: 'ignored' });
+      }
+
+      const deliveryId = resolveHeader(request.headers, 'x-github-delivery')?.trim();
+      if (!deliveryId) {
+        return buildResponse(400, { error: 'invalid_request: missing_delivery_id' });
+      }
+
+      const parsed = parseJsonBody(rawBody);
+      if (!parsed.ok) {
+        return buildResponse(400, { error: 'invalid_json' });
+      }
+
+      const processed = processGithubWebhookEvent({
+        eventType: githubEvent as SupportedGithubEventType,
+        deliveryId,
+        payload: parsed.value,
+        contextResolver: githubCiContextResolver,
+        triggerRetry: ({ runId }) => {
+          const retry = runtimeService.requestRetry(runId);
+          return {
+            accepted: retry.accepted,
+            reason: retry.reason ?? (retry.accepted ? 'retry_scheduled' : 'retry_blocked')
+          };
+        }
+      });
+
+      return buildResponse(200, {
+        ok: true,
+        status: processed.dedupeHit ? 'duplicate_ignored' : 'processed',
+        normalizedHash: processed.envelope.normalizedHash,
+        retry: processed.retry
+      });
+    }
+
     if (request.method === 'GET' && request.pathname === '/health') {
       let journalConnectivityOk = true;
       try {
@@ -1090,6 +1165,9 @@ export async function startService(
   hostInput = process.env.HOST ?? '127.0.0.1'
 ): Promise<void> {
   validateStartupInvariants();
+  if (!process.env.GITHUB_WEBHOOK_SECRET || process.env.GITHUB_WEBHOOK_SECRET.trim().length === 0) {
+    throw new Error('STARTUP_INVARIANT_FAILED: GITHUB_WEBHOOK_SECRET_MISSING');
+  }
   const parsed = Number.parseInt(portInput ?? `${DEFAULT_SERVICE_PORT}`, 10);
   const port = Number.isNaN(parsed) ? DEFAULT_SERVICE_PORT : parsed;
   const host = hostInput.trim().length > 0 ? hostInput : '127.0.0.1';

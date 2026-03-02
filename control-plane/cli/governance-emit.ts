@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 
 import { getChangedFilesFromMain, defaultGitExec, type GitExec } from '../governance/changed-files.ts';
 import {
@@ -13,7 +11,12 @@ import {
   stringifyEvidenceJson,
   type EvidenceMode
 } from '../governance/evidence-contract.ts';
-import type { Tier } from '../governance/diagnostics.ts';
+import { type Tier, extractTierFromLabels } from '../governance/diagnostics.ts';
+import { classifyPaths } from '../governance/tier-policy.ts';
+import {
+  DEFAULT_DETERMINISM_STATEMENT,
+  resolveEvidenceModeFromChangedFiles
+} from '../governance/evidence-generation.ts';
 
 type ParsedArgs = {
   tier?: Tier;
@@ -189,45 +192,71 @@ function parseArgs(argv: string[]): ParsedArgs {
   return parsed;
 }
 
-async function askQuestion(prompt: string): Promise<string> {
-  const rl = createInterface({ input, output });
-  try {
-    return (await rl.question(prompt)).trim();
-  } finally {
-    rl.close();
-  }
+function stageFile(filePath: string): void {
+  execFileSync('git', ['add', filePath], { stdio: 'pipe' });
 }
 
-async function resolveRequiredInputs(args: ParsedArgs): Promise<{
+function readLabelsFromLocalMetadata(): string[] {
+  const labelsFile = fs.existsSync('.pr-labels.txt') ? '.pr-labels.txt' : fs.existsSync('pr-labels.txt') ? 'pr-labels.txt' : null;
+  if (!labelsFile) {
+    return [];
+  }
+  return fs
+    .readFileSync(labelsFile, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function readExistingEvidence(): {
   tier: Tier;
   mode: EvidenceMode;
   determinismStatement: string;
   retrySemanticsModified: boolean;
   autonomyScopeExpanded: boolean;
-}> {
-  const tier = args.tier ?? parseTier(await askQuestion('tier (0-3): '));
-  const mode = args.mode ?? parseMode(await askQuestion('mode (structured|autonomous): '));
-  const determinismStatement =
-    args.determinismStatement ?? (await askQuestion('determinismStatement: '));
-  if (!determinismStatement) {
-    throw new Error('determinismStatement is required.');
+} | null {
+  const parsed = readEvidenceContract({ enforceCanonical: false });
+  if (!parsed.exists || !('evidence' in parsed)) {
+    return null;
   }
-  const retrySemanticsModified =
-    args.retrySemanticsModified ?? parseBoolean((await askQuestion('retrySemanticsModified (false/true) [default false]: ')) || 'false');
-  const autonomyScopeExpanded =
-    args.autonomyScopeExpanded ?? parseBoolean((await askQuestion('autonomyScopeExpanded (false/true) [default false]: ')) || 'false');
 
   return {
-    tier,
-    mode,
-    determinismStatement,
-    retrySemanticsModified,
-    autonomyScopeExpanded
+    tier: parsed.evidence.tier,
+    mode: parsed.evidence.mode,
+    determinismStatement: parsed.evidence.determinismStatement,
+    retrySemanticsModified: parsed.evidence.retrySemanticsModified,
+    autonomyScopeExpanded: parsed.evidence.autonomyScopeExpanded
   };
 }
 
-function stageFile(filePath: string): void {
-  execFileSync('git', ['add', filePath], { stdio: 'pipe' });
+function resolveLocalTier(args: ParsedArgs, changedFiles: string[], existing: ReturnType<typeof readExistingEvidence>): Tier {
+  if (args.tier !== undefined) {
+    return args.tier;
+  }
+
+  const labelTier = extractTierFromLabels(readLabelsFromLocalMetadata());
+  if (labelTier !== undefined) {
+    return labelTier;
+  }
+
+  if (existing) {
+    return existing.tier;
+  }
+
+  return classifyPaths(changedFiles).impliedTier;
+}
+
+function resolveLocalMode(args: ParsedArgs, changedFiles: string[], existing: ReturnType<typeof readExistingEvidence>): EvidenceMode {
+  if (args.mode !== undefined) {
+    return args.mode;
+  }
+
+  if (existing) {
+    return existing.mode;
+  }
+
+  return resolveEvidenceModeFromChangedFiles(changedFiles);
 }
 
 export async function runGovernanceEmit(
@@ -239,19 +268,20 @@ export async function runGovernanceEmit(
   const args = parseArgs(argv);
   const gitExec = deps.gitExec ?? defaultGitExec;
   const changedFiles = getChangedFilesFromMain(gitExec);
-  const required = await resolveRequiredInputs(args);
+  const existing = readExistingEvidence();
 
   const evidence = buildCanonicalEvidence({
-    tier: required.tier,
-    mode: required.mode,
+    tier: resolveLocalTier(args, changedFiles, existing),
+    mode: resolveLocalMode(args, changedFiles, existing),
     affectedPaths: changedFiles,
-    determinismStatement: required.determinismStatement,
-    retrySemanticsModified: required.retrySemanticsModified,
-    autonomyScopeExpanded: required.autonomyScopeExpanded,
+    determinismStatement: args.determinismStatement ?? existing?.determinismStatement ?? DEFAULT_DETERMINISM_STATEMENT,
+    retrySemanticsModified: args.retrySemanticsModified ?? existing?.retrySemanticsModified ?? false,
+    autonomyScopeExpanded: args.autonomyScopeExpanded ?? existing?.autonomyScopeExpanded ?? false,
     ...(args.notes !== undefined ? { notes: args.notes } : {}),
     ...(args.railImpacted !== undefined ? { railImpacted: args.railImpacted } : {}),
     ...(args.entityRegistryImpacted !== undefined ? { entityRegistryImpacted: args.entityRegistryImpacted } : {})
   });
+
   const content = stringifyEvidenceJson(evidence);
   const outputPath = resolveEvidencePath(args.outFile);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });

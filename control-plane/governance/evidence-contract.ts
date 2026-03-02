@@ -5,6 +5,7 @@ import { canonicalStringify } from '../finance/determinism.ts';
 import type { ExecutionMode } from '../teams/types.ts';
 import { normalizeChangedFiles } from './changed-files.ts';
 import { isTier, type Tier } from './diagnostics.ts';
+import { validateEvidenceShape } from './evidence-schema.ts';
 
 export const EVIDENCE_JSON_PATH = 'governance/evidence.json';
 export const EVIDENCE_SCHEMA_PATH = 'governance/schema/evidence.schema.json';
@@ -42,6 +43,7 @@ type ReadEvidenceContractOptions = {
   schemaPath?: string;
   readFile?: Reader;
   existsSync?: Exists;
+  enforceCanonical?: boolean;
 };
 
 type ReadEvidenceContractResult =
@@ -225,6 +227,7 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
   const schemaPath = options.schemaPath ?? EVIDENCE_SCHEMA_PATH;
   const readFile = options.readFile ?? defaultReadFile;
   const existsSync = options.existsSync ?? defaultExistsSync;
+  const enforceCanonical = options.enforceCanonical ?? true;
 
   if (!existsSync(evidencePath)) {
     return {
@@ -278,6 +281,14 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
     };
   }
 
+  const shapeErrors = validateEvidenceShape(evidenceValue);
+  if (shapeErrors.length > 0) {
+    return {
+      exists: true,
+      errors: shapeErrors
+    };
+  }
+
   const schemaErrors = validateAgainstSchemaNode(evidenceValue, schema, 'evidence');
   const hygieneErrors = collectStringHygieneErrors(evidenceValue, 'evidence');
   if (schemaErrors.length > 0 || hygieneErrors.length > 0) {
@@ -297,10 +308,10 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
 
   const parsedForCanonical = JSON.parse(canonicalStringify(evidenceValue)) as GovernanceEvidence;
   const canonical = stringifyEvidenceJson(parsedForCanonical);
-  if (evidenceRaw !== canonical) {
+  if (enforceCanonical && evidenceRaw !== canonical) {
     return {
       exists: true,
-      errors: [`${evidencePath} must be canonical JSON. Re-run npm run governance:emit.`]
+      errors: ['Evidence drift detected. Run: npm run governance:emit']
     };
   }
 

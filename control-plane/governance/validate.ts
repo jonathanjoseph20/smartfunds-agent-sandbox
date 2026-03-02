@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -17,9 +16,7 @@ import {
   type RiskContract
 } from './diagnostics.ts';
 import {
-  readEvidenceContract,
-  resolveImpliedExecutionMode,
-  validateEvidenceAgainstComputedState
+  readEvidenceContract
 } from './evidence-contract.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
@@ -36,6 +33,13 @@ import { buildIsolationEnforcement } from '../governance-check.ts';
 import { normalizeChangedFiles } from './changed-files.ts';
 import { validatePrBody } from './pr-body.ts';
 import { classifyPaths, type Tier as PolicyTier } from './tier-policy.ts';
+import { canonicalStringify } from '../finance/determinism.ts';
+import {
+  buildGovernanceMetadataSnapshot,
+  generateEvidenceFromPullRequestMetadata,
+  stringifyGovernanceMetadataSnapshot
+} from './evidence-generation.ts';
+import { resolvePullRequestMetadata } from './pr-files-api.ts';
 
 type GovernanceValidationResult = {
   ok: boolean;
@@ -56,12 +60,6 @@ type GovernanceValidationOptions = {
   repository?: string;
   fetchImpl?: typeof fetch;
   mode?: 'lite' | 'full';
-};
-
-type FetchedPrData = {
-  prData: PullRequestData;
-  prNumber: number;
-  repository: string;
 };
 
 function sortedUnique(values: string[]): string[] {
@@ -143,93 +141,6 @@ function renderSummary(
   lines.push(`Changed Files: ${changedFileCount}`);
   lines.push(`Fix: ${primaryAction ?? 'None'}`);
   return lines.join('\n');
-}
-
-async function githubGet<T>(url: string, token: string, fetchImpl: typeof fetch): Promise<T> {
-  const response = await fetchImpl(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28'
-    }
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`GitHub API request failed (${response.status}): ${message}`);
-  }
-
-  return (await response.json()) as T;
-}
-
-async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Promise<FetchedPrData> {
-  const token = options.token ?? process.env.GITHUB_TOKEN;
-  const repository = options.repository ?? process.env.GITHUB_REPOSITORY;
-  const eventPath = options.eventPath ?? process.env.GITHUB_EVENT_PATH;
-  const fetchImpl = options.fetchImpl ?? fetch;
-
-  if (!token || !repository || !eventPath) {
-    throw new Error('Missing required env vars: GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_EVENT_PATH.');
-  }
-
-  const event = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as {
-    pull_request?: { number?: number };
-    number?: number;
-  };
-
-  // Support common payload shapes
-  const prNumber = event.pull_request?.number ?? event.number;
-
-  if (!prNumber) {
-    throw new Error('This validator must run on pull_request events.');
-  }
-
-  const [owner, repo] = repository.split('/');
-  if (!owner || !repo) {
-    throw new Error(`Invalid GITHUB_REPOSITORY: "${repository}" (expected "owner/repo")`);
-  }
-
-  const pr = await githubGet<{ body: string | null; labels: Array<{ name: string }> }>(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-    token,
-    fetchImpl
-  );
-
-  const changedFiles: string[] = [];
-  let page = 1;
-
-  while (true) {
-    const files = await githubGet<Array<{ filename: string }>>(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`,
-      token,
-      fetchImpl
-    );
-
-    if (files.length === 0) break;
-
-    changedFiles.push(...files.map((file) => file.filename));
-
-    if (files.length < 100) break;
-    page += 1;
-  }
-
-  // Deterministic + safe: always sort + de-dupe here.
-  const stableFiles = sortedUnique(changedFiles);
-
-  // Helpful CI debug signal (does not leak secrets)
-  if (process.env.GITHUB_ACTIONS === 'true') {
-    console.log(`[governance] fetched PR #${prNumber} changed files via PR API: ${stableFiles.length}`);
-  }
-
-  return {
-    prData: {
-      body: pr.body ?? '',
-      labels: pr.labels.map((label) => label.name),
-      changedFiles: stableFiles
-    },
-    prNumber,
-    repository
-  };
 }
 
 async function buildReport(
@@ -445,7 +356,7 @@ async function buildReport(
     return { report, errors: [] };
   }
 
-  const evidenceContract = readEvidenceContract();
+  const evidenceContract = readEvidenceContract({ enforceCanonical: false });
   let declaredTier: number | null = null;
   const requiredChecks: string[] = getRequiredChecksForTier(finalTier, contract);
   let missingLabels: string[] = [];
@@ -507,6 +418,16 @@ async function buildReport(
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
+  if ('evidence' in evidenceContract && finalTier >= 2) {
+    const expectedEvidence = generateEvidenceFromPullRequestMetadata({
+      labels: prData.labels,
+      changedFiles: prData.changedFiles
+    });
+    if (canonicalStringify(evidenceContract.evidence) !== canonicalStringify(expectedEvidence)) {
+      errors.push('Evidence drift detected. Run: npm run governance:emit');
+    }
+  }
+
   const swarmMetadata = {
     swarmsDeclared: [],
     swarmMode: 'evidence' in evidenceContract ? evidenceContract.evidence.mode : null,
@@ -538,28 +459,6 @@ async function buildReport(
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
-
-  if ('evidence' in evidenceContract && finalTier >= 2) {
-    const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
-    const evidenceErrors = validateEvidenceAgainstComputedState({
-      evidence: evidenceContract.evidence,
-      changedFiles: prData.changedFiles,
-      labelTier: labelTier as Tier | null,
-      impliedMode
-    });
-
-    for (const issue of evidenceErrors) {
-      if (issue.startsWith('Affected paths mismatch:')) {
-        if (finalTier === 3) {
-          errors.push(issue);
-        } else if (finalTier === 2) {
-          warnings.push(`TIER2_AFFECTED_PATHS_WARNING: ${issue}`);
-        }
-      } else {
-        errors.push(issue);
-      }
-    }
-  }
 
   if (finalTier >= 2 && modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
@@ -714,18 +613,35 @@ export async function runGovernanceValidation(
   let repository: string | null;
   let bodySource: 'gh' | 'stub';
   let labelSource: 'gh' | 'stub';
+  let pullNumberForSnapshot: number | null = null;
+  let metadataWarnings: string[] = [];
 
   if (options.prData) {
     prData = options.prData;
     repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
     bodySource = 'stub';
     labelSource = 'stub';
+    pullNumberForSnapshot = options.prNumber ?? null;
   } else {
-    const fetched = await fetchPrDataFromGitHub(options);
-    prData = fetched.prData;
-    repository = fetched.repository;
-    bodySource = 'gh';
-    labelSource = 'gh';
+    const metadata = await resolvePullRequestMetadata({
+      token: options.token,
+      repository: options.repository,
+      eventPath: options.eventPath,
+      pullNumber: options.prNumber,
+      fetchImpl: options.fetchImpl,
+      requireApi: false
+    });
+
+    prData = {
+      body: metadata.body,
+      labels: metadata.labels,
+      changedFiles: metadata.changedFiles
+    };
+    repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
+    bodySource = metadata.source === 'api' ? 'gh' : 'stub';
+    labelSource = metadata.source === 'api' ? 'gh' : 'stub';
+    pullNumberForSnapshot = metadata.pullNumber;
+    metadataWarnings = metadata.warnings;
   }
 
   const repo = options.repo ?? repository ?? undefined;
@@ -737,6 +653,31 @@ export async function runGovernanceValidation(
   };
 
   const { report, errors } = await buildReport(prData, contract, { repo, bodySource, labelSource, mode });
+  if (metadataWarnings.length > 0) {
+    report.warnings = sortedUnique([...report.warnings, ...metadataWarnings]);
+  }
+
+  if (pullNumberForSnapshot !== null) {
+    const parsedEvidence = readEvidenceContract({ enforceCanonical: false });
+    const snapshotEvidence =
+      parsedEvidence.exists && 'evidence' in parsedEvidence
+        ? parsedEvidence.evidence
+        : generateEvidenceFromPullRequestMetadata({
+            labels: prData.labels,
+            changedFiles: prData.changedFiles
+          });
+
+    const snapshot = buildGovernanceMetadataSnapshot({
+      pr: pullNumberForSnapshot,
+      labels: prData.labels,
+      files: prData.changedFiles,
+      evidence: snapshotEvidence
+    });
+
+    console.log('GOVERNANCE_METADATA_SNAPSHOT_START');
+    console.log(stringifyGovernanceMetadataSnapshot(snapshot));
+    console.log('GOVERNANCE_METADATA_SNAPSHOT_END');
+  }
 
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';

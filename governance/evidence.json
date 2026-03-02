@@ -1,7 +1,7 @@
 {
   "affectedPaths": [],
   "autonomyScopeExpanded": false,
-  "determinismStatement": "governance changes",
+  "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",
   "mode": "structured",
   "retrySemanticsModified": false,
   "tier": 3

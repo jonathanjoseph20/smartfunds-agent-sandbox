@@ -125,7 +125,12 @@ function buildWarnings(errors: string[]): string[] {
   return warnings;
 }
 
-function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primaryAction: string | null): string {
+function renderSummary(
+  result: GovernanceReport,
+  status: 'PASS' | 'FAIL',
+  primaryAction: string | null,
+  changedFileCount: number
+): string {
   const finalTier = Math.max(result.labelTier ?? result.impliedTier ?? 0, result.impliedTier ?? 0);
   const lines: string[] = [];
   lines.push(`Result: ${status}`);
@@ -133,6 +138,7 @@ function renderSummary(result: GovernanceReport, status: 'PASS' | 'FAIL', primar
   lines.push(`Label Tier: ${result.labelTier ?? 'n/a'}`);
   lines.push(`Implied Tier: ${result.impliedTier ?? 'n/a'}`);
   lines.push(`Final Tier: ${finalTier}`);
+  lines.push(`Changed Files: ${changedFileCount}`);
   lines.push(`Fix: ${primaryAction ?? 'None'}`);
   return lines.join('\n');
 }
@@ -691,7 +697,7 @@ export async function runGovernanceValidation(options: GovernanceValidationOptio
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);
-  const summaryText = renderSummary(report, status, primaryAction);
+  const summaryText = renderSummary(report, status, primaryAction, prData.changedFiles.length);
 
   return {
     ok,

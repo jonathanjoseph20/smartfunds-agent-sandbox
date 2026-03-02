@@ -1,20 +1,18 @@
 {
-  "evidence": {
-    "tier": 3,
-    "mode": "structured",
-    "retrySemanticsModified": false,
-    "autonomyScopeExpanded": false,
-    "determinismStatement": "Uses canonical stringify + sha256; no timestamps/UUIDs/randomness.",
-    "affectedPaths": [
-      ".github/workflows/governance-full.yml",
-      ".github/workflows/governance-lite.yml",
-      "control-plane/governance/pr-files-api.ts",
-      "control-plane/governance-runtime.ts",
-      "control-plane/governance/tier-policy.test.ts",
-      "control-plane/governance/tier-policy.ts",
-      "control-plane/governance/validate.test.ts",
-      "control-plane/governance/validate.ts",
-      "governance/evidence.json"
-    ]
-  }
+  "tier": 3,
+  "mode": "structured",
+  "retrySemanticsModified": false,
+  "autonomyScopeExpanded": false,
+  "determinismStatement": "Uses canonical stringify + sha256; no timestamps/UUIDs/randomness; deterministic ordering for PR file lists and evidence affectedPaths.",
+  "affectedPaths": [
+    ".github/workflows/governance-full.yml",
+    ".github/workflows/governance-lite.yml",
+    "control-plane/governance-runtime.ts",
+    "control-plane/governance/pr-files-api.ts",
+    "control-plane/governance/tier-policy.test.ts",
+    "control-plane/governance/tier-policy.ts",
+    "control-plane/governance/validate.test.ts",
+    "control-plane/governance/validate.ts",
+    "governance/evidence.json"
+  ]
 }

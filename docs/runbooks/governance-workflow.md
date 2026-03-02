@@ -13,11 +13,11 @@ git checkout main
 git pull
 git checkout -b feature-branch-name
 
-## Emit Governance Evidence (Required)
+## Normalize PR Body (Optional but Recommended)
 
-npm run governance:emit
+npm run governance:normalize -- .pr-body.md
 
-Writes canonical `governance/evidence.json`.
+Ensures deterministic formatting and correct tier/evidence structure.
 
 ## Run Governance Preflight
 
@@ -31,17 +31,17 @@ npm run pr:create -- --body-file .pr-body.md
 
 This command:
 
-- Validates local metadata
+- Validates the PR body
 - Ensures gh CLI is available
 - Ensures gh is authenticated
 - Creates the PR
-- Verifies metadata on GitHub
+- Verifies the PR body on GitHub
 
 ## Verify PR After Creation
 
 npm run pr:verify
 
-Re-validates governance metadata and confirms correct tier detection.
+Re-validates PR body and confirms correct tier detection.
 
 ## Refresh PR Metadata (If CI Reads Stale Data)
 
@@ -52,15 +52,15 @@ If CI still reads stale data, run:
 git commit --allow-empty -m "chore: refresh metadata"
 git push
 
-## Validate Evidence Contract
+## Manually Inspect PR Body
 
-npm run governance:preflight
+gh pr view --json body --jq .body
 
-Confirms `governance/evidence.json` and labels match the required contract.
+Confirms PR body matches required contract.
 
 ## Merge Checklist
 
 - CI is green
 - Correct tier label applied
-- `governance/evidence.json` present and valid
+- Evidence block present
 - No unintended file changes

@@ -1,9 +1,4 @@
 {
-  "tier": 3,
-  "mode": "structured",
-  "retrySemanticsModified": false,
-  "autonomyScopeExpanded": false,
-  "determinismStatement": "Uses canonical stringify + sha256; no timestamps/UUIDs/randomness; deterministic ordering for PR file lists and evidence affectedPaths.",
   "affectedPaths": [
     ".github/workflows/governance-full.yml",
     ".github/workflows/governance-lite.yml",
@@ -14,5 +9,10 @@
     "control-plane/governance/validate.test.ts",
     "control-plane/governance/validate.ts",
     "governance/evidence.json"
-  ]
+  ],
+  "autonomyScopeExpanded": false,
+  "determinismStatement": "governance changes",
+  "mode": "structured",
+  "retrySemanticsModified": false,
+  "tier": 3
 }

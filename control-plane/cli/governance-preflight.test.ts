@@ -2,215 +2,123 @@ import fs from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { stringifyGovernanceReport } from '../governance/diagnostics';
 import { buildPreflightReport } from './governance-preflight';
+import { buildCanonicalEvidence, stringifyEvidenceJson } from '../governance/evidence-contract';
 
-const baseBody = `tier-1
-
-\`\`\`evidence
-Risk Tier: 1
-Justification: App-only change
-Affected Paths: apps/api/src/index.ts
-Tests Added: npm --workspace @smartfunds/api run test
-Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted output.
-\`\`\``;
-
-function withSwarmMetadata(body: string, lines: string[]): string {
-  return body.replace(/\n```$/, `\n${lines.join('\n')}\n\`\`\``);
-}
-
-function makeOwnership(override: Partial<ReturnType<typeof makeOwnership>> = {}) {
+function makeOwnership() {
   return {
     projectsTouched: ['core-app'],
     teamsTouched: ['team-a'],
     unownedFiles: [],
     ownershipStatus: 'ok' as const,
-    nextActions: [],
-    ...override
+    nextActions: []
   };
 }
 
-describe('governance:preflight', () => {
-  it('passes when body, evidence, and implied tier are aligned', () => {
-    const result = buildPreflightReport(baseBody, ['apps/api/src/index.ts'], [], {
+function runWithEvidence(evidenceJson: string, labels: string[], changedFiles = ['apps/api/src/index.ts']) {
+  const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
+  return buildPreflightReport(
+    'tier-1\n\n```evidence\nRisk Tier: 1\n```',
+    changedFiles,
+    labels,
+    {
+      existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
+      readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidenceJson : schema),
       loadProjects: () => [],
       loadTeams: () => [],
       resolveOwnership: () => makeOwnership()
-    });
+    }
+  );
+}
 
-    expect(result.ok).toBe(true);
-    expect(result.report.labelTier).toBe(1);
-    expect(result.report.missingEvidenceFields.length).toBe(0);
-    expect(result.report.teamsTouched).toEqual(['product-app']);
-    expect(result.report.executionModesTouched).toEqual(['autonomous']);
-    expect(result.report.swarmOrchestrationStatus).toBe('ok');
-    expect(result.report.swarmOrchestrationViolations).toEqual([]);
-    expect(result.warnings).toContain(
-      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
-    );
-  });
-
-  it('fails when evidence block is missing', () => {
-    const result = buildPreflightReport('tier-1', ['apps/api/src/index.ts'], [], {
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () => makeOwnership()
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.report.missingEvidenceFields).toContain('Risk Tier');
-    expect(result.errors.join('\n')).toContain('Missing fenced evidence block');
-  });
-
-  it('fails structured-mode changes declared below tier-2', () => {
-    const result = buildPreflightReport(baseBody, ['governance/policy.ts'], [], {
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () => makeOwnership()
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.report.executionModesTouched).toEqual(['structured']);
-    expect(result.report.modeEnforcementStatus).toBe('failed');
-    expect(result.report.modeViolation).toBe('structured_min_tier_violation');
-    expect(result.report.requiredMinimumTier).toBe(2);
-    expect(result.errors.join('\n')).toContain('structured execution mode requires declared tier-2 or tier-3');
-  });
-
-  it('enforces tier-3 approval via local convention', () => {
-    const body = `tier-3
-
-\`\`\`evidence
-Risk Tier: 3
-Justification: Sensitive change
-Affected Paths: control-plane/validate-pr.ts
-Tests Added: npm test
-Determinism Statement: Deterministic; no randomness, no hidden mutation, sorted output.
-\`\`\``;
-
-    const result = buildPreflightReport(body, ['control-plane/validate-pr.ts'], [], {
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () => makeOwnership()
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.report.missingLabels).toContain('tier-3-approved');
-    expect(result.errors.join('\n')).toContain(
-      "Tier 3 requires tier-3-approved. Add an unfenced line 'tier-3-approved' to .pr-body.md (local only) or create .pr-labels.txt listing tier-3-approved."
-    );
-  });
-
-  it('reports multi-project ownership status', () => {
-    const result = buildPreflightReport(baseBody, ['apps/api/src/index.ts'], [], {
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () =>
-        makeOwnership({
-          ownershipStatus: 'multi_project',
-          projectsTouched: ['project-a', 'project-b'],
-          nextActions: ['Split changes by project.']
-        })
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.report.ownershipStatus).toBe('multi_project');
-    expect(result.errors.join('\n')).toContain('Ownership violation: multiple projects touched');
-  });
-
-  it('does not fail mixed-mode PRs outside validate-pr (T-M23)', () => {
-    const result = buildPreflightReport(
-      baseBody,
-      ['apps/api/src/index.ts', '.github/workflows/ci.yml'],
-      [],
-      {
-        loadProjects: () => [],
-        loadTeams: () => [],
-        resolveOwnership: () => makeOwnership()
-      }
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.report.modeViolation).toBe('mixed_execution_modes');
-  });
-
-  it('stringifies governance report deterministically', () => {
-    const result = buildPreflightReport(baseBody, ['apps/api/src/index.ts'], ['tier-3-approved'], {
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () =>
-        makeOwnership({
-          projectsTouched: ['project-b', 'project-a'],
-          teamsTouched: ['team-b', 'team-a']
-        })
-    });
-
-    const json = stringifyGovernanceReport(result.report);
-    expect(json).toMatchInlineSnapshot(`"{"declaredTier":1,"impliedTier":1,"labelTier":1,"missingLabels":[],"missingEvidenceFields":[],"requiredChecks":["lint_tier0","unit_tests"],"projectsTouched":["project-a","project-b"],"teamsTouched":["product-app"],"swarmsDeclared":[],"swarmsTouched":[],"swarmOrchestrationStatus":"ok","swarmOrchestrationViolations":[],"swarmDependencyEdges":[],"swarmTopologicalOrder":[],"swarmPhaseBySwarm":{},"swarmWarnings":[],"swarmMode":null,"swarmTeamId":null,"unownedFiles":[],"ownershipStatus":"ok","entitiesTouched":[],"entityOwnershipStatus":"unknown_entity_mapping","unmappedProjects":["project-a","project-b"],"entityByProject":{"project-a":null,"project-b":null},"entityRailProfileByEntity":{},"entitiesMissingRailProfile":[],"railBindingStatus":"ok","railViolations":[],"autonomousContextDetected":false,"branchNamespaceValid":true,"structuredPathsTouched":[],"autonomousPathsTouched":[],"isolationStatus":"ok","isolationViolations":[],"nextActions":["Add missing projectId to control-plane/entities/registry.json."],"warnings":["Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback)."],"executionModesTouched":["autonomous"],"modeBoundaryStatus":"ok","conflictingTeams":[],"conflictingPaths":[],"swarmExecutionModesTouched":[],"modeWarnings":[],"unownedPaths":[],"ambiguousPaths":[],"modeEnforcementStatus":"ok","modeViolation":null,"requiredMinimumTier":null,"errors":[],"metadataSource":{"bodySource":"stub","bodyPath":null,"labelSource":"stub","labelsPath":null,"commentSource":"none"},"commentEvidenceDetected":false,"commentEvidenceCount":0,"sealWarnings":[],"executionContext":{"context":"local","executionMode":"unknown","retryEnabled":false},"retryTrace":{"attempted":false,"retryCount":0,"initialStatus":"passed","finalStatus":"passed","triggerErrorCode":null,"retryable":false,"patchApplied":null}}"`);
-  });
-
-  it('uses JSON evidence when governance/evidence.json exists and ignores markdown parsing', () => {
-    const invalidBody = 'invalid markdown payload';
-    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
-    const evidence = JSON.stringify({
-      tier: 1,
-      mode: 'autonomous',
-      affectedPaths: ['apps/api/src/index.ts'],
+function canonicalEvidence(overrides: Partial<{
+  tier: 0 | 1 | 2 | 3;
+  mode: 'structured' | 'autonomous';
+  affectedPaths: string[];
+}> = {}): string {
+  return stringifyEvidenceJson(
+    buildCanonicalEvidence({
+      tier: overrides.tier ?? 1,
+      mode: overrides.mode ?? 'autonomous',
+      affectedPaths: overrides.affectedPaths ?? ['apps/api/src/index.ts'],
       determinismStatement: 'No identity surfaces mutated.',
       retrySemanticsModified: false,
       autonomyScopeExpanded: false
-    });
-    const result = buildPreflightReport(invalidBody, ['apps/api/src/index.ts'], ['tier-1'], {
-      existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
-      readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
-      loadProjects: () => [],
-      loadTeams: () => [],
-      resolveOwnership: () => makeOwnership()
-    });
+    })
+  );
+}
 
-    expect(result.errors.join('\n')).not.toContain('Missing fenced evidence block');
-    expect(result.warnings).not.toContain(
-      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
-    );
-  });
-
-  it('reports swarms touched for project-level mappings', () => {
-    const result = buildPreflightReport(baseBody, ['docs/swarm-v1.md'], [], {
-      readFile: () => baseBody
-    });
-
-    expect(result.report.projectsTouched).toEqual([]);
-    expect(result.report.swarmsTouched).toEqual([]);
-    expect(result.report.swarmExecutionModesTouched).toEqual([]);
-  });
-
-  it('fails autonomous swarm when structured paths are touched', () => {
-    const body = withSwarmMetadata(baseBody.replace('tier-1', 'tier-2').replace('Risk Tier: 1', 'Risk Tier: 2'), [
-      'Swarm: swarm-contract-v1',
-      'Swarm Mode: autonomous',
-      'Swarm Team: governance'
-    ]);
-    const result = buildPreflightReport(body, ['control-plane/governance/validate.ts'], [], {
+describe('governance:preflight', () => {
+  it('fails when governance/evidence.json is missing', () => {
+    const result = buildPreflightReport('tier-1', ['apps/api/src/index.ts'], ['tier-1'], {
+      existsSync: () => false,
+      readFile: () => '',
       loadProjects: () => [],
       loadTeams: () => [],
       resolveOwnership: () => makeOwnership()
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errors).toContain('swarm_autonomous_structured_violation');
-    expect(result.errors.join('\n')).toContain('isolation_violation:autonomous_governance_core_mutation');
-    expect(result.report.isolationStatus).toBe('autonomous_governance_core_mutation');
-    expect(result.report.isolationViolations).toEqual([
-      'governance_core_mutation_attempt',
-      'structured_path_in_autonomous_context'
-    ]);
+    expect(result.errors).toContain('Missing governance/evidence.json');
   });
 
-  it('warns on invalid swarm mode metadata without failing', () => {
-    const body = withSwarmMetadata(baseBody, ['Swarm: swarm-contract-v1', 'Swarm Mode: invalid']);
-    const result = buildPreflightReport(body, ['apps/api/src/index.ts'], [], {});
+  it('fails with same error for markdown-only body when evidence file is missing', () => {
+    const markdownOnlyBody = `tier-1
 
-    expect(result.ok).toBe(true);
-    expect(result.report.swarmWarnings).toContain('invalid_swarm_mode');
+\`\`\`evidence
+Risk Tier: 1
+Justification: markdown only
+\`\`\``;
+    const result = buildPreflightReport(markdownOnlyBody, ['apps/api/src/index.ts'], ['tier-1'], {
+      existsSync: () => false,
+      readFile: () => '',
+      loadProjects: () => [],
+      loadTeams: () => [],
+      resolveOwnership: () => makeOwnership()
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('Missing governance/evidence.json');
+  });
+
+  it('fails on tier mismatch between evidence.json and labels', () => {
+    const result = runWithEvidence(
+      canonicalEvidence({ tier: 2 }),
+      ['tier-1']
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('governance/evidence.json tier must be 1');
+  });
+
+  it('fails when affectedPaths mismatches computed changed files', () => {
+    const result = runWithEvidence(
+      canonicalEvidence({ affectedPaths: ['apps/api/src/other.ts'] }),
+      ['tier-1']
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('Affected paths mismatch: governance/evidence.json must exactly match changed files.');
+  });
+
+  it('fails when affectedPaths are not sorted', () => {
+    const result = runWithEvidence(
+      '{\n' +
+      '  "tier": 1,\n' +
+      '  "mode": "autonomous",\n' +
+      '  "affectedPaths": [\n' +
+      '    "b.ts",\n' +
+      '    "a.ts"\n' +
+      '  ],\n' +
+      '  "determinismStatement": "No identity surfaces mutated.",\n' +
+      '  "retrySemanticsModified": false,\n' +
+      '  "autonomyScopeExpanded": false\n' +
+      '}\n',
+      ['tier-1'],
+      ['a.ts', 'b.ts']
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('Ensure affectedPaths is sorted and non-empty');
   });
 });

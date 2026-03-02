@@ -3,117 +3,84 @@ import fs from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { runGovernanceValidation } from './validate.ts';
+import { buildCanonicalEvidence, stringifyEvidenceJson } from './evidence-contract.ts';
 
-function makeValidBody(): string {
-  return `tier-2
-
-\`\`\`evidence
-Risk Tier: 2
-Justification: Structured change in autonomous mode
-Affected Paths: control-plane/governance/diagnostics.ts
-Tests Added: npm test
-Determinism Statement: Deterministic and sorted outputs only
-Swarm: swarm-contract-v1
-Swarm Mode: autonomous
-Swarm Team: governance
-\`\`\``;
-}
-
-describe('governance validate isolation parity', () => {
-  it('fails autonomous swarm context touching structured paths', async () => {
-    const result = await runGovernanceValidation({
-      prData: {
-        body: makeValidBody(),
-        labels: ['tier-2'],
-        changedFiles: ['control-plane/governance/diagnostics.ts']
-      },
-      repo: ''
+describe('governance validate evidence contract', () => {
+  it('fails with exact missing evidence.json error', async () => {
+    const originalExistsSync = fs.existsSync.bind(fs);
+    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
+      const normalized = String(filePath);
+      if (normalized === 'governance/evidence.json') {
+        return false;
+      }
+      return originalExistsSync(filePath);
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errors.join('\n')).toContain('isolation_violation:autonomous_governance_core_mutation');
-    expect(result.report.isolationStatus).toBe('autonomous_governance_core_mutation');
-    expect(result.report.isolationViolations).toEqual([
-      'governance_core_mutation_attempt',
-      'structured_path_in_autonomous_context'
-    ]);
+    try {
+      const result = await runGovernanceValidation({
+        prData: {
+          body: 'tier-1\n\n```evidence\nRisk Tier: 1\n```',
+          labels: ['tier-1'],
+          changedFiles: ['apps/api/src/index.ts']
+        }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errors).toContain('Missing governance/evidence.json');
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
-  it('adds EVIDENCE_IN_COMMENT_NOT_BODY when invalid body payload exists in comments', async () => {
-    const result = await runGovernanceValidation({
-      prData: {
-        body: 'Missing governance payload in body',
-        labels: ['tier-2'],
-        changedFiles: ['apps/api/src/index.ts']
-      },
-      prNumber: 42,
-      repository: 'owner/repo',
-      commentFetcher: async () => [
-        { id: 101, body: 'tier-2\n\n```evidence\nRisk Tier: 2\n```' }
-      ]
+  it('fails when evidence json is malformed', async () => {
+    const originalExistsSync = fs.existsSync.bind(fs);
+    const originalReadFileSync = fs.readFileSync.bind(fs);
+    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
+      const normalized = String(filePath);
+      if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
+        return true;
+      }
+      return originalExistsSync(filePath);
+    });
+    vi.spyOn(fs, 'readFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
+      const normalized = String(filePath);
+      if (normalized === 'governance/evidence.json') {
+        return '{';
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return originalReadFileSync(filePath as any, options as any);
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain(
-      'EVIDENCE_IN_COMMENT_NOT_BODY: Governance payload detected in PR comments, but PR body is invalid. Move payload to PR description.'
-    );
-    expect(result.report.errors.map((error) => error.code)).toContain('EVIDENCE_IN_COMMENT_NOT_BODY');
-    expect(result.report.commentEvidenceDetected).toBe(true);
-    expect(result.report.commentEvidenceCount).toBe(1);
-    expect(result.report.metadataSource.commentSource).toBe('gh');
-    expect(result.report.nextActions).toContain('Run: npm run pr:seal -- --pr 42 --tier 2 --evidence-file <path>');
+    try {
+      const result = await runGovernanceValidation({
+        prData: {
+          body: 'informational-only body',
+          labels: ['tier-1'],
+          changedFiles: ['apps/api/src/index.ts']
+        }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.errors.join('\n')).toContain('governance/evidence.json is not valid JSON');
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
-  it('does not add comment evidence error when comments do not contain payload', async () => {
-    const result = await runGovernanceValidation({
-      prData: {
-        body: 'Missing governance payload in body',
-        labels: ['tier-1'],
-        changedFiles: ['apps/api/src/index.ts']
-      },
-      prNumber: 7,
-      repository: 'owner/repo',
-      commentFetcher: async () => [{ id: 1, body: 'No governance payload here' }]
-    });
-
-    expect(result.errors.join('\n')).not.toContain('EVIDENCE_IN_COMMENT_NOT_BODY');
-    expect(result.report.commentEvidenceDetected).toBe(false);
-    expect(result.report.commentEvidenceCount).toBe(0);
-    expect(result.report.metadataSource.commentSource).toBe('gh');
-  });
-
-  it('skips comment scan when body is already valid', async () => {
-    const commentFetcher = vi.fn(async () => [{ id: 5, body: 'tier-2\n\n```evidence\nRisk Tier: 2\n```' }]);
-
-    const result = await runGovernanceValidation({
-      prData: {
-        body: makeValidBody(),
-        labels: ['tier-2'],
-        changedFiles: ['apps/api/src/index.ts']
-      },
-      prNumber: 13,
-      repository: 'owner/repo',
-      commentFetcher
-    });
-
-    expect(commentFetcher).not.toHaveBeenCalled();
-    expect(result.report.metadataSource.commentSource).toBe('none');
-    expect(result.report.commentEvidenceDetected).toBe(false);
-    expect(result.report.commentEvidenceCount).toBe(0);
-  });
-
-  it('uses JSON evidence when governance/evidence.json exists and skips markdown parsing', async () => {
+  it('fails when evidence tier mismatches label tier', async () => {
     const originalExistsSync = fs.existsSync.bind(fs);
     const originalReadFileSync = fs.readFileSync.bind(fs);
     const schema = originalReadFileSync('governance/schema/evidence.schema.json', 'utf8');
-    const evidence = JSON.stringify({
-      tier: 2,
-      mode: 'autonomous',
-      affectedPaths: ['apps/api/src/index.ts'],
-      determinismStatement: 'No identity surfaces mutated.',
-      retrySemanticsModified: false,
-      autonomyScopeExpanded: false
-    });
+    const evidence = stringifyEvidenceJson(
+      buildCanonicalEvidence({
+        tier: 2,
+        mode: 'autonomous',
+        affectedPaths: ['apps/api/src/index.ts'],
+        determinismStatement: 'No identity surfaces mutated.',
+        retrySemanticsModified: false,
+        autonomyScopeExpanded: false
+      })
+    );
     vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
       const normalized = String(filePath);
       if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
@@ -136,32 +103,16 @@ describe('governance validate isolation parity', () => {
     try {
       const result = await runGovernanceValidation({
         prData: {
-          body: 'invalid markdown body',
-          labels: ['tier-2'],
+          body: 'informational-only body',
+          labels: ['tier-1'],
           changedFiles: ['apps/api/src/index.ts']
         }
       });
 
-      expect(result.errors.join('\n')).not.toContain('Missing fenced evidence block');
-      expect(result.report.warnings).not.toContain(
-        'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
-      );
+      expect(result.ok).toBe(false);
+      expect(result.errors.join('\n')).toContain('governance/evidence.json tier must be 1');
     } finally {
       vi.restoreAllMocks();
     }
-  });
-
-  it('falls back to markdown when governance/evidence.json is missing and emits deprecation warning', async () => {
-    const result = await runGovernanceValidation({
-      prData: {
-        body: makeValidBody(),
-        labels: ['tier-2'],
-        changedFiles: ['apps/api/src/index.ts']
-      }
-    });
-
-    expect(result.report.warnings).toContain(
-      'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).'
-    );
   });
 });

@@ -2,24 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
   extractTierFromLabels,
-  extractTierLabelFromBody,
-  extractTierFromEvidence,
   getRequiredChecksForTier,
   inferImpliedTier,
   loadRiskContract,
-  resolveDeclaredTier,
   shouldWarnStalePayload,
   stringifyGovernanceReport,
-  validateEvidenceBlockSchema,
   type GovernanceReport,
   type Tier
 } from '../governance/diagnostics.ts';
 import {
-  MARKDOWN_DEPRECATION_WARNING,
   readEvidenceContract,
   resolveImpliedExecutionMode,
   validateEvidenceAgainstComputedState
@@ -30,7 +24,6 @@ import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { enforceModeBoundary } from '../studio/mode-boundary.ts';
-import { parseSwarmEvidenceMetadata } from '../swarm/parser.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
@@ -138,15 +131,6 @@ function getHeadCommitTime(execGit: GitExec): number {
   return parsed * 1000;
 }
 
-function stripFencedBlocks(body: string): string {
-  return body.replace(/```[\s\S]*?```/g, '');
-}
-
-function hasUnfencedToken(body: string, token: string): boolean {
-  const outside = stripFencedBlocks(body);
-  return new RegExp(`\\b${token}\\b`, 'i').test(outside);
-}
-
 function resolveOwnershipResult(
   changedFiles: string[],
   deps: Required<Pick<PreflightDependencies, 'loadProjects' | 'loadTeams' | 'resolveOwnership'>>,
@@ -166,44 +150,20 @@ function resolveOwnershipResult(
 }
 
 function buildNextActions(params: {
-  useLegacyEvidence: boolean;
   declaredTier: Tier | null;
   impliedTier: Tier;
-  evidenceErrors: string[];
-  missingEvidenceFields: string[];
-  tierBodyLabel: Tier | undefined;
-  tierBody: Tier | undefined;
   tier3ApprovalRequired: boolean;
   tier3ApprovalSatisfied: boolean;
   ownershipActions: string[];
 }): string[] {
   const actions: string[] = [];
 
-  if (params.useLegacyEvidence && !params.tierBodyLabel) {
-    actions.push('Add unfenced PR body tier declaration (tier-0..tier-3).');
-  }
-
-  if (params.useLegacyEvidence && (params.missingEvidenceFields.length > 0 || params.evidenceErrors.length > 0)) {
-    actions.push(buildEvidenceBlockAction());
-  }
-
-  if (
-    params.useLegacyEvidence &&
-    params.tierBody !== undefined &&
-    params.tierBodyLabel !== undefined &&
-    params.tierBody !== params.tierBodyLabel
-  ) {
-    actions.push(`Update PR body evidence Risk Tier to ${params.tierBodyLabel}.`);
-  }
-
   if (params.declaredTier !== null && params.declaredTier < params.impliedTier) {
-    actions.push(`Update PR body Risk Tier to ${params.impliedTier} and apply matching tier label.`);
+    actions.push(`Update governance/evidence.json tier to ${params.impliedTier} and apply matching tier label.`);
   }
 
   if (params.tier3ApprovalRequired && !params.tier3ApprovalSatisfied) {
-    actions.push(
-      "Tier 3 requires tier-3-approved. Add an unfenced line 'tier-3-approved' to .pr-body.md (local only) or create .pr-labels.txt listing tier-3-approved."
-    );
+    actions.push('Add label: tier-3-approved.');
   }
 
   actions.push(...params.ownershipActions);
@@ -211,7 +171,7 @@ function buildNextActions(params: {
 }
 
 export function buildPreflightReport(
-  body: string,
+  _body: string,
   changedFiles: string[],
   labelNames: string[],
   deps: PreflightDependencies = {},
@@ -236,58 +196,22 @@ export function buildPreflightReport(
     readFile: deps.readFile,
     existsSync: deps.existsSync
   });
-  const useLegacyEvidence = !evidenceContract.exists;
-  const evidenceErrors: string[] = [];
-  let missingEvidenceFields: string[] = [];
-  let tierBodyLabel: Tier | undefined;
-  let tierBody: Tier | undefined;
+  const missingEvidenceFields: string[] = [];
   let declaredTier: Tier | null = null;
   let labelTier: Tier | null = null;
   let explicitLabelTier: Tier | null = null;
 
-  if (evidenceContract.exists) {
-    if ('evidence' in evidenceContract) {
-      const evidence = evidenceContract.evidence;
-      declaredTier = evidence.tier;
-      try {
-        explicitLabelTier = extractTierFromLabels(labelNames) ?? null;
-      } catch (error) {
-        errors.push((error as Error).message);
-      }
-      labelTier = explicitLabelTier ?? declaredTier;
-    } else {
-      errors.push(...evidenceContract.errors);
-    }
-  } else {
-    warnings.push(MARKDOWN_DEPRECATION_WARNING);
-    const evidenceValidation = validateEvidenceBlockSchema(body);
-    evidenceErrors.push(...evidenceValidation.errors);
-    missingEvidenceFields = evidenceValidation.missingFields;
-    errors.push(...evidenceErrors);
-
+  if ('evidence' in evidenceContract) {
+    const evidence = evidenceContract.evidence;
+    declaredTier = evidence.tier;
     try {
-      tierBodyLabel = extractTierLabelFromBody(body);
+      explicitLabelTier = extractTierFromLabels(labelNames) ?? null;
     } catch (error) {
       errors.push((error as Error).message);
     }
-
-    if (tierBodyLabel === undefined) {
-      errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
-    }
-
-    tierBody = extractTierFromEvidence(body);
-    if (evidenceValidation.evidence && tierBody === undefined) {
-      errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
-    }
-
-    if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
-      errors.push(
-        `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
-      );
-    }
-
-    declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
-    labelTier = declaredTier;
+    labelTier = explicitLabelTier ?? declaredTier;
+  } else {
+    errors.push(...evidenceContract.errors);
   }
 
   if (labelTier !== null && labelTier < impliedTier) {
@@ -298,19 +222,11 @@ export function buildPreflightReport(
 
   const tier3ApprovalRequired = declaredTier === 3;
   const tier3ApprovalSatisfied = tier3ApprovalRequired
-    ? (useLegacyEvidence
-      ? hasUnfencedToken(body, 'tier-3-approved') || labelNames.includes('tier-3-approved')
-      : labelNames.includes('tier-3-approved'))
+    ? labelNames.includes('tier-3-approved')
     : true;
 
   if (tier3ApprovalRequired && !tier3ApprovalSatisfied) {
-    if (useLegacyEvidence) {
-      errors.push(
-        "Tier 3 requires tier-3-approved. Add an unfenced line 'tier-3-approved' to .pr-body.md (local only) or create .pr-labels.txt listing tier-3-approved."
-      );
-    } else {
-      errors.push('Tier 3 requires `tier-3-approved` label.');
-    }
+    errors.push('Tier 3 requires `tier-3-approved` label.');
   }
 
   const requiredChecks = labelTier !== null ? getRequiredChecksForTier(labelTier, contract) : [];
@@ -339,7 +255,14 @@ export function buildPreflightReport(
 
   const missingLabels = tier3ApprovalRequired && !tier3ApprovalSatisfied ? ['tier-3-approved'] : [];
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
-  const swarmMetadata = parseSwarmEvidenceMetadata(body);
+  const swarmMetadata = {
+    swarmsDeclared: [],
+    swarmMode: ('evidence' in evidenceContract ? evidenceContract.evidence.mode : null),
+    swarmTeamId: null,
+    hasSwarmModeField: false,
+    hasSwarmTeamField: false,
+    swarmWarnings: [] as string[]
+  };
   const swarmPolicy = evaluateSwarmPolicy({
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmMode: swarmMetadata.swarmMode,
@@ -361,7 +284,7 @@ export function buildPreflightReport(
     declaredTier
   });
 
-  if (evidenceContract.exists && 'evidence' in evidenceContract) {
+  if ('evidence' in evidenceContract) {
     const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
     errors.push(
       ...validateEvidenceAgainstComputedState({
@@ -380,17 +303,12 @@ export function buildPreflightReport(
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const stalePayloadWarning = shouldWarnStalePayload(errors);
   if (stalePayloadWarning) {
-    warnings.push('GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.');
+    warnings.push('GitHub Actions re-runs can read stale governance metadata/labels. If you updated evidence.json or labels, push a new commit to refresh the payload.');
   }
 
   const nextActions = buildNextActions({
-    useLegacyEvidence,
     declaredTier,
     impliedTier,
-    evidenceErrors,
-    missingEvidenceFields,
-    tierBodyLabel,
-    tierBody,
     tier3ApprovalRequired,
     tier3ApprovalSatisfied,
     ownershipActions: ownershipResult.nextActions
@@ -544,10 +462,8 @@ function renderSummary(result: PreflightResult, branch: string): string {
   }
   lines.push(`Ownership Status: ${result.report.ownershipStatus}`);
 
-  if (result.evidenceMissingFields.length > 0) {
-    lines.push(`Evidence: missing fields (${result.evidenceMissingFields.join(', ')})`);
-  } else if (result.errors.some((error) => error.includes('Missing fenced evidence block'))) {
-    lines.push('Evidence: missing block');
+  if (result.errors.some((error) => error === 'Missing governance/evidence.json')) {
+    lines.push('Evidence: missing governance/evidence.json');
   } else {
     lines.push('Evidence: ok');
   }
@@ -613,7 +529,7 @@ const resolvedMetadata = resolveLocalMetadata({
   })) {
     console.log('');
     console.log('⚠ Governance metadata may be stale in GitHub.');
-    console.log('If you modified labels or PR body after CI failure, run:');
+    console.log('If you modified labels or governance/evidence.json after CI failure, run:');
     console.log('');
     console.log('git commit --allow-empty -m "chore: refresh governance metadata"');
     console.log('git push');

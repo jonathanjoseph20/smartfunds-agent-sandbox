@@ -40,41 +40,28 @@ function readEvidence(content: string) {
 }
 
 describe('governance evidence contract', () => {
-  it('passes with valid evidence json and normalizes affected paths', () => {
-    const result = readEvidence(
-      JSON.stringify({
-        tier: 3,
-        mode: 'structured',
-        affectedPaths: ['b.ts', 'a.ts', 'a.ts'],
-        determinismStatement: 'No identity surfaces mutated.',
-        retrySemanticsModified: false,
-        autonomyScopeExpanded: false
-      })
-    );
+  it('fails with exact error when governance/evidence.json is missing', () => {
+    const result = readEvidenceContract({
+      evidencePath: 'governance/evidence.json',
+      schemaPath: 'governance/schema/evidence.schema.json',
+      existsSync: () => false,
+      readFile: () => VALID_SCHEMA
+    });
 
-    expect(result.exists).toBe(true);
-    expect('evidence' in result && result.evidence.affectedPaths).toEqual(['a.ts', 'b.ts']);
+    expect(result.exists).toBe(false);
+    expect(result.errors).toEqual(['Missing governance/evidence.json']);
   });
 
-  it('fails when a required field is missing', () => {
-    const result = readEvidence(
-      JSON.stringify({
-        tier: 3,
-        mode: 'structured',
-        determinismStatement: 'No identity surfaces mutated.',
-        retrySemanticsModified: false,
-        autonomyScopeExpanded: false
-      })
-    );
-
+  it('fails with deterministic parse error for malformed json', () => {
+    const result = readEvidence('{');
     expect(result.exists).toBe(true);
-    expect('errors' in result && result.errors.join('\n')).toContain('evidence.affectedPaths is required');
+    expect('errors' in result && result.errors[0]).toContain('governance/evidence.json is not valid JSON');
   });
 
-  it('fails when an extra property is present', () => {
+  it('fails when additional properties are present', () => {
     const result = readEvidence(
       JSON.stringify({
-        tier: 3,
+        tier: 2,
         mode: 'structured',
         affectedPaths: ['a.ts'],
         determinismStatement: 'No identity surfaces mutated.',
@@ -88,27 +75,79 @@ describe('governance evidence contract', () => {
     expect('errors' in result && result.errors.join('\n')).toContain('evidence.unexpected is not allowed');
   });
 
-  it('fails when property types are invalid', () => {
+  it('fails when affectedPaths is not sorted', () => {
     const result = readEvidence(
-      JSON.stringify({
-        tier: '3',
-        mode: 'structured',
-        affectedPaths: ['a.ts'],
-        determinismStatement: 'No identity surfaces mutated.',
-        retrySemanticsModified: false,
-        autonomyScopeExpanded: false
-      })
+      '{\n' +
+      '  "tier": 2,\n' +
+      '  "mode": "structured",\n' +
+      '  "affectedPaths": ["b.ts", "a.ts"],\n' +
+      '  "determinismStatement": "No identity surfaces mutated.",\n' +
+      '  "retrySemanticsModified": false,\n' +
+      '  "autonomyScopeExpanded": false\n' +
+      '}\n'
     );
 
     expect(result.exists).toBe(true);
-    expect('errors' in result && result.errors.join('\n')).toContain('evidence.tier must be type number');
+    expect('errors' in result && result.errors).toContain(
+      'governance/evidence.json contains invalid values after schema validation. Ensure affectedPaths is sorted and non-empty.'
+    );
   });
 
-  it('flags tier/mode/affected-path mismatches', () => {
+  it('fails when arrays are empty', () => {
+    const result = readEvidence(
+      '{\n' +
+      '  "tier": 2,\n' +
+      '  "mode": "structured",\n' +
+      '  "affectedPaths": [],\n' +
+      '  "determinismStatement": "No identity surfaces mutated.",\n' +
+      '  "retrySemanticsModified": false,\n' +
+      '  "autonomyScopeExpanded": false\n' +
+      '}\n'
+    );
+
+    expect(result.exists).toBe(true);
+    expect('errors' in result && result.errors.join('\n')).toContain('evidence.affectedPaths must not be empty.');
+  });
+
+  it('fails when strings include trailing whitespace', () => {
+    const result = readEvidence(
+      '{\n' +
+      '  "tier": 2,\n' +
+      '  "mode": "structured",\n' +
+      '  "affectedPaths": ["a.ts"],\n' +
+      '  "determinismStatement": "No identity surfaces mutated. ",\n' +
+      '  "retrySemanticsModified": false,\n' +
+      '  "autonomyScopeExpanded": false\n' +
+      '}\n'
+    );
+
+    expect(result.exists).toBe(true);
+    expect('errors' in result && result.errors.join('\n')).toContain(
+      'evidence.determinismStatement must not have trailing whitespace.'
+    );
+  });
+
+  it('fails when file contains CRLF line endings', () => {
+    const result = readEvidence(
+      '{\r\n' +
+      '  "tier": 2,\r\n' +
+      '  "mode": "structured",\r\n' +
+      '  "affectedPaths": ["a.ts"],\r\n' +
+      '  "determinismStatement": "No identity surfaces mutated.",\r\n' +
+      '  "retrySemanticsModified": false,\r\n' +
+      '  "autonomyScopeExpanded": false\r\n' +
+      '}\r\n'
+    );
+
+    expect(result.exists).toBe(true);
+    expect('errors' in result && result.errors).toEqual(['governance/evidence.json must use LF line endings only.']);
+  });
+
+  it('flags tier/mode/affected-path mismatches using sorted comparisons', () => {
     const evidence: GovernanceEvidence = {
       tier: 3,
       mode: 'structured',
-      affectedPaths: ['control-plane/a.ts'],
+      affectedPaths: ['control-plane/b.ts', 'control-plane/a.ts'],
       determinismStatement: 'No identity surfaces mutated.',
       retrySemanticsModified: false,
       autonomyScopeExpanded: false
@@ -116,13 +155,13 @@ describe('governance evidence contract', () => {
 
     const errors = validateEvidenceAgainstComputedState({
       evidence,
-      changedFiles: ['control-plane/b.ts'],
+      changedFiles: ['control-plane/a.ts', 'control-plane/c.ts'],
       labelTier: 2,
       impliedMode: 'autonomous'
     });
 
     expect(errors).toEqual([
-      'Affected paths mismatch: governance/evidence.json must exactly match changed files. expected=["control-plane/b.ts"] actual=["control-plane/a.ts"]',
+      'Affected paths mismatch: governance/evidence.json must exactly match changed files. expected=["control-plane/a.ts","control-plane/c.ts"] actual=["control-plane/a.ts","control-plane/b.ts"]',
       'Execution mode mismatch: implied mode is autonomous; governance/evidence.json mode must be autonomous.',
       'Risk tier mismatch: label tier is 2; governance/evidence.json tier must be 2.'
     ]);

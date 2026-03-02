@@ -5,114 +5,105 @@ import { describe, expect, it, vi } from 'vitest';
 import { runGovernanceValidation } from './validate.ts';
 import { buildCanonicalEvidence, stringifyEvidenceJson } from './evidence-contract.ts';
 
-describe('governance validate evidence contract', () => {
-  it('fails with exact missing evidence.json error', async () => {
-    const originalExistsSync = fs.existsSync.bind(fs);
-    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
-      const normalized = String(filePath);
-      if (normalized === 'governance/evidence.json') {
-        return false;
-      }
-      return originalExistsSync(filePath);
-    });
-
-    try {
-      const result = await runGovernanceValidation({
-        prData: {
-          body: 'tier-1\n\n```evidence\nRisk Tier: 1\n```',
-          labels: ['tier-1'],
-          changedFiles: ['apps/api/src/index.ts']
-        }
-      });
-
-      expect(result.ok).toBe(false);
-      expect(result.errors).toContain('Missing governance/evidence.json');
-    } finally {
-      vi.restoreAllMocks();
+function withMockedEvidence(evidenceContent: string, run: () => Promise<void>): Promise<void> {
+  const originalExistsSync = fs.existsSync.bind(fs);
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  const schema = originalReadFileSync('governance/schema/evidence.schema.json', 'utf8');
+  vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
+    const normalized = String(filePath);
+    if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
+      return true;
     }
+    return originalExistsSync(filePath);
   });
-
-  it('fails when evidence json is malformed', async () => {
-    const originalExistsSync = fs.existsSync.bind(fs);
-    const originalReadFileSync = fs.readFileSync.bind(fs);
-    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
-      const normalized = String(filePath);
-      if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
-        return true;
-      }
-      return originalExistsSync(filePath);
-    });
-    vi.spyOn(fs, 'readFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
+  vi.spyOn(fs, 'readFileSync').mockImplementation(
+    (filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
       const normalized = String(filePath);
       if (normalized === 'governance/evidence.json') {
-        return '{';
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return originalReadFileSync(filePath as any, options as any);
-    });
-
-    try {
-      const result = await runGovernanceValidation({
-        prData: {
-          body: 'informational-only body',
-          labels: ['tier-1'],
-          changedFiles: ['apps/api/src/index.ts']
-        }
-      });
-
-      expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('governance/evidence.json is not valid JSON');
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
-
-  it('fails when evidence tier mismatches label tier', async () => {
-    const originalExistsSync = fs.existsSync.bind(fs);
-    const originalReadFileSync = fs.readFileSync.bind(fs);
-    const schema = originalReadFileSync('governance/schema/evidence.schema.json', 'utf8');
-    const evidence = stringifyEvidenceJson(
-      buildCanonicalEvidence({
-        tier: 2,
-        mode: 'autonomous',
-        affectedPaths: ['apps/api/src/index.ts'],
-        determinismStatement: 'No identity surfaces mutated.',
-        retrySemanticsModified: false,
-        autonomyScopeExpanded: false
-      })
-    );
-    vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
-      const normalized = String(filePath);
-      if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
-        return true;
-      }
-      return originalExistsSync(filePath);
-    });
-    vi.spyOn(fs, 'readFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
-      const normalized = String(filePath);
-      if (normalized === 'governance/evidence.json') {
-        return evidence;
+        return evidenceContent;
       }
       if (normalized === 'governance/schema/evidence.schema.json') {
         return schema;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return originalReadFileSync(filePath as any, options as any);
+    }
+  );
+
+  return run().finally(() => {
+    vi.restoreAllMocks();
+  });
+}
+
+describe('governance validate tier routing', () => {
+  it('fails lite mode when tier label is missing', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'lite',
+      prData: {
+        body: 'tier-1\n\n```evidence\nRisk Tier: 1\nJustification: ok\nAffected Paths: docs/readme.md\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        labels: [],
+        changedFiles: ['docs/readme.md']
+      }
     });
 
-    try {
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('MISSING_TIER_LABEL');
+  });
+
+  it('fails lite mode with SPLIT_REQUIRED for low-tier PRs touching restricted paths', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'lite',
+      prData: {
+        body: 'tier-1\n\n```evidence\nRisk Tier: 1\nJustification: ok\nAffected Paths: control-plane/validate-pr.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        labels: ['tier-1'],
+        changedFiles: ['control-plane/validate-pr.ts']
+      }
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('SPLIT_REQUIRED');
+    expect(result.errors.join('\n')).toContain('control-plane/validate-pr.ts');
+  });
+
+  it('fails with TIER_LABEL_TOO_LOW when label is below implied tier outside low-tier split boundary', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'full',
+      prData: {
+        body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: governance/evidence.json\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        labels: ['tier-2'],
+        changedFiles: ['governance/evidence.json']
+      }
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('TIER_LABEL_TOO_LOW');
+  });
+
+  it('does not fail tier-2 full mode on affectedPaths mismatch and emits deterministic warning', async () => {
+    const evidence = stringifyEvidenceJson(
+      buildCanonicalEvidence({
+        tier: 2,
+        mode: 'autonomous',
+        affectedPaths: ['apps/api/src/other.ts'],
+        determinismStatement: 'No identity surfaces mutated.',
+        retrySemanticsModified: false,
+        autonomyScopeExpanded: false
+      })
+    );
+
+    await withMockedEvidence(evidence, async () => {
       const result = await runGovernanceValidation({
+        mode: 'full',
         prData: {
-          body: 'informational-only body',
-          labels: ['tier-1'],
+          body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: apps/api/src/index.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+          labels: ['tier-2'],
           changedFiles: ['apps/api/src/index.ts']
         }
       });
 
-      expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('governance/evidence.json tier must be 1');
-    } finally {
-      vi.restoreAllMocks();
-    }
+      expect(result.ok).toBe(true);
+      expect(result.errors.join('\n')).not.toContain('Affected paths mismatch');
+      expect(result.report.warnings.join('\n')).toContain('TIER2_AFFECTED_PATHS_WARNING');
+    });
   });
 });

@@ -76,7 +76,7 @@ function computeFinalTier(labelTier: Tier | null, impliedTier: PolicyTier): Tier
   if (labelTier === null) {
     return impliedTier;
   }
-  return (Math.max(labelTier, impliedTier) as Tier);
+  return Math.max(labelTier, impliedTier) as Tier;
 }
 
 function needsBootstrapAction(missingLabels: string[]): boolean {
@@ -107,8 +107,10 @@ function buildNextActions(
     actions.push('Add label: tier-3-approved.');
   }
 
-  if (needsBootstrapAction(getMissingTierLabels(result.tierLabel as Tier | null)) ||
-      (result.tierLabel === 3 && !pr.labels.includes('tier-3-approved'))) {
+  if (
+    needsBootstrapAction(getMissingTierLabels(result.tierLabel as Tier | null)) ||
+    (result.tierLabel === 3 && !pr.labels.includes('tier-3-approved'))
+  ) {
     actions.push(...buildBootstrapActions(repo));
   }
 
@@ -172,14 +174,21 @@ async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Prom
 
   const event = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as {
     pull_request?: { number?: number };
+    number?: number;
   };
-  const prNumber = event.pull_request?.number;
+
+  // Support common payload shapes
+  const prNumber = event.pull_request?.number ?? event.number;
 
   if (!prNumber) {
     throw new Error('This validator must run on pull_request events.');
   }
 
   const [owner, repo] = repository.split('/');
+  if (!owner || !repo) {
+    throw new Error(`Invalid GITHUB_REPOSITORY: "${repository}" (expected "owner/repo")`);
+  }
+
   const pr = await githubGet<{ body: string | null; labels: Array<{ name: string }> }>(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
     token,
@@ -196,22 +205,27 @@ async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Prom
       fetchImpl
     );
 
-    if (files.length === 0) {
-      break;
-    }
+    if (files.length === 0) break;
 
     changedFiles.push(...files.map((file) => file.filename));
-    if (files.length < 100) {
-      break;
-    }
+
+    if (files.length < 100) break;
     page += 1;
+  }
+
+  // Deterministic + safe: always sort + de-dupe here.
+  const stableFiles = sortedUnique(changedFiles);
+
+  // Helpful CI debug signal (does not leak secrets)
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`[governance] fetched PR #${prNumber} changed files via PR API: ${stableFiles.length}`);
   }
 
   return {
     prData: {
       body: pr.body ?? '',
       labels: pr.labels.map((label) => label.name),
-      changedFiles
+      changedFiles: stableFiles
     },
     prNumber,
     repository
@@ -246,7 +260,12 @@ async function buildReport(
     errors.push(formatGovernanceError('INVALID_TIER_LABEL', (error as Error).message));
   }
   if (labelTier === null) {
-    errors.push(formatGovernanceError('MISSING_TIER_LABEL', 'Missing risk tier label. Add exactly one: tier-0, tier-1, tier-2, tier-3.'));
+    errors.push(
+      formatGovernanceError(
+        'MISSING_TIER_LABEL',
+        'Missing risk tier label. Add exactly one: tier-0, tier-1, tier-2, tier-3.'
+      )
+    );
   }
 
   const pathClassification = classifyPaths(prData.changedFiles);
@@ -273,6 +292,7 @@ async function buildReport(
     }
   }
 
+  // Lite mode: if implied/final tier >=2, only enforce "no silent escalation" errors and exit early.
   if (context.mode === 'lite' && finalTier >= 2) {
     const liteBlockingErrors = errors.filter(
       (entry) => entry.startsWith('SPLIT_REQUIRED:') || entry.startsWith('TIER_LABEL_TOO_LOW:')
@@ -325,6 +345,7 @@ async function buildReport(
     return { report, errors: liteBlockingErrors };
   }
 
+  // Lite mode: tier 0/1 => run only minimal checks and return.
   if (context.mode === 'lite' && finalTier <= 1) {
     const report = buildGovernanceReport({
       declaredTier: null,
@@ -374,6 +395,7 @@ async function buildReport(
     return { report, errors };
   }
 
+  // Full mode: tier 0/1 => skip heavy governance
   if (context.mode === 'full' && finalTier <= 1) {
     const report = buildGovernanceReport({
       declaredTier: null,
@@ -425,7 +447,7 @@ async function buildReport(
 
   const evidenceContract = readEvidenceContract();
   let declaredTier: number | null = null;
-  let requiredChecks: string[] = getRequiredChecksForTier(finalTier, contract);
+  const requiredChecks: string[] = getRequiredChecksForTier(finalTier, contract);
   let missingLabels: string[] = [];
   let projects: Project[] = [];
   let teams: Team[] = [];
@@ -445,10 +467,12 @@ async function buildReport(
         `Risk tier mismatch: label tier is ${labelTier}; governance/evidence.json tier must be ${labelTier}.`
       );
     }
+
     missingLabels = [
       ...getMissingTierLabels(labelTier),
       ...(finalTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
     ];
+
     if (finalTier === 3 && !prData.labels.includes('tier-3-approved')) {
       errors.push(
         'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/evidence, push a new commit to refresh the PR payload.'
@@ -467,6 +491,7 @@ async function buildReport(
       errors.push((error as Error).message);
       ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects: [], teams: [] });
     }
+
     if (projects.length > 0) {
       try {
         swarms = loadSwarmsFromDir('control-plane/swarms', projects);
@@ -475,6 +500,7 @@ async function buildReport(
         swarms = [];
       }
     }
+
     errors.push(...buildOwnershipErrors(ownershipResult));
   }
 
@@ -483,12 +509,13 @@ async function buildReport(
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
   const swarmMetadata = {
     swarmsDeclared: [],
-    swarmMode: ('evidence' in evidenceContract ? evidenceContract.evidence.mode : null),
+    swarmMode: 'evidence' in evidenceContract ? evidenceContract.evidence.mode : null,
     swarmTeamId: null,
     hasSwarmModeField: false,
     hasSwarmTeamField: false,
     swarmWarnings: [] as string[]
   };
+
   const swarmPolicy = evaluateSwarmPolicy({
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmMode: swarmMetadata.swarmMode,
@@ -499,16 +526,19 @@ async function buildReport(
     executionModesTouched: teamResolution.executionModesTouched
   });
   errors.push(...swarmPolicy.swarmErrors);
+
   const isolation = buildIsolationEnforcement({
     branchName: process.env.GITHUB_HEAD_REF ?? '',
     changedFiles: prData.changedFiles,
     executionMode: swarmMetadata.swarmMode ?? 'unknown'
   });
   errors.push(...isolation.errors);
+
   const modePolicy = evaluateModePolicy({
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
+
   if ('evidence' in evidenceContract && finalTier >= 2) {
     const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
     const evidenceErrors = validateEvidenceAgainstComputedState({
@@ -517,6 +547,7 @@ async function buildReport(
       labelTier: labelTier as Tier | null,
       impliedMode
     });
+
     for (const issue of evidenceErrors) {
       if (issue.startsWith('Affected paths mismatch:')) {
         if (finalTier === 3) {
@@ -529,10 +560,13 @@ async function buildReport(
       }
     }
   }
+
   if (finalTier >= 2 && modePolicy.status === 'failed' && modePolicy.message) {
     errors.push(modePolicy.message);
   }
+
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
+
   const nextActions = buildNextActions(
     {
       tierLabel: labelTier,
@@ -542,6 +576,7 @@ async function buildReport(
     prData,
     context.repo
   );
+
   if (finalTier >= 2) {
     nextActions.push(...modePolicy.nextActions);
     nextActions.push(...ownershipResult.nextActions);
@@ -566,24 +601,31 @@ async function buildReport(
     nextActions.push(...buildStalePayloadActions());
   }
 
-  const swarmResolution = finalTier >= 2
-    ? resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms)
-    : { swarmsTouched: [], swarmExecutionModesTouched: [] as string[] };
+  const swarmResolution =
+    finalTier >= 2
+      ? resolveSwarmsForProjects(ownershipResult.projectsTouched, swarms)
+      : { swarmsTouched: [], swarmExecutionModesTouched: [] as string[] };
+
   const swarmsTouched = sortedUnique([
     ...(Array.isArray(swarmResolution.swarmsTouched) ? swarmResolution.swarmsTouched : []),
     ...swarmPolicy.swarmsTouched
   ]);
-  const orchestrationResult = finalTier >= 2 ? evaluateSwarmOrchestration({
-    swarmsTouched,
-    swarms,
-    registryPath: 'control-plane/swarms/orchestration.json'
-  }) : {
-    status: 'ok',
-    violations: [],
-    edges: [],
-    topologicalOrder: [],
-    phaseBySwarm: {}
-  };
+
+  const orchestrationResult =
+    finalTier >= 2
+      ? evaluateSwarmOrchestration({
+          swarmsTouched,
+          swarms,
+          registryPath: 'control-plane/swarms/orchestration.json'
+        })
+      : {
+          status: 'ok',
+          violations: [],
+          edges: [],
+          topologicalOrder: [],
+          phaseBySwarm: {}
+        };
+
   if (finalTier >= 2 && orchestrationResult.status !== 'ok') {
     errors.push(...orchestrationResult.violations);
   }
@@ -661,7 +703,9 @@ async function buildReport(
   };
 }
 
-export async function runGovernanceValidation(options: GovernanceValidationOptions = {}): Promise<GovernanceValidationResult> {
+export async function runGovernanceValidation(
+  options: GovernanceValidationOptions = {}
+): Promise<GovernanceValidationResult> {
   const mode = options.mode ?? 'full';
   const contractPath = options.contractPath ?? path.resolve('control-plane/risk-contract.json');
   const contract = loadRiskContract(contractPath);
@@ -685,15 +729,15 @@ export async function runGovernanceValidation(options: GovernanceValidationOptio
   }
 
   const repo = options.repo ?? repository ?? undefined;
+
+  // Normalize exactly once, deterministically.
   prData = {
     ...prData,
-    changedFiles: normalizeChangedFiles(prData.changedFiles)
+    changedFiles: normalizeChangedFiles(sortedUnique(prData.changedFiles))
   };
-  const { report, errors } = await buildReport(
-    prData,
-    contract,
-    { repo, bodySource, labelSource, mode }
-  );
+
+  const { report, errors } = await buildReport(prData, contract, { repo, bodySource, labelSource, mode });
+
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);

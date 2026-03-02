@@ -10,10 +10,11 @@
       "control-plane/governance/tier-policy.test.ts",
       "control-plane/governance/tier-policy.ts",
       "control-plane/governance/validate.test.ts",
-      "control-plane/governance/validate.ts"
+      "control-plane/governance/validate.ts",
+      "governance/evidence.json"
     ],
     "autonomyScopeExpanded": false,
-    "determinismStatement": "Uses canonical stringify + sha256; no timestamps/UUIDs/randomness.",
-    "retrySemanticsModified": false
+    "retrySemanticsModified": false,
+    "determinismStatement": "Deterministic behavior preserved: PR file list canonicalized (sorted/unique) and governance decisions remain pure/deterministic (no timestamps/UUIDs/randomness)."
   }
 }

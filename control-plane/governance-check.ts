@@ -3,24 +3,18 @@ import path from 'node:path';
 
 import {
   buildBootstrapActions,
-  buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
   extractTierFromLabels,
-  extractTierLabelFromBody,
-  extractTierFromEvidence,
   getRequiredChecksForTier,
   inferImpliedTier,
   loadRiskContract,
-  resolveDeclaredTier,
   selectPrimaryAction,
   stringifyGovernanceReport,
-  validateEvidenceBlockSchema,
   type GovernanceReport,
   type Tier
 } from './governance/diagnostics.ts';
 import {
-  MARKDOWN_DEPRECATION_WARNING,
   readEvidenceContract,
   resolveImpliedExecutionMode,
   validateEvidenceAgainstComputedState
@@ -30,7 +24,6 @@ import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { REQUIRED_LABELS } from './bootstrap-labels.ts';
 import { resolveEntityTelemetry } from './studio/entity-registry.ts';
-import { parseSwarmEvidenceMetadata } from './swarm/parser.ts';
 import { evaluateSwarmPolicy } from './swarm/validator.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
@@ -220,37 +213,20 @@ function buildWarnings(hasLabelCheck: boolean): string[] {
       'Label existence not verified in local mode. Provide GITHUB_TOKEN/GH_TOKEN and GITHUB_REPOSITORY to check labels, or run label bootstrap in dry-run.'
     );
   }
-  warnings.push('Labels are authoritative in CI; local mode assumes label tier from the PR body.');
+  warnings.push('Labels are authoritative in CI; local mode expects labels aligned to governance/evidence.json.');
   return warnings;
 }
 
 function buildNextActions(
-  useLegacyEvidence: boolean,
   declaredTier: Tier | null,
   impliedTier: Tier,
-  evidenceErrors: string[],
-  missingEvidenceFields: string[],
-  tierBodyLabel: Tier | undefined,
-  tierBody: Tier | undefined,
   repo?: string,
   missingRepoLabels: string[] = []
 ): string[] {
   const actions: string[] = [];
 
-  if (useLegacyEvidence && !tierBodyLabel) {
-    actions.push('Add unfenced PR body tier declaration (tier-0..tier-3).');
-  }
-
-  if (useLegacyEvidence && (missingEvidenceFields.length > 0 || evidenceErrors.length > 0)) {
-    actions.push(buildEvidenceBlockAction());
-  }
-
-  if (useLegacyEvidence && tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
-    actions.push(`Update PR body evidence Risk Tier to ${tierBodyLabel}.`);
-  }
-
   if (declaredTier !== null && declaredTier < impliedTier) {
-    actions.push(`Update PR body Risk Tier to ${impliedTier} and apply matching tier label.`);
+    actions.push(`Update governance/evidence.json tier to ${impliedTier} and apply matching tier label.`);
   }
 
   if (declaredTier === 3) {
@@ -295,7 +271,6 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     readFile,
     existsSync
   });
-  const body = resolvedMetadata.body;
 
   const contract = loadRiskContract(path.resolve('control-plane/risk-contract.json'));
   const baseSha = resolveMergeBase(gitExec);
@@ -303,9 +278,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const branchName = options.branchName ?? getBranchName(gitExec);
 
   const evidenceContract = readEvidenceContract({ readFile, existsSync });
-  const useLegacyEvidence = !evidenceContract.exists;
-  const evidenceErrors: string[] = [];
-  let missingEvidenceFields: string[] = [];
+  const missingEvidenceFields: string[] = [];
   const errors: string[] = [];
 
   let ownershipResult: OwnershipResult;
@@ -334,51 +307,19 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   const { impliedTier } = inferImpliedTier(changedFiles, contract);
-  let tierBodyLabel: Tier | undefined;
-  let tierBody: Tier | undefined;
   let declaredTier: Tier | null = null;
   let labelTier: Tier | null = null;
   let explicitLabelTier: Tier | null = null;
-  if (evidenceContract.exists) {
-    if ('evidence' in evidenceContract) {
-      declaredTier = evidenceContract.evidence.tier;
-      try {
-        explicitLabelTier = extractTierFromLabels(resolvedMetadata.labels) ?? null;
-      } catch (error) {
-        errors.push((error as Error).message);
-      }
-      labelTier = explicitLabelTier ?? declaredTier;
-    } else {
-      errors.push(...evidenceContract.errors);
-    }
-  } else {
-    const evidenceValidation = validateEvidenceBlockSchema(body);
-    evidenceErrors.push(...evidenceValidation.errors);
-    missingEvidenceFields = evidenceValidation.missingFields;
-    errors.push(...evidenceErrors);
+  if ('evidence' in evidenceContract) {
+    declaredTier = evidenceContract.evidence.tier;
     try {
-      tierBodyLabel = extractTierLabelFromBody(body);
+      explicitLabelTier = extractTierFromLabels(resolvedMetadata.labels) ?? null;
     } catch (error) {
       errors.push((error as Error).message);
     }
-
-    if (tierBodyLabel === undefined) {
-      errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
-    }
-
-    tierBody = extractTierFromEvidence(body);
-    if (evidenceValidation.evidence && tierBody === undefined) {
-      errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
-    }
-
-    if (tierBody !== undefined && tierBodyLabel !== undefined && tierBody !== tierBodyLabel) {
-      errors.push(
-        `Risk tier mismatch: PR body evidence Risk Tier is ${tierBody}; update to match unfenced tier-${tierBodyLabel}.`
-      );
-    }
-
-    declaredTier = resolveDeclaredTier({ tierBody, tierBodyLabel });
-    labelTier = declaredTier;
+    labelTier = explicitLabelTier ?? declaredTier;
+  } else {
+    errors.push(...evidenceContract.errors);
   }
 
   if (labelTier !== null && labelTier < impliedTier) {
@@ -398,11 +339,15 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   const warnings = buildWarnings(hasLabelCheck);
-  if (useLegacyEvidence) {
-    warnings.push(MARKDOWN_DEPRECATION_WARNING);
-  }
   const teamResolution = resolveTeamsForChangedFiles(changedFiles);
-  const swarmMetadata = parseSwarmEvidenceMetadata(body);
+  const swarmMetadata = {
+    swarmsDeclared: [],
+    swarmMode: ('evidence' in evidenceContract ? evidenceContract.evidence.mode : null),
+    swarmTeamId: null,
+    hasSwarmModeField: false,
+    hasSwarmTeamField: false,
+    swarmWarnings: [] as string[]
+  };
   const swarmPolicy = evaluateSwarmPolicy({
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmMode: swarmMetadata.swarmMode,
@@ -439,13 +384,8 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
   const nextActions = buildNextActions(
-    useLegacyEvidence,
     declaredTier,
     impliedTier,
-    evidenceErrors,
-    missingEvidenceFields,
-    tierBodyLabel,
-    tierBody,
     repo,
     missingRepoLabels
   );
@@ -457,7 +397,7 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
 
   if (errors.length > 0) {
     warnings.push(
-      'If you updated PR body/labels after a failed run, push a new commit to refresh the PR payload before re-running.'
+      'If you updated governance/evidence.json or labels after a failed run, push a new commit to refresh the PR payload before re-running.'
     );
     nextActions.push(...buildStalePayloadActions());
   }

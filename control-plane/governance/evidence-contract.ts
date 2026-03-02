@@ -8,8 +8,6 @@ import { isTier, type Tier } from './diagnostics.ts';
 
 export const EVIDENCE_JSON_PATH = 'governance/evidence.json';
 export const EVIDENCE_SCHEMA_PATH = 'governance/schema/evidence.schema.json';
-export const MARKDOWN_DEPRECATION_WARNING =
-  'Markdown evidence deprecated; add governance/evidence.json (Sprint 51 removes fallback).';
 
 type SchemaType = 'object' | 'array' | 'string' | 'number' | 'boolean';
 
@@ -49,7 +47,7 @@ type ReadEvidenceContractOptions = {
 type ReadEvidenceContractResult =
   | {
       exists: false;
-      errors: [];
+      errors: string[];
     }
   | {
       exists: true;
@@ -96,6 +94,9 @@ function validateAgainstSchemaNode(value: unknown, schema: SchemaNode, currentPa
   }
 
   if (schema.type === 'array' && schema.items && Array.isArray(value)) {
+    if (value.length === 0) {
+      errors.push(`${currentPath} must not be empty.`);
+    }
     for (let index = 0; index < value.length; index += 1) {
       const itemPath = `${currentPath}[${index}]`;
       errors.push(...validateAgainstSchemaNode(value[index], schema.items, itemPath));
@@ -140,6 +141,41 @@ function parseSchema(schemaRaw: string): SchemaNode {
   return parsed as SchemaNode;
 }
 
+function isSorted(values: string[]): boolean {
+  for (let index = 1; index < values.length; index += 1) {
+    if (values[index - 1].localeCompare(values[index]) > 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectStringHygieneErrors(value: unknown, currentPath: string): string[] {
+  const errors: string[] = [];
+  if (typeof value === 'string') {
+    if (/[ \t]+$/.test(value)) {
+      errors.push(`${currentPath} must not have trailing whitespace.`);
+    }
+    return errors;
+  }
+
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      errors.push(...collectStringHygieneErrors(value[index], `${currentPath}[${index}]`));
+    }
+    return errors;
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of sortKeys(record)) {
+      errors.push(...collectStringHygieneErrors(record[key], `${currentPath}.${key}`));
+    }
+  }
+
+  return errors;
+}
+
 function normalizeEvidence(record: Record<string, unknown>): GovernanceEvidence | null {
   const tier = record.tier;
   const mode = record.mode;
@@ -153,6 +189,8 @@ function normalizeEvidence(record: Record<string, unknown>): GovernanceEvidence 
     (mode !== 'structured' && mode !== 'autonomous') ||
     !Array.isArray(affectedPaths) ||
     !affectedPaths.every((entry) => typeof entry === 'string') ||
+    affectedPaths.length === 0 ||
+    !isSorted(affectedPaths) ||
     typeof determinismStatement !== 'string' ||
     typeof retrySemanticsModified !== 'boolean' ||
     typeof autonomyScopeExpanded !== 'boolean'
@@ -163,7 +201,7 @@ function normalizeEvidence(record: Record<string, unknown>): GovernanceEvidence 
   const normalized: GovernanceEvidence = {
     tier,
     mode,
-    affectedPaths: normalizeChangedFiles(affectedPaths),
+    affectedPaths: [...affectedPaths],
     determinismStatement,
     retrySemanticsModified,
     autonomyScopeExpanded
@@ -191,7 +229,7 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
   if (!existsSync(evidencePath)) {
     return {
       exists: false,
-      errors: []
+      errors: ['Missing governance/evidence.json']
     };
   }
 
@@ -233,11 +271,19 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
     };
   }
 
-  const schemaErrors = validateAgainstSchemaNode(evidenceValue, schema, 'evidence');
-  if (schemaErrors.length > 0) {
+  if (evidenceRaw.includes('\r')) {
     return {
       exists: true,
-      errors: schemaErrors.sort((left, right) => left.localeCompare(right))
+      errors: [`${evidencePath} must use LF line endings only.`]
+    };
+  }
+
+  const schemaErrors = validateAgainstSchemaNode(evidenceValue, schema, 'evidence');
+  const hygieneErrors = collectStringHygieneErrors(evidenceValue, 'evidence');
+  if (schemaErrors.length > 0 || hygieneErrors.length > 0) {
+    return {
+      exists: true,
+      errors: [...schemaErrors, ...hygieneErrors].sort((left, right) => left.localeCompare(right))
     };
   }
 
@@ -245,7 +291,16 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
   if (!normalized) {
     return {
       exists: true,
-      errors: ['governance/evidence.json contains invalid values after schema validation.']
+      errors: ['governance/evidence.json contains invalid values after schema validation. Ensure affectedPaths is sorted and non-empty.']
+    };
+  }
+
+  const parsedForCanonical = JSON.parse(canonicalStringify(evidenceValue)) as GovernanceEvidence;
+  const canonical = stringifyEvidenceJson(parsedForCanonical);
+  if (evidenceRaw !== canonical) {
+    return {
+      exists: true,
+      errors: [`${evidencePath} must be canonical JSON. Re-run npm run governance:emit.`]
     };
   }
 
@@ -272,8 +327,8 @@ export function validateEvidenceAgainstComputedState(params: {
   impliedMode: EvidenceMode | null;
 }): string[] {
   const errors: string[] = [];
-  const changed = normalizeChangedFiles(params.changedFiles);
-  const evidencePaths = normalizeChangedFiles(params.evidence.affectedPaths);
+  const changed = [...normalizeChangedFiles(params.changedFiles)].sort((left, right) => left.localeCompare(right));
+  const evidencePaths = [...params.evidence.affectedPaths].sort((left, right) => left.localeCompare(right));
 
   if (params.labelTier !== null && params.evidence.tier !== params.labelTier) {
     errors.push(

@@ -47,7 +47,7 @@ export function resolveLocalMetadata(input: LocalMetadataResolutionInput = {}): 
         { path: '.github/pull_request_template.md', source: 'template' as const }
       ];
 
-  let bodyPath: string;
+  let bodyPath: string | null;
   let bodySource: 'cli' | 'stub' | 'template';
   let body = '';
 
@@ -57,14 +57,15 @@ export function resolveLocalMetadata(input: LocalMetadataResolutionInput = {}): 
       body = readRequiredFile(bodyPath, readFile, existsSync);
   } else {
     const resolved = bodyCandidates.find((candidate) => existsSync(candidate.path));
-    if (!resolved) {
-      throw new Error(
-        'Unable to resolve PR body file. Expected one of: .pr-body.md, pr-body.md, .github/pull_request_template.md.'
-      );
+    if (resolved) {
+      bodyPath = resolved.path;
+      bodySource = resolved.source;
+      body = readFile(resolved.path);
+    } else {
+      bodyPath = null;
+      bodySource = 'stub';
+      body = '';
     }
-    bodyPath = resolved.path;
-    bodySource = resolved.source;
-    body = readFile(resolved.path);
   }
 
   let labelsPath: string | null = null;

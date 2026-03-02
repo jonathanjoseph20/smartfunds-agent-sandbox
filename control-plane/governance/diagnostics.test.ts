@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildGovernanceReport,
-  stringifyGovernanceReport,
-  validateEvidenceBlockSchema
+  stringifyGovernanceReport
 } from './diagnostics';
 
 describe('governance diagnostics', () => {
@@ -142,8 +141,8 @@ describe('governance diagnostics', () => {
             retryable: true,
             message: 'Evidence is missing required field(s): Affected Paths, Tests Added.',
             suggestedFix: {
-              action: 'patch_evidence_block',
-              details: 'Ensure evidence block exists and includes all required fields in Key: Value format.'
+              action: 'update_evidence_file',
+              details: 'Ensure governance/evidence.json exists and includes all required fields.'
             },
             sourceFields: ['missingEvidenceFields']
           },
@@ -251,12 +250,5 @@ describe('governance diagnostics', () => {
         }
       })
     );
-  });
-
-  it('tracks missing evidence fields when evidence block is missing', () => {
-    const result = validateEvidenceBlockSchema('No evidence here');
-    expect(result.missingFields).toContain('Risk Tier');
-    expect(result.missingFields).toContain('Determinism Statement');
-    expect(result.errors.join('\n')).toContain('Missing fenced evidence block');
   });
 });

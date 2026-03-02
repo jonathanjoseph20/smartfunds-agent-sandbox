@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import {
   buildBootstrapActions,
-  buildEvidenceBlockAction,
   buildGovernanceReport,
   buildStalePayloadActions,
   extractTierFromLabels,
@@ -11,29 +10,23 @@ import {
   getRequiredChecksForTier,
   inferImpliedTier,
   loadRiskContract,
-  resolveDeclaredTier,
   selectPrimaryAction,
   shouldWarnStalePayload,
-  validatePrData,
-  type GovernanceError,
+  type Tier,
   type GovernanceReport,
   type PullRequestData,
   type RiskContract
 } from './diagnostics.ts';
 import {
-  MARKDOWN_DEPRECATION_WARNING,
   readEvidenceContract,
   resolveImpliedExecutionMode,
   validateEvidenceAgainstComputedState
 } from './evidence-contract.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
-import { scanCommentsForEvidence } from '../pr-body/comment-scan.ts';
-import { fetchPrComments } from '../pr-body/gh-fetch.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
-import { parseSwarmEvidenceMetadata } from '../swarm/parser.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
 import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
@@ -61,7 +54,6 @@ type GovernanceValidationOptions = {
   eventPath?: string;
   repository?: string;
   fetchImpl?: typeof fetch;
-  commentFetcher?: (args: { prNumber: number; repository: string }) => Promise<Array<{ id: number; body: string }>>;
 };
 
 type FetchedPrData = {
@@ -80,43 +72,29 @@ function needsBootstrapAction(missingLabels: string[]): boolean {
 }
 
 function buildNextActions(
-  useLegacyEvidence: boolean,
-  result: ReturnType<typeof validatePrData>,
+  result: {
+    tierLabel: number | null;
+    impliedTier: number;
+    declaredTier: number | null;
+  },
   pr: PullRequestData,
   repo?: string
 ): string[] {
   const actions: string[] = [];
 
-  if (useLegacyEvidence && result.tierLabel === undefined) {
+  if (result.tierLabel === null) {
     actions.push('Add exactly one label: tier-0, tier-1, tier-2, tier-3.');
   }
 
-  if (
-    useLegacyEvidence &&
-    result.tierLabel !== undefined &&
-    result.tierBodyLabel !== undefined &&
-    result.tierBodyLabel !== result.tierLabel
-  ) {
-    actions.push(`Update unfenced PR body declaration to tier-${result.tierLabel}.`);
-  }
-
-  if (useLegacyEvidence && result.tierLabel !== undefined && result.tierBody !== undefined && result.tierBody !== result.tierLabel) {
-    actions.push(`Update PR body evidence Risk Tier to ${result.tierLabel}.`);
-  }
-
-  if (useLegacyEvidence && result.missingEvidenceFields.length > 0) {
-    actions.push(buildEvidenceBlockAction());
-  }
-
-  if (result.tierLabel !== undefined && result.tierLabel < result.impliedTier) {
-    actions.push(`Update label to tier-${result.impliedTier} and align PR body evidence.`);
+  if (result.declaredTier !== null && result.declaredTier < result.impliedTier) {
+    actions.push(`Update governance/evidence.json tier to ${result.impliedTier} and align the tier label.`);
   }
 
   if (result.tierLabel === 3 && !pr.labels.includes('tier-3-approved')) {
     actions.push('Add label: tier-3-approved.');
   }
 
-  if (needsBootstrapAction(getMissingTierLabels(result.tierLabel ?? null)) ||
+  if (needsBootstrapAction(getMissingTierLabels(result.tierLabel as Tier | null)) ||
       (result.tierLabel === 3 && !pr.labels.includes('tier-3-approved'))) {
     actions.push(...buildBootstrapActions(repo));
   }
@@ -124,14 +102,11 @@ function buildNextActions(
   return actions;
 }
 
-function buildWarnings(errors: string[], useLegacyEvidence: boolean): string[] {
+function buildWarnings(errors: string[]): string[] {
   const warnings: string[] = [];
-  if (useLegacyEvidence) {
-    warnings.push(MARKDOWN_DEPRECATION_WARNING);
-  }
   if (shouldWarnStalePayload(errors)) {
     warnings.push(
-      'GitHub Actions re-runs can read stale PR body/labels. If you updated metadata, push a new commit to refresh the payload.'
+      'GitHub Actions re-runs can read stale governance metadata/labels. If you updated evidence.json or labels, push a new commit to refresh the payload.'
     );
   }
   return warnings;
@@ -222,59 +197,30 @@ async function fetchPrDataFromGitHub(options: GovernanceValidationOptions): Prom
   };
 }
 
-function shouldScanForCommentEvidence(validationResult: ReturnType<typeof validatePrData>): boolean {
-  const hasMissingTier = validationResult.tierBodyLabel === undefined;
-  const hasMissingEvidence = validationResult.missingEvidenceFields.length > 0;
-  const hasUnsupportedEvidence = validationResult.errors.some((error) => error.includes('unsupported field'));
-
-  return hasMissingTier || hasMissingEvidence || hasUnsupportedEvidence;
-}
-
-function buildSealCommand(prNumber: number | null, tier: number): string {
-  const prValue = prNumber === null ? '<n>' : String(prNumber);
-  return `npm run pr:seal -- --pr ${prValue} --tier ${tier} --evidence-file <path>`;
-}
-
 async function buildReport(
   prData: PullRequestData,
   contract: RiskContract,
   context: {
     repo?: string;
-    prNumber: number | null;
-    repository: string | null;
     bodySource: 'gh' | 'stub';
     labelSource: 'gh' | 'stub';
-  },
-  commentFetcher: (args: { prNumber: number; repository: string }) => Promise<Array<{ id: number; body: string }>>
+  }
 ): Promise<{ report: GovernanceReport; errors: string[] }> {
   const evidenceContract = readEvidenceContract();
-  const useLegacyEvidence = !evidenceContract.exists;
-  const result = useLegacyEvidence ? validatePrData(prData, contract) : null;
   let ownershipResult: OwnershipResult;
   let projects: Project[] = [];
   let teams: Team[] = [];
   let swarms: SwarmDefinition[] = [];
-  const errors: string[] = useLegacyEvidence && result ? [...result.errors] : [];
+  const errors: string[] = [];
   const sealWarnings: string[] = [];
-  const additionalErrors: GovernanceError[] = [];
   let declaredTier: number | null = null;
   let labelTier: number | null = null;
   let impliedTier: number = 0;
-  let missingEvidenceFields: string[] = [];
+  const missingEvidenceFields: string[] = [];
   let requiredChecks: string[] = [];
   let missingLabels: string[] = [];
 
-  if (useLegacyEvidence && result) {
-    declaredTier = resolveDeclaredTier({ tierBody: result.tierBody, tierBodyLabel: result.tierBodyLabel });
-    labelTier = result.tierLabel ?? null;
-    impliedTier = result.impliedTier;
-    missingEvidenceFields = result.missingEvidenceFields;
-    requiredChecks = result.requiredChecks;
-    missingLabels = [
-      ...getMissingTierLabels(labelTier),
-      ...(labelTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
-    ];
-  } else if (evidenceContract.exists && 'evidence' in evidenceContract) {
+  if ('evidence' in evidenceContract) {
     let explicitLabelTier: number | null = null;
     try {
       explicitLabelTier = extractTierFromLabels(prData.labels) ?? null;
@@ -305,10 +251,10 @@ async function buildReport(
     ];
     if (declaredTier === 3 && !prData.labels.includes('tier-3-approved')) {
       errors.push(
-        'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/body, push a new commit to refresh the PR payload.'
+        'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/evidence, push a new commit to refresh the PR payload.'
       );
     }
-  } else if (evidenceContract.exists) {
+  } else {
     errors.push(...evidenceContract.errors);
   }
 
@@ -332,7 +278,14 @@ async function buildReport(
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
-  const swarmMetadata = parseSwarmEvidenceMetadata(prData.body);
+  const swarmMetadata = {
+    swarmsDeclared: [],
+    swarmMode: ('evidence' in evidenceContract ? evidenceContract.evidence.mode : null),
+    swarmTeamId: null,
+    hasSwarmModeField: false,
+    hasSwarmTeamField: false,
+    swarmWarnings: [] as string[]
+  };
   const swarmPolicy = evaluateSwarmPolicy({
     swarmsDeclared: swarmMetadata.swarmsDeclared,
     swarmMode: swarmMetadata.swarmMode,
@@ -353,7 +306,7 @@ async function buildReport(
     executionModesTouched: teamResolution.executionModesTouched,
     declaredTier
   });
-  if (evidenceContract.exists && 'evidence' in evidenceContract) {
+  if ('evidence' in evidenceContract) {
     const impliedMode = resolveImpliedExecutionMode(teamResolution.executionModesTouched);
     errors.push(
       ...validateEvidenceAgainstComputedState({
@@ -368,69 +321,32 @@ async function buildReport(
     errors.push(modePolicy.message);
   }
   const railBindingResult = resolveRailBindingDiagnostics(entityTelemetryResult.telemetry.entitiesTouched);
-  const nextActions = useLegacyEvidence && result ? buildNextActions(useLegacyEvidence, result, prData, context.repo) : [];
+  const nextActions = buildNextActions(
+    {
+      tierLabel: labelTier,
+      impliedTier,
+      declaredTier
+    },
+    prData,
+    context.repo
+  );
   nextActions.push(...modePolicy.nextActions);
   nextActions.push(...ownershipResult.nextActions);
   nextActions.push(...entityTelemetryResult.nextActions);
   nextActions.push(...railBindingResult.nextActions);
   nextActions.push(...isolation.nextActions);
 
-  const stalePayloadWarning = shouldWarnStalePayload(useLegacyEvidence && result ? result.errors : errors);
+  const stalePayloadWarning = shouldWarnStalePayload(errors);
   const warnings = [
-    ...buildWarnings(useLegacyEvidence && result ? result.errors : errors, useLegacyEvidence),
+    ...buildWarnings(errors),
     ...swarmPolicy.swarmWarnings,
     ...entityTelemetryResult.warnings,
     ...railBindingResult.warnings
   ];
 
-  let commentEvidenceDetected = false;
-  let commentEvidenceCount = 0;
-  let commentSource: 'gh' | 'none' | 'unknown' = 'none';
-  if (
-    useLegacyEvidence &&
-    result !== null &&
-    shouldScanForCommentEvidence(result) &&
-    context.prNumber !== null &&
-    context.repository
-  ) {
-    try {
-      const comments = await commentFetcher({
-        prNumber: context.prNumber,
-        repository: context.repository
-      });
-      const scan = scanCommentsForEvidence(comments);
-      commentEvidenceDetected = scan.detected;
-      commentEvidenceCount = scan.count;
-      commentSource = 'gh';
-
-      if (scan.detected) {
-        const suggestedTier = labelTier ?? declaredTier ?? impliedTier;
-        const sealCommand = buildSealCommand(context.prNumber, suggestedTier);
-        const message =
-          'Governance payload detected in PR comments, but PR body is invalid. Move payload to PR description.';
-        const actionable = `EVIDENCE_IN_COMMENT_NOT_BODY: ${message}`;
-
-        errors.push(actionable);
-        nextActions.push(`Run: ${sealCommand}`);
-        sealWarnings.push(`Comment evidence detected in ${scan.count} comment(s): [${scan.commentIds.join(', ')}]`);
-
-        additionalErrors.push({
-          code: 'EVIDENCE_IN_COMMENT_NOT_BODY',
-          severity: 'error',
-          retryable: true,
-          message,
-          suggestedFix: {
-            action: 'run_pr_seal',
-            details: `Run: ${sealCommand}`
-          },
-          sourceFields: ['metadataSource.commentSource', 'commentEvidenceDetected', 'commentEvidenceCount']
-        });
-      }
-    } catch (error) {
-      commentSource = 'unknown';
-      warnings.push(`Unable to scan PR comments for governance evidence: ${(error as Error).message}`);
-    }
-  }
+  const commentEvidenceDetected = false;
+  const commentEvidenceCount = 0;
+  const commentSource: 'gh' | 'none' | 'unknown' = 'none';
 
   if (stalePayloadWarning) {
     nextActions.push(...buildStalePayloadActions());
@@ -504,7 +420,6 @@ async function buildReport(
       commentEvidenceDetected,
       commentEvidenceCount,
       sealWarnings,
-      additionalErrors,
       executionContext: {
         context: 'ci',
         executionMode: swarmMetadata.swarmMode ?? 'unknown',
@@ -527,25 +442,20 @@ async function buildReport(
 export async function runGovernanceValidation(options: GovernanceValidationOptions = {}): Promise<GovernanceValidationResult> {
   const contractPath = options.contractPath ?? path.resolve('control-plane/risk-contract.json');
   const contract = loadRiskContract(contractPath);
-  const defaultCommentFetcher = async (args: { prNumber: number; repository: string }) => fetchPrComments(args.prNumber, args.repository);
-  const commentFetcher = options.commentFetcher ?? defaultCommentFetcher;
 
   let prData: PullRequestData;
-  let prNumber: number | null;
   let repository: string | null;
   let bodySource: 'gh' | 'stub';
   let labelSource: 'gh' | 'stub';
 
   if (options.prData) {
     prData = options.prData;
-    prNumber = options.prNumber ?? null;
     repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
     bodySource = 'stub';
     labelSource = 'stub';
   } else {
     const fetched = await fetchPrDataFromGitHub(options);
     prData = fetched.prData;
-    prNumber = fetched.prNumber;
     repository = fetched.repository;
     bodySource = 'gh';
     labelSource = 'gh';
@@ -559,8 +469,7 @@ export async function runGovernanceValidation(options: GovernanceValidationOptio
   const { report, errors } = await buildReport(
     prData,
     contract,
-    { repo, prNumber, repository, bodySource, labelSource },
-    commentFetcher
+    { repo, bodySource, labelSource }
   );
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';

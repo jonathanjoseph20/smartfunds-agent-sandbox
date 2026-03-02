@@ -70,18 +70,6 @@ export interface PullRequestData {
   changedFiles: string[];
 }
 
-export interface ValidationResult {
-  ok: boolean;
-  tierLabel?: Tier;
-  tierBodyLabel?: Tier;
-  tierBody?: Tier;
-  impliedTier: Tier;
-  requiredChecks: string[];
-  escalationFiles: string[];
-  errors: string[];
-  missingEvidenceFields: string[];
-}
-
 export type GovernanceReport = {
   declaredTier: number | null;
   impliedTier: number | null;
@@ -182,127 +170,6 @@ export function extractTierFromLabels(labels: string[]): Tier | undefined {
   }
 
   return Number.parseInt(unique[0], 10) as Tier;
-}
-
-export function parseEvidenceBlock(body: string): Record<string, string> | undefined {
-  const match = body.match(/```evidence\s*([\s\S]*?)```/i);
-  if (!match) {
-    return undefined;
-  }
-
-  const parsed: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const separator = trimmed.indexOf(':');
-    if (separator < 0) {
-      continue;
-    }
-    const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    parsed[key] = value;
-  }
-
-  return parsed;
-}
-
-export function extractTierLabelFromBody(body: string): Tier | undefined {
-  const outsideFences = body.replace(/```[\s\S]*?```/g, '');
-  const matches = Array.from(outsideFences.matchAll(/\btier-([0-3])\b/gi)).map((match) => match[1]);
-
-  if (matches.length === 0) {
-    return undefined;
-  }
-
-  const unique = [...new Set(matches)];
-  if (unique.length > 1) {
-    throw new Error(
-      `Multiple unfenced tier declarations detected in PR body (${unique
-        .map((tier) => `tier-${tier}`)
-        .join(', ')}). Keep exactly one unfenced tier-* declaration.`
-    );
-  }
-
-  return Number.parseInt(unique[0], 10) as Tier;
-}
-
-export function extractTierFromEvidence(body: string): Tier | undefined {
-  const evidence = parseEvidenceBlock(body);
-  const tierValue = evidence?.['Risk Tier'];
-  if (!tierValue) {
-    return undefined;
-  }
-
-  const normalized = tierValue.trim().match(/^[0-3]$/)?.[0];
-  if (!normalized) {
-    return undefined;
-  }
-
-  return Number.parseInt(normalized, 10) as Tier;
-}
-
-export function validateEvidenceBlockSchema(body: string): {
-  evidence?: Record<string, string>;
-  errors: string[];
-  missingFields: string[];
-} {
-  const match = body.match(/```evidence\s*([\s\S]*?)```/i);
-  if (!match) {
-    return {
-      errors: [
-        `Missing fenced evidence block. Paste:\n\n\`\`\`evidence\nRisk Tier: <0|1|2|3>\nJustification: <why this tier>\nAffected Paths: <comma-separated globs or file list>\nTests Added: <what you ran/added, or "N/A" with reason>\nDeterminism Statement: <why this change is deterministic and reproducible>\n\`\`\``
-      ],
-      missingFields: [...EVIDENCE_FIELDS]
-    };
-  }
-
-  const errors: string[] = [];
-  const parsed: Record<string, string> = {};
-
-  for (const line of match[1].split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    const separator = trimmed.indexOf(':');
-    if (separator < 0) {
-      errors.push(`Evidence block line must use \`Key: Value\` format: ${trimmed}`);
-      continue;
-    }
-
-    const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    if (
-      !EVIDENCE_FIELDS.includes(key as (typeof EVIDENCE_FIELDS)[number]) &&
-      !OPTIONAL_EVIDENCE_FIELDS.includes(key as (typeof OPTIONAL_EVIDENCE_FIELDS)[number])
-    ) {
-      errors.push(`Evidence block contains unsupported field: ${key}.`);
-      continue;
-    }
-    if (key !== 'Swarm' && parsed[key]) {
-      errors.push(`Evidence block contains duplicate field: ${key}.`);
-      continue;
-    }
-    if (!value) {
-      errors.push(`Evidence block field must not be empty: ${key}.`);
-      continue;
-    }
-    parsed[key] = value;
-  }
-
-  const missingFields = EVIDENCE_FIELDS.filter((field) => !parsed[field]);
-  if (missingFields.length > 0) {
-    errors.push(`Evidence block is missing required field(s): ${missingFields.join(', ')}.`);
-  }
-
-  return {
-    evidence: parsed,
-    errors,
-    missingFields
-  };
 }
 
 function escapeRegex(value: string): string {
@@ -420,80 +287,6 @@ export function assertValidRiskContract(contract: unknown): asserts contract is 
       throw new Error(`Invalid risk contract: path mapping for ${glob} must be tier 0-3.`);
     }
   }
-}
-
-export function validatePrData(pr: PullRequestData, contract: RiskContract): ValidationResult {
-  assertValidRiskContract(contract);
-  const errors: string[] = [];
-  let tierLabel: Tier | undefined;
-  let tierBodyLabel: Tier | undefined;
-
-  try {
-    tierLabel = extractTierFromLabels(pr.labels);
-  } catch (error) {
-    errors.push((error as Error).message);
-  }
-
-  try {
-    tierBodyLabel = extractTierLabelFromBody(pr.body);
-  } catch (error) {
-    errors.push((error as Error).message);
-  }
-
-  const evidenceValidation = validateEvidenceBlockSchema(pr.body);
-  const evidence = evidenceValidation.evidence;
-  errors.push(...evidenceValidation.errors);
-  const tierBody = extractTierFromEvidence(pr.body);
-  const { impliedTier, escalationFiles } = inferImpliedTier(pr.changedFiles, contract);
-  const requiredChecks = tierLabel !== undefined ? getRequiredChecksForTier(tierLabel, contract) : [];
-
-  if (tierLabel === undefined) {
-    errors.push(`Missing risk tier label. Add exactly one: ${TIER_LABELS.join(', ')}.`);
-  }
-
-  if (tierBodyLabel === undefined) {
-    errors.push('Missing unfenced PR body tier declaration. Include exactly one plain-text `tier-0`..`tier-3` in the PR body.');
-  }
-
-  if (evidence && tierBody === undefined) {
-    errors.push('Evidence block must include `Risk Tier: <0|1|2|3>`.');
-  }
-
-  if (tierLabel !== undefined && tierBodyLabel !== undefined && tierBodyLabel !== tierLabel) {
-    errors.push(
-      `Risk tier mismatch: labels are authoritative. Label tier is ${tierLabel}; update unfenced PR body declaration to tier-${tierLabel}.`
-    );
-  }
-
-  if (tierLabel !== undefined && tierBody !== undefined && tierBody !== tierLabel) {
-    errors.push(
-      `Risk tier mismatch: labels are authoritative. Label tier is ${tierLabel}; update PR body evidence Risk Tier to ${tierLabel}.`
-    );
-  }
-
-  if (tierLabel !== undefined && tierLabel < impliedTier) {
-    errors.push(
-      `Declared tier-${tierLabel} is below implied tier-${impliedTier}. Escalating files: ${escalationFiles.join(', ')}.`
-    );
-  }
-
-  if (tierLabel === 3 && !pr.labels.includes('tier-3-approved')) {
-    errors.push(
-      'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/body, push a new commit to refresh the PR payload.'
-    );
-  }
-
-  return {
-    ok: errors.length === 0,
-    tierLabel,
-    tierBodyLabel,
-    tierBody,
-    impliedTier,
-    requiredChecks,
-    escalationFiles,
-    errors,
-    missingEvidenceFields: evidenceValidation.missingFields
-  };
 }
 
 export function loadRiskContract(contractPath = new URL('../risk-contract.json', import.meta.url).pathname): RiskContract {
@@ -618,11 +411,11 @@ function buildCanonicalGovernanceErrors(input: {
       severity: 'error',
       retryable: true,
       message: evidenceBlockMissing
-        ? 'Missing required evidence block.'
+        ? 'Missing required governance evidence fields.'
         : `Evidence is missing required field(s): ${sortedMissingEvidenceFields.join(', ')}.`,
       suggestedFix: {
-        action: 'patch_evidence_block',
-        details: 'Ensure evidence block exists and includes all required fields in Key: Value format.'
+        action: 'update_evidence_file',
+        details: 'Ensure governance/evidence.json exists and includes all required fields.'
       },
       sourceFields: ['missingEvidenceFields']
     });
@@ -949,8 +742,8 @@ export function getMissingTierLabels(labelTier: Tier | null): string[] {
 
 export function shouldWarnStalePayload(errors: string[]): boolean {
   const patterns = [
-    'Missing unfenced PR body tier declaration',
-    'Evidence block',
+    'Missing governance/evidence.json',
+    'governance/evidence.json',
     'Risk tier mismatch',
     'tier-3-approved',
     'Missing risk tier label'
@@ -967,9 +760,7 @@ export function selectPrimaryAction(actions: string[]): string | null {
   const priorities = [
     'Add exactly one label:',
     'Add label:',
-    'Update PR body evidence Risk Tier',
-    'Update unfenced PR body declaration',
-    'Update PR body to include required evidence block',
+    'Update governance/evidence.json',
     'Run: npm run bootstrap:labels',
     'Run: git commit --allow-empty'
   ];
@@ -997,5 +788,5 @@ export function buildBootstrapActions(repo?: string): string[] {
 }
 
 export function buildEvidenceBlockAction(): string {
-  return 'Update PR body to include required evidence block fields.';
+  return 'Update governance/evidence.json to include required evidence fields.';
 }

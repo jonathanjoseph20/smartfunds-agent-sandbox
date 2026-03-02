@@ -14,6 +14,7 @@ import { runSwarmExecutor } from '../swarm/swarm-executor.ts';
 import { processGithubWebhookEvent } from '../webhooks/github/process.ts';
 import { verifyGithubSignature, type GithubSignatureError } from '../webhooks/github/signature.ts';
 import type { CiContextResolver, SupportedGithubEventType } from '../webhooks/github/types.ts';
+import { createCockpitRouter } from '../cockpit/api/router.ts';
 import { extractRunIdFromSlackActionPayload } from './integrations/slack/actions.ts';
 import {
   computeSlackWebhookEventId,
@@ -359,6 +360,11 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
   const rateLimitResolution = resolveRateLimitConfig(process.env);
   const rateLimiter = new RateLimiter(rateLimitResolution.config.windowMs);
+  const cockpitRouter = createCockpitRouter({
+    db,
+    now,
+    prefix: '/api'
+  });
 
   function shouldRateLimit(
     request: ServiceDispatchRequest,
@@ -470,6 +476,13 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   }
 
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
+    if (request.pathname.startsWith('/api/')) {
+      const cockpitResponse = cockpitRouter(request);
+      if (cockpitResponse) {
+        return cockpitResponse;
+      }
+    }
+
     if (request.method === 'POST' && request.pathname === '/webhooks/github') {
       if (!isJsonContentType(resolveHeader(request.headers, 'content-type'))) {
         return buildResponse(415, { error: 'unsupported_media_type: expected_application_json' });

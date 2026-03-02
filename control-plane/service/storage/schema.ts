@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { ensureCockpitSchema } from '../../cockpit/storage/schema.ts';
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS ingested_events (
@@ -75,4 +76,5 @@ const SCHEMA_SQL = `
 
 export function ensureServiceSchema(db: DatabaseSync): void {
   db.exec(SCHEMA_SQL);
+  ensureCockpitSchema(db);
 }

@@ -24,6 +24,7 @@ export function getServiceDb(dbPath?: string): DatabaseSyncInstance {
 
   const { DatabaseSync } = loadNodeSqlite();
   const db = new DatabaseSync(resolvedPath);
+  db.exec('PRAGMA foreign_keys = ON;');
   ensureServiceSchema(db);
   serviceDbRegistry.set(resolvedPath, db);
   return db;

@@ -8,7 +8,11 @@ import {
   stringifyEvidenceJson
 } from '../governance/evidence-contract.ts';
 import { generateEvidenceFromPullRequestMetadata } from '../governance/evidence-generation.ts';
-import { parsePullNumber, readPullNumberFromGitHubEvent, resolvePullRequestMetadata } from '../governance/pr-files-api.ts';
+import {
+  parsePullNumber,
+  readPullNumberFromGitHubEvent,
+  resolvePullRequestMetadata
+} from '../governance/pr-files-api.ts';
 
 type ParsedArgs = {
   outFile: string;
@@ -16,7 +20,13 @@ type ParsedArgs = {
 };
 
 const DRIFT_REMEDIATION =
-  'Evidence drift detected. Run: npm run governance:emit && git add governance/evidence.json && git commit -m "fix(governance): emit canonical evidence"';
+  'Evidence drift detected — canonical evidence must be committed.\n' +
+  'Fix:\n' +
+  '  npm run governance:emit:ci -- --pr <N>\n' +
+  '  git add governance/evidence.json\n' +
+  '  git commit -m "fix(governance): canonicalize evidence"\n' +
+  '  git push';
+
 const LOCAL_PR_GUIDANCE = [
   'Missing pull request number. Provide --pr <N> when GITHUB_EVENT_PATH is unavailable or missing pull_request metadata.',
   'Examples:',
@@ -76,7 +86,9 @@ function readCanonicalRepositoryEvidence(filePath: string): string | null {
   }
 }
 
-export async function runGovernanceEmitCi(argv: string[]): Promise<{
+export async function runGovernanceEmitCi(
+  argv: string[]
+): Promise<{
   writtenPath: string;
   evidenceHash: string;
   driftDetected: boolean;
@@ -86,10 +98,12 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
   const outputPath = resolveEvidencePath(args.outFile);
   const eventPath = process.env.GITHUB_EVENT_PATH ?? '';
 
+  // If --pr is not provided, only allow proceeding if CI provided a usable pull_request payload.
   if (args.pr === undefined) {
-    const hasUsableEventPullNumber = eventPath && fs.existsSync(eventPath)
-      ? readPullNumberFromGitHubEvent(eventPath) !== null
-      : false;
+    const hasUsableEventPullNumber =
+      eventPath && fs.existsSync(eventPath)
+        ? readPullNumberFromGitHubEvent(eventPath) !== null
+        : false;
     if (!hasUsableEventPullNumber) {
       throw new Error(LOCAL_PR_GUIDANCE);
     }
@@ -103,7 +117,11 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
     });
   } catch (error) {
     throw new Error(
-      `${(error as Error).message}\nRun: export GITHUB_TOKEN="$(gh auth token)" && export GITHUB_REPOSITORY="OWNER/REPO" && npm run governance:emit:ci -- --pr <N>`
+      `${(error as Error).message}\n` +
+        'Run:\n' +
+        '  export GITHUB_TOKEN="$(gh auth token)"\n' +
+        '  export GITHUB_REPOSITORY="OWNER/REPO"\n' +
+        '  npm run governance:emit:ci -- --pr <N>'
     );
   }
 
@@ -121,11 +139,14 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
   fs.writeFileSync(outputPath, content, 'utf8');
 
   const evidenceHash = sha256(generatedCanonical);
+  // Stable, grep-friendly SHA line:
   console.log(`Evidence SHA: ${evidenceHash}`);
+  // Back-compat line for any tooling that expects this:
   console.log(`governance/evidence.json sha256=${evidenceHash}`);
 
+  // IMPORTANT: Drift is NOT fatal for the emitter. CI enforces drift via a later `git diff --exit-code`.
   if (driftDetected) {
-    throw new Error(DRIFT_REMEDIATION);
+    console.warn(DRIFT_REMEDIATION);
   }
 
   return {
@@ -139,6 +160,11 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
 async function main(): Promise<void> {
   const result = await runGovernanceEmitCi(process.argv.slice(2));
   console.log(`Wrote ${result.writtenPath}`);
+  if (result.driftDetected) {
+    // Non-zero exit for local UX is tempting, but we must NOT break CI step ordering.
+    // CI will fail on the explicit idempotence step after this emitter runs.
+    console.log('Note: evidence drift was detected; commit governance/evidence.json if required.');
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,22 +1,22 @@
 {
   "affectedPaths": [
     ".github/workflows/governance-full.yml",
-    "control-plane/execution/cockpit/run.model.test.ts",
-    "control-plane/execution/cockpit/run.model.ts",
-    "control-plane/execution/cockpit/run.repo.test.ts",
-    "control-plane/execution/cockpit/run.repo.ts",
-    "control-plane/execution/cockpit/run.schema.ts",
-    "control-plane/execution/cockpit/run.service.test.ts",
-    "control-plane/execution/cockpit/run.service.ts",
-    "control-plane/execution/cockpit/run.types.ts",
-    "control-plane/execution/storage/cockpit-goals.json",
-    "control-plane/execution/storage/cockpit-runs.json",
-    "control-plane/service/index.ts",
-    "governance/evidence.json"
+    "control-plane/cli/governance-emit-ci.test.ts",
+    "control-plane/cli/governance-emit-ci.ts",
+    "control-plane/cli/governance-pr-body.test.ts",
+    "control-plane/cli/governance-pr-body.ts",
+    "control-plane/cli/pr-body-check.ts",
+    "docs/runbooks/how-to-fix-evidence-drift.md",
+    "docs/runbooks/how-to-repair-pr-body.md",
+    "docs/runbooks/workflow-integrity.md",
+    "package.json",
+    "scripts/ci/verify-workflows.test.ts",
+    "scripts/ci/verify-workflows.ts",
+    "scripts/governance/emit-ci-parity.sh"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",
-  "mode": "structured",
+  "mode": "autonomous",
   "retrySemanticsModified": false,
   "tier": 3
 }

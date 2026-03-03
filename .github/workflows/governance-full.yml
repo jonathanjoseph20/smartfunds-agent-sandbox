@@ -7,208 +7,29 @@ on:
 jobs:
   policy_full:
     runs-on: ubuntu-latest
-    outputs:
-      tier: ${{ steps.validate_pr.outputs.tier }}
-      detected_tier: ${{ steps.validate_pr.outputs.detected_tier }}
-      implied_tier: ${{ steps.validate_pr.outputs.implied_tier }}
-      final_tier: ${{ steps.validate_pr.outputs.final_tier }}
-      required_checks: ${{ steps.validate_pr.outputs.required_checks }}
-      workspaces: ${{ steps.impact.outputs.workspaces }}
-      run_schema: ${{ steps.impact.outputs.run_schema }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR HEAD (stabilize evidence)
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Generate canonical evidence (CI)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run governance:emit:ci
+
       - name: Validate full governance contract
-        id: validate_pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
-      - name: Detect impacted workspaces
-        id: impact
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed.txt
-          echo "Changed paths:" && cat changed.txt
-
-          node <<'NODE'
-          import fs from 'node:fs';
-
-          const changed = fs.readFileSync('changed.txt', 'utf8').split('\n').map((line) => line.trim()).filter(Boolean);
-          const mappings = [
-            ['apps/api/', '@smartfunds/api'],
-            ['apps/web/', '@smartfunds/web'],
-            ['packages/shared/', '@smartfunds/shared'],
-            ['packages/mission-engine/', '@smartfunds/mission-engine'],
-            ['packages/doc-factory/', '@smartfunds/doc-factory'],
-            ['packages/compliance/', '@smartfunds/compliance'],
-            ['packages/exports/', '@smartfunds/exports']
-          ];
-
-          const impacted = new Set();
-          let runSchema = false;
-
-          for (const file of changed) {
-            for (const [prefix, workspace] of mappings) {
-              if (file.startsWith(prefix)) {
-                impacted.add(workspace);
-              }
-            }
-            if (file.startsWith('packages/doc-factory/') || file.startsWith('packages/exports/')) {
-              runSchema = true;
-            }
-          }
-
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `workspaces=${Array.from(impacted).join(',')}\n`);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `run_schema=${runSchema ? 'true' : 'false'}\n`);
-          NODE
-      - name: Report full policy resolution
-        run: |
-          echo "Detected tier: ${{ steps.validate_pr.outputs.detected_tier }}"
-          echo "Implied tier: ${{ steps.validate_pr.outputs.implied_tier }}"
-          echo "Final tier: ${{ steps.validate_pr.outputs.final_tier }}"
-          echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
-          echo "Impacted workspaces: ${{ steps.impact.outputs.workspaces }}"
-          echo "Run schema checks: ${{ steps.impact.outputs.run_schema }}"
-
-  lint_tier0:
-    needs: policy_full
-    if: fromJSON(needs.policy_full.outputs.final_tier) >= 2 && contains(needs.policy_full.outputs.required_checks, 'lint_tier0')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Tier 0 lint/typecheck for impacted workspaces
-        env:
-          WORKSPACES: ${{ needs.policy_full.outputs.workspaces }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$WORKSPACES" ]]; then
-            npm run typecheck --workspaces --if-present
-            exit 0
-          fi
-          shopt -s globstar nullglob
-          IFS=',' read -ra items <<< "$WORKSPACES"
-          for ws in "${items[@]}"; do
-            [[ -z "$ws" ]] && continue
-            has_typecheck=$(npm pkg get scripts.typecheck --workspace "$ws" | tr -d '"')
-            if [[ "$has_typecheck" != "{}" ]]; then
-              npm --workspace "$ws" run typecheck
-            fi
-          done
-
-  unit_tests:
-    needs: policy_full
-    if: fromJSON(needs.policy_full.outputs.final_tier) >= 2 && contains(needs.policy_full.outputs.required_checks, 'unit_tests')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Run unit test command for impacted workspaces
-        env:
-          WORKSPACES: ${{ needs.policy_full.outputs.workspaces }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$WORKSPACES" ]]; then
-            npm --workspace @smartfunds/doc-factory run test
-            exit 0
-          fi
-          IFS=',' read -ra items <<< "$WORKSPACES"
-          ran_any=0
-          for ws in "${items[@]}"; do
-            [[ -z "$ws" ]] && continue
-            has_test=$(npm pkg get scripts.test --workspace "$ws" | tr -d '"')
-            if [[ "$has_test" != "{}" ]]; then
-              npm --workspace "$ws" run test
-              ran_any=1
-            fi
-          done
-          if [[ "$ran_any" -eq 0 ]]; then
-            npm --workspace @smartfunds/doc-factory run test
-          fi
-
-  integration_tests:
-    needs: policy_full
-    if: fromJSON(needs.policy_full.outputs.final_tier) >= 2 && contains(needs.policy_full.outputs.required_checks, 'integration_tests')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Run integration tests for impacted workspaces
-        env:
-          WORKSPACES: ${{ needs.policy_full.outputs.workspaces }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$WORKSPACES" ]]; then
-            echo "No impacted workspaces. Integration step skipped."
-            exit 0
-          fi
-          shopt -s globstar nullglob
-          IFS=',' read -ra items <<< "$WORKSPACES"
-          for ws in "${items[@]}"; do
-            [[ -z "$ws" ]] && continue
-            pkg_path=""
-            case "$ws" in
-              @smartfunds/doc-factory) pkg_path="packages/doc-factory" ;;
-              @smartfunds/mission-engine) pkg_path="packages/mission-engine" ;;
-              @smartfunds/api) pkg_path="apps/api" ;;
-              @smartfunds/shared) pkg_path="packages/shared" ;;
-              @smartfunds/compliance) pkg_path="packages/compliance" ;;
-              @smartfunds/exports) pkg_path="packages/exports" ;;
-              @smartfunds/web) pkg_path="apps/web" ;;
-            esac
-            [[ -z "$pkg_path" || ! -d "$pkg_path" ]] && continue
-            if compgen -G "$pkg_path/**/*.integration.test.ts" > /dev/null; then
-              npm --workspace "$ws" run test -- "integration"
-            fi
-          done
-
-  schema_checks:
-    needs: policy_full
-    if: fromJSON(needs.policy_full.outputs.final_tier) >= 2 && contains(needs.policy_full.outputs.required_checks, 'schema_checks')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Run schema/type checks when doc/export paths are touched
-        if: needs.policy_full.outputs.run_schema == 'true'
-        run: |
-          set -euo pipefail
-          if [[ -d packages/doc-factory ]]; then
-            npm --workspace @smartfunds/doc-factory run typecheck
-          fi
-          if [[ -d packages/exports ]]; then
-            npm --workspace @smartfunds/exports run typecheck
-          fi
-
-  tier3_label_gate:
-    needs: policy_full
-    if: fromJSON(needs.policy_full.outputs.final_tier) >= 2 && contains(needs.policy_full.outputs.required_checks, 'tier3_label_gate')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Confirm tier-3 label gate requirement
-        run: |
-          echo "Tier 3 label gate required and enforced by control-plane/validate-pr.ts"

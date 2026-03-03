@@ -79,7 +79,7 @@ describe('governance validate tier routing', () => {
     expect(result.errors.join('\n')).toContain('TIER_LABEL_TOO_LOW');
   });
 
-  it('does not fail tier-2 full mode on affectedPaths mismatch and emits deterministic warning', async () => {
+  it('fails tier-2 full mode on semantic evidence drift with deterministic remediation', async () => {
     const evidence = stringifyEvidenceJson(
       buildCanonicalEvidence({
         tier: 2,
@@ -101,9 +101,25 @@ describe('governance validate tier routing', () => {
         }
       });
 
+      expect(result.ok).toBe(false);
+      expect(result.errors.join('\n')).toContain('Evidence drift detected. Run: npm run governance:emit');
+    });
+  });
+
+  it('accepts non-canonical evidence formatting when semantic content matches', async () => {
+    const nonCanonical = '{\"tier\":2,\"mode\":\"autonomous\",\"affectedPaths\":[\"apps/api/src/index.ts\"],\"determinismStatement\":\"Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.\",\"retrySemanticsModified\":false,\"autonomyScopeExpanded\":false}\n';
+
+    await withMockedEvidence(nonCanonical, async () => {
+      const result = await runGovernanceValidation({
+        mode: 'full',
+        prData: {
+          body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: apps/api/src/index.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+          labels: ['tier-2'],
+          changedFiles: ['apps/api/src/index.ts']
+        }
+      });
+
       expect(result.ok).toBe(true);
-      expect(result.errors.join('\n')).not.toContain('Affected paths mismatch');
-      expect(result.report.warnings.join('\n')).toContain('TIER2_AFFECTED_PATHS_WARNING');
     });
   });
 });

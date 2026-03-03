@@ -143,6 +143,41 @@ describe('governance evidence contract', () => {
     expect('errors' in result && result.errors).toEqual(['governance/evidence.json must use LF line endings only.']);
   });
 
+  it('accepts semantically valid but non-canonical json when canonical enforcement is disabled', () => {
+    const result = readEvidenceContract({
+      evidencePath: 'governance/evidence.json',
+      schemaPath: 'governance/schema/evidence.schema.json',
+      enforceCanonical: false,
+      existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
+      readFile: (filePath) =>
+        filePath.endsWith('schema/evidence.schema.json')
+          ? VALID_SCHEMA
+          : '{\"tier\":2,\"mode\":\"structured\",\"affectedPaths\":[\"a.ts\"],\"determinismStatement\":\"No identity surfaces mutated.\",\"retrySemanticsModified\":false,\"autonomyScopeExpanded\":false}\n'
+    });
+
+    expect(result.exists).toBe(true);
+    expect('evidence' in result).toBe(true);
+  });
+
+  it('fails nested evidence.evidence payloads explicitly', () => {
+    const result = readEvidence(
+      JSON.stringify({
+        tier: 2,
+        mode: 'structured',
+        affectedPaths: ['a.ts'],
+        determinismStatement: 'No identity surfaces mutated.',
+        retrySemanticsModified: false,
+        autonomyScopeExpanded: false,
+        evidence: {
+          evidence: true
+        }
+      })
+    );
+
+    expect(result.exists).toBe(true);
+    expect('errors' in result && result.errors).toContain('evidence.evidence is not allowed.');
+  });
+
   it('flags tier/mode/affected-path mismatches using sorted comparisons', () => {
     const evidence: GovernanceEvidence = {
       tier: 3,

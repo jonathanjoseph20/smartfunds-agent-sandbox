@@ -7,14 +7,6 @@ on:
 jobs:
   policy_full:
     runs-on: ubuntu-latest
-    outputs:
-      tier: ${{ steps.validate_pr.outputs.tier }}
-      detected_tier: ${{ steps.validate_pr.outputs.detected_tier }}
-      implied_tier: ${{ steps.validate_pr.outputs.implied_tier }}
-      final_tier: ${{ steps.validate_pr.outputs.final_tier }}
-      required_checks: ${{ steps.validate_pr.outputs.required_checks }}
-      workspaces: ${{ steps.impact.outputs.workspaces }}
-      run_schema: ${{ steps.impact.outputs.run_schema }}
 
     steps:
       - name: Checkout PR HEAD (stabilize evidence)
@@ -42,13 +34,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
-
-      - name: Detect impacted workspaces
-        id: impact
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node --experimental-strip-types control-plane/impact.ts
 
       - name: Report full policy resolution
         run: node --experimental-strip-types control-plane/report-policy-resolution.ts

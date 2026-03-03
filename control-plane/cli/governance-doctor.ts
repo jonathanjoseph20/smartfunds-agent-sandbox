@@ -21,7 +21,9 @@ type DoctorFailure = {
 };
 
 const EVIDENCE_DRIFT_FIX =
-  'npm run governance:emit && git add governance/evidence.json && git commit -m "fix(governance): emit canonical evidence"';
+  'npm run governance:emit\n' +
+  'git add governance/evidence.json\n' +
+  'git commit -m "fix(governance): canonicalize evidence"';
 
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {};

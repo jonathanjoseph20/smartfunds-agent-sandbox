@@ -55,7 +55,9 @@ describe('governance:doctor', () => {
     const code = await runGovernanceDoctor([]);
     expect(code).toBe(1);
     expect(logs.join('\n')).toContain('❌ Evidence drift detected');
-    expect(logs.join('\n')).toContain('Run: npm run governance:emit && git add governance/evidence.json');
+    expect(logs.join('\n')).toContain('Run: npm run governance:emit');
+    expect(logs.join('\n')).toContain('git add governance/evidence.json');
+    expect(logs.join('\n')).toContain('git commit -m "fix(governance): canonicalize evidence"');
     expect(logs.join('\n')).toContain('❌ Missing env vars for local full validation');
     expect(logs.join('\n')).toContain('npm run governance:validate:local -- --mode full --pr 70');
   });

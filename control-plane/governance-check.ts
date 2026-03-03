@@ -35,6 +35,7 @@ import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
 import { classifyIsolation, type ClassifyIsolationArgs } from './isolation/path-classifier.ts';
 import type { IsolationClassification } from './isolation/types.ts';
 import { defaultGitExec, getChangedFilesFromBase } from './governance/changed-files.ts';
+import { fetchWithGitHubRetry } from './governance/github-retry.ts';
 
 type GitExec = (args: string[]) => string;
 
@@ -178,7 +179,8 @@ async function fetchRepoLabels(fetchImpl: typeof fetch, repo: string, token: str
   let page = 1;
 
   while (true) {
-    const response = await fetchImpl(
+    const response = await fetchWithGitHubRetry(
+      fetchImpl,
       `https://api.github.com/repos/${owner}/${name}/labels?per_page=100&page=${page}`,
       {
         headers: {

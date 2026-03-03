@@ -102,7 +102,10 @@ describe('governance validate tier routing', () => {
       });
 
       expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('Evidence drift detected. Run: npm run governance:emit');
+      expect(result.errors.join('\n')).toContain('Evidence drift detected.');
+      expect(result.errors.join('\n')).toContain('npm run governance:emit');
+      expect(result.errors.join('\n')).toContain('git add governance/evidence.json');
+      expect(result.errors.join('\n')).toContain('git commit -m "fix(governance): canonicalize evidence"');
     });
   });
 

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { stringifyGovernanceReport } from './governance/diagnostics.ts';
+import { renderGovernanceFailureSummary } from './governance/failure-output.ts';
 import { runGovernanceValidation } from './governance/validate.ts';
 
 function hasSelfCheckFlag(argv: string[]): boolean {
@@ -52,13 +53,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   if (!result.ok) {
-    console.error('Governance validation failed.');
+    console.error('GOVERNANCE STATUS: FAIL');
+    console.error(`Reason: ${result.errors[0] ?? 'Governance validation failed.'}`);
+    console.error(`Suggested Action: ${result.primaryAction ?? 'Address governance violations and rerun validation.'}`);
+    console.error('');
     console.error(
-      `Declared Tier: ${result.report.declaredTier ?? 'n/a'} | Label Tier: ${result.report.labelTier ?? 'n/a'} | Implied Tier: ${result.report.impliedTier ?? 'n/a'} | Final Tier: ${Math.max(result.report.labelTier ?? result.report.impliedTier ?? 0, result.report.impliedTier ?? 0)}`
+      renderGovernanceFailureSummary({
+        report: result.report,
+        errors: result.errors,
+        primaryAction: result.primaryAction
+      })
     );
-    for (const error of result.errors) {
-      console.error(`- ${error}`);
-    }
+    console.error('');
+    console.error('Technical Metadata:');
     console.error('GOVERNANCE_REPORT_JSON_START');
     console.error(stringifyGovernanceReport(result.report));
     console.error('GOVERNANCE_REPORT_JSON_END');
@@ -80,9 +87,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     fs.appendFileSync(outputPath, `required_checks=${result.report.requiredChecks.join(',')}\n`);
   }
 
+  console.log('GOVERNANCE STATUS: PASS');
   console.log(
-    `PR governance validation passed in ${mode} mode with label tier-${result.report.labelTier ?? 'n/a'} (implied tier-${result.report.impliedTier}, final tier-${finalTier}). Required checks: ${result.report.requiredChecks.join(', ')}`
+    `Reason: PR governance validation passed in ${mode} mode with label tier-${result.report.labelTier ?? 'n/a'} (implied tier-${result.report.impliedTier}, final tier-${finalTier}).`
   );
+  console.log('Suggested Action: Continue CI progression.');
   return 0;
 }
 

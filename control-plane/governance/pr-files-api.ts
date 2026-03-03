@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 import { defaultGitExec, getChangedFilesFromMain, normalizeChangedFiles, type GitExec } from './changed-files.ts';
+import { fetchWithGitHubRetry } from './github-retry.ts';
 
 export type RepoRef = { owner: string; repo: string };
 
@@ -91,7 +92,7 @@ async function githubGet<T>(
   token: string,
   fetchImpl: typeof fetch
 ): Promise<T> {
-  const response = await fetchImpl(url, {
+  const response = await fetchWithGitHubRetry(fetchImpl, url, {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,

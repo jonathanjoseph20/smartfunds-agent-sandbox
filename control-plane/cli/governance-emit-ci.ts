@@ -21,11 +21,10 @@ type ParsedArgs = {
 
 const DRIFT_REMEDIATION =
   'Evidence drift detected — canonical evidence must be committed.\n' +
-  'Fix:\n' +
-  '  npm run governance:emit:ci -- --pr <N>\n' +
+  'Run:\n' +
+  '  npm run governance:emit\n' +
   '  git add governance/evidence.json\n' +
-  '  git commit -m "fix(governance): canonicalize evidence"\n' +
-  '  git push';
+  '  git commit -m "fix(governance): canonicalize evidence"';
 
 const LOCAL_PR_GUIDANCE = [
   'Missing pull request number. Provide --pr <N> when GITHUB_EVENT_PATH is unavailable or missing pull_request metadata.',

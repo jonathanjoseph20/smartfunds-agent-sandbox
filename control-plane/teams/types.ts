@@ -12,6 +12,8 @@ export type TeamRegistry = TeamDefinition[];
 export interface TeamResolutionResult {
   teamsTouched: string[];
   executionModesTouched: ExecutionMode[];
+  structuredPathsTouched: string[];
+  autonomousPathsTouched: string[];
   unownedPaths: string[];
   ambiguousPaths: string[];
   modeWarnings: string[];

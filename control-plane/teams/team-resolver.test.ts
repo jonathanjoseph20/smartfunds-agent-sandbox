@@ -14,6 +14,8 @@ describe('team resolver', () => {
 
     expect(result.teamsTouched).toEqual(['docs', 'governance', 'product-app']);
     expect(result.executionModesTouched).toEqual(['autonomous', 'structured']);
+    expect(result.structuredPathsTouched).toEqual(['control-plane/cli/governance-preflight.ts']);
+    expect(result.autonomousPathsTouched).toEqual(['apps/web/page.tsx']);
     expect(result.modeWarnings).toContain('MIXED_MODE_PR');
   });
 
@@ -34,6 +36,8 @@ describe('team resolver', () => {
     const result = resolveTeamsForChangedFiles(['packages/billing/core.ts'], teams);
     expect(result.teamsTouched).toEqual(['money-movement']);
     expect(result.executionModesTouched).toEqual(['structured']);
+    expect(result.structuredPathsTouched).toEqual(['packages/billing/core.ts']);
+    expect(result.autonomousPathsTouched).toEqual([]);
     expect(result.ambiguousPaths).toEqual([]);
   });
 
@@ -41,6 +45,8 @@ describe('team resolver', () => {
     const result = resolveTeamsForChangedFiles(['control-plane/foo.ts', 'apps/bar.ts']);
 
     expect(result.executionModesTouched).toEqual(['autonomous', 'structured']);
+    expect(result.structuredPathsTouched).toEqual(['control-plane/foo.ts']);
+    expect(result.autonomousPathsTouched).toEqual(['apps/bar.ts']);
     expect(result.modeWarnings).toContain('MIXED_MODE_PR');
   });
 
@@ -70,5 +76,17 @@ describe('team resolver', () => {
     expect(result.teamsTouched).toEqual(['alpha']);
     expect(result.ambiguousPaths).toEqual(['src/shared/index.ts']);
     expect(result.modeWarnings).toContain('AMBIGUOUS_OWNERSHIP');
+  });
+
+  it('treats docs paths as neutral for mode-mixing (T-M10)', () => {
+    const result = resolveTeamsForChangedFiles([
+      'control-plane/validate-pr.ts',
+      'docs/guide.md'
+    ]);
+
+    expect(result.executionModesTouched).toEqual(['structured']);
+    expect(result.structuredPathsTouched).toEqual(['control-plane/validate-pr.ts']);
+    expect(result.autonomousPathsTouched).toEqual([]);
+    expect(result.modeWarnings).not.toContain('MIXED_MODE_PR');
   });
 });

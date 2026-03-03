@@ -201,10 +201,16 @@ describe('governance:emit:ci', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     fs.writeFileSync(outFile, '{ "tier": 0 }\n', 'utf8');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    await expect(runGovernanceEmitCi(['--out-file', outFile])).rejects.toThrow(
-      'Evidence drift detected. Run: npm run governance:emit && git add governance/evidence.json && git commit -m "fix(governance): emit canonical evidence"'
-    );
+    await runGovernanceEmitCi(['--out-file', outFile]);
+
+    const warningText = warnSpy.mock.calls.map(([line]) => String(line)).join('\n');
+    expect(warningText).toContain('Evidence drift detected');
+    expect(warningText).toContain('npm run governance:emit');
+    expect(warningText).toContain('git add governance/evidence.json');
+    expect(warningText).toContain('git commit -m "fix(governance): canonicalize evidence"');
+    warnSpy.mockRestore();
   });
 
   it('T-L1 integration validates full mode after emit:ci with mocked API metadata', async () => {

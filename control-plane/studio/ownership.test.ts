@@ -137,6 +137,18 @@ describe('ownership resolution', () => {
     expect(result.teamsTouched).toEqual(['apps-team']);
   });
 
+  it('passes docs-only allowlist changes without ownership violations', () => {
+    const result = resolveOwnership({
+      changedFiles: ['docs/readme.md'],
+      projects: [{ projectId: 'apps', ownedPaths: ['apps/**'] }],
+      teams: [{ teamId: 'apps-team', projectId: 'apps', ownedPaths: ['apps/**'] }]
+    });
+
+    expect(result.ownershipStatus).toBe('ok');
+    expect(result.projectsTouched).toEqual([]);
+    expect(result.unownedFiles).toEqual([]);
+  });
+
   it('sorts output deterministically', () => {
     const result = resolveOwnership({
       changedFiles: ['packages/zeta/index.ts', 'packages/alpha/index.ts'],

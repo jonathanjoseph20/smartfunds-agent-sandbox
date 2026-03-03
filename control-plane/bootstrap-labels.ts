@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { fetchWithGitHubRetry } from './governance/github-retry.ts';
 
 type LabelSpec = {
   name: string;
@@ -107,7 +108,7 @@ async function requestJson<T>(
   token: string,
   options: RequestInit
 ): Promise<T> {
-  const response = await fetchImpl(url, {
+  const response = await fetchWithGitHubRetry(fetchImpl, url, {
     ...options,
     headers: {
       Accept: 'application/vnd.github+json',

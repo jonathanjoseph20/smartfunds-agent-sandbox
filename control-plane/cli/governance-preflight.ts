@@ -21,7 +21,9 @@ import {
 import { defaultGitExec, getChangedFilesFromMain } from '../governance/changed-files.ts';
 import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
+import { renderGovernanceFailureSummary } from '../governance/failure-output.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
+import { runGovernanceValidation } from '../governance/validate.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { enforceModeBoundary } from '../studio/mode-boundary.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
@@ -68,6 +70,7 @@ const METADATA_MARKER = '.governance-metadata-changed';
 type ParsedArgs = {
   bodyFile?: string;
   labelsFile?: string;
+  pr?: number;
 };
 
 function sortedUnique(values: string[]): string[] {
@@ -77,6 +80,7 @@ function sortedUnique(values: string[]): string[] {
 function parseArgs(argv: string[]): ParsedArgs {
   let bodyFile: string | undefined;
   let labelsFile: string | undefined;
+  let pr: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -112,10 +116,32 @@ function parseArgs(argv: string[]): ParsedArgs {
       }
       continue;
     }
+    if (arg === '--pr') {
+      const value = argv[index + 1];
+      if (!value) {
+        throw new Error('Missing value for --pr.');
+      }
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error('Invalid value for --pr. Use a positive integer.');
+      }
+      pr = parsed;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--pr=')) {
+      const value = arg.slice('--pr='.length);
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error('Invalid value for --pr. Use a positive integer.');
+      }
+      pr = parsed;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { bodyFile, labelsFile };
+  return { bodyFile, labelsFile, pr };
 }
 
 function getBranchName(execGit: GitExec): string {
@@ -486,62 +512,56 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const gitExec = defaultGitExec;
   const readFile = (filePath: string) => fs.readFileSync(filePath, 'utf8');
-  const statSync = (filePath: string) => fs.statSync(filePath);
   const existsSync = (filePath: string) => fs.existsSync(filePath);
-
-  const branch = getBranchName(gitExec);
   const changedFiles = getChangedFilesFromMain(gitExec);
-  
-if (changedFiles.length === 0) {
-  console.log('No changed files detected. Skipping governance validation.');
-  return;
-}
 
-const resolvedMetadata = resolveLocalMetadata({
+  if (changedFiles.length === 0) {
+    console.log('GOVERNANCE STATUS: PASS');
+    console.log('Reason: No changed files detected against main.');
+    console.log('Suggested Action: Continue with local development.');
+    return;
+  }
+
+  const resolvedMetadata = resolveLocalMetadata({
     bodyFile: args.bodyFile,
     labelsFile: args.labelsFile,
     readFile,
     existsSync
   });
 
-  const result = buildPreflightReport(resolvedMetadata.body, changedFiles, resolvedMetadata.labels, {
-    branchName: branch,
-    readFile,
-    statSync,
-    existsSync
-  }, resolvedMetadata.metadataSource);
-
-  const summary = renderSummary(result, branch);
-  console.log(summary);
-
-  const headCommitMs = getHeadCommitTime(gitExec);
-  const bodyMtimeMs = resolvedMetadata.metadataSource.bodyPath && existsSync(resolvedMetadata.metadataSource.bodyPath)
-    ? statSync(resolvedMetadata.metadataSource.bodyPath).mtimeMs
-    : null;
-  const markerExists = existsSync(METADATA_MARKER);
-
-  if (shouldWarnStaleMetadata({
-    bodyMtimeMs,
-    headCommitMs,
-    markerExists,
-    declaredTier: result.declaredTier,
-    tier3ApprovalSatisfied: result.tier3Approval.satisfied
-  })) {
-    console.log('');
-    console.log('⚠ Governance metadata may be stale in GitHub.');
-    console.log('If you modified labels or governance/evidence.json after CI failure, run:');
-    console.log('');
-    console.log('git commit --allow-empty -m "chore: refresh governance metadata"');
-    console.log('git push');
-  }
-
-  console.log('GOVERNANCE_REPORT_JSON_START');
-  console.log(stringifyGovernanceReport(result.report));
-  console.log('GOVERNANCE_REPORT_JSON_END');
+  const result = await runGovernanceValidation({
+    mode: 'full',
+    prData: {
+      body: resolvedMetadata.body,
+      labels: resolvedMetadata.labels,
+      changedFiles
+    },
+    ...(args.pr !== undefined ? { prNumber: args.pr } : {})
+  });
 
   if (!result.ok) {
+    console.error('GOVERNANCE STATUS: FAIL');
+    console.error(`Reason: ${result.errors[0] ?? 'Governance validation failed.'}`);
+    console.error(`Suggested Action: ${result.primaryAction ?? 'Address governance violations and rerun preflight.'}`);
+    console.error('');
+    console.error(
+      renderGovernanceFailureSummary({
+        report: result.report,
+        errors: result.errors,
+        primaryAction: result.primaryAction
+      })
+    );
+    console.error('');
+    console.error('Technical Metadata:');
+    console.error('GOVERNANCE_REPORT_JSON_START');
+    console.error(stringifyGovernanceReport(result.report));
+    console.error('GOVERNANCE_REPORT_JSON_END');
     process.exit(1);
   }
+
+  console.log('GOVERNANCE STATUS: PASS');
+  console.log('Reason: Full governance validation passed.');
+  console.log('Suggested Action: Proceed with commit/push.');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

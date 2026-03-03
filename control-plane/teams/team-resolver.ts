@@ -66,6 +66,8 @@ export function resolveTeamsForChangedFiles(
 
   const teamsTouched = new Set<string>();
   const executionModesTouched = new Set<ExecutionMode>();
+  const structuredPathsTouched: string[] = [];
+  const autonomousPathsTouched: string[] = [];
   const unownedPaths: string[] = [];
   const ambiguousPaths: string[] = [];
 
@@ -78,7 +80,15 @@ export function resolveTeamsForChangedFiles(
 
     const winner = matches[0];
     teamsTouched.add(winner.teamId);
-    executionModesTouched.add(winner.executionMode);
+    const isDocsPath = file.startsWith('docs/');
+    if (!isDocsPath) {
+      executionModesTouched.add(winner.executionMode);
+      if (winner.executionMode === 'structured') {
+        structuredPathsTouched.push(file);
+      } else {
+        autonomousPathsTouched.push(file);
+      }
+    }
 
     const equallySpecific = matches.filter((match) => match.specificity === winner.specificity);
     if (equallySpecific.length > 1) {
@@ -104,6 +114,8 @@ export function resolveTeamsForChangedFiles(
   return {
     teamsTouched: sortedUnique(Array.from(teamsTouched)),
     executionModesTouched: sortedModes,
+    structuredPathsTouched: sortedUnique(structuredPathsTouched),
+    autonomousPathsTouched: sortedUnique(autonomousPathsTouched),
     unownedPaths: sortedUnownedPaths,
     ambiguousPaths: sortedAmbiguousPaths,
     modeWarnings: sortedUnique(modeWarnings)

@@ -52,7 +52,7 @@ jobs:
 
       - name: Assert evidence idempotent
         run: |
-          git diff --exit-code -- governance/evidence.json || (echo "Evidence drift detected — canonical evidence must be committed. Fix: npm run governance:emit:ci -- --pr <N> ; commit governance/evidence.json ; push." && exit 1)
+          git diff --exit-code -- governance/evidence.json || (echo "Evidence drift detected." && echo "Run:" && echo "  npm run governance:emit" && echo "  git add governance/evidence.json" && echo "  git commit -m \"fix(governance): canonicalize evidence\"" && exit 1)
 
       - name: Validate PR body contract
         env:

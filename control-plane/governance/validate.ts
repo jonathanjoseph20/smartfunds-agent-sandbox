@@ -424,7 +424,9 @@ async function buildReport(
       changedFiles: prData.changedFiles
     });
     if (canonicalStringify(evidenceContract.evidence) !== canonicalStringify(expectedEvidence)) {
-      errors.push('Evidence drift detected. Run: npm run governance:emit');
+      errors.push(
+        'Evidence drift detected.\nRun:\n  npm run governance:emit\n  git add governance/evidence.json\n  git commit -m "fix(governance): canonicalize evidence"'
+      );
     }
   }
 
@@ -562,8 +564,8 @@ async function buildReport(
       railViolations: railBindingResult.diagnostics.railViolations,
       autonomousContextDetected: isolation.classification.autonomousContextDetected,
       branchNamespaceValid: isolation.classification.branchNamespaceValid,
-      structuredPathsTouched: isolation.classification.structuredPathsTouched,
-      autonomousPathsTouched: isolation.classification.autonomousPathsTouched,
+      structuredPathsTouched: teamResolution.structuredPathsTouched,
+      autonomousPathsTouched: teamResolution.autonomousPathsTouched,
       isolationStatus: isolation.classification.isolationStatus,
       isolationViolations: isolation.classification.isolationViolations,
       nextActions,

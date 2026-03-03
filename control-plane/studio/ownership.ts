@@ -62,11 +62,13 @@ export function resolveOwnership(params: {
   const projectsTouched = new Set<string>();
   const unownedFiles: string[] = [];
   let hasAmbiguous = false;
+  let hasNonAllowlistedFile = false;
 
   for (const file of orderedFiles) {
     if (allowlistRegexes.some((regex) => regex.test(file))) {
       continue;
     }
+    hasNonAllowlistedFile = true;
 
     const matchedProjects = projectMatchers
       .filter((matcher) =>
@@ -95,6 +97,8 @@ export function resolveOwnership(params: {
     ownershipStatus = 'multi_project';
   } else if (unownedFiles.length > 0) {
     ownershipStatus = 'unowned_files';
+  } else if (projectsTouched.size === 0 && !hasNonAllowlistedFile) {
+    ownershipStatus = 'ok';
   } else if (projectsTouched.size === 0) {
     ownershipStatus = 'no_project_detected';
   } else {

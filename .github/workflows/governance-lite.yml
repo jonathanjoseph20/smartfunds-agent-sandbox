@@ -2,12 +2,27 @@ name: Governance Lite
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
 
 jobs:
+  # Safe on BOTH push + PR
+  workflow_integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify workflow YAML and entrypoints
+        run: npm run lint:workflows
+
+  # PR-ONLY (needs PR context)
   policy_lite:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -36,15 +51,14 @@ jobs:
           echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
 
   lint_tier0:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && fromJSON(needs.policy_lite.outputs.final_tier) <= 1 && contains(needs.policy_lite.outputs.required_checks, 'lint_tier0')
     needs: policy_lite
-    if: fromJSON(needs.policy_lite.outputs.final_tier) <= 1 && contains(needs.policy_lite.outputs.required_checks, 'lint_tier0')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - name: Run lite lane lint checks
-        run: npm run lint_tier0
+        run: npm test

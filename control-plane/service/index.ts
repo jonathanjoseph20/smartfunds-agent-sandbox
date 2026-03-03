@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import { createCockpitRunRepo } from '../execution/cockpit/run.repo.ts';
+import { CockpitRunServiceError, createCockpitRunService } from '../execution/cockpit/run.service.ts';
 import { createExecutionJournal } from '../execution/journal.ts';
 import type { NormalizedFailure } from '../execution/error-classification.ts';
 import { assertEnvelopeHashMatch, buildEnvelopeIdentityV1 } from '../execution/envelope.ts';
@@ -356,6 +358,8 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   );
   const executionJournal = createExecutionJournal(db);
   const runtimeService = createRuntimeService(executionJournal);
+  const cockpitRunRepo = createCockpitRunRepo();
+  const cockpitRunService = createCockpitRunService({ repo: cockpitRunRepo });
   const runExecutor = options.swarmExecutor ?? runSwarmExecutor;
   const rateLimitResolution = resolveRateLimitConfig(process.env);
   const rateLimiter = new RateLimiter(rateLimitResolution.config.windowMs);
@@ -470,6 +474,74 @@ export function createServiceDispatcher(options: ServiceOptions = {}) {
   }
 
   return async function dispatch(request: ServiceDispatchRequest): Promise<ServiceDispatchResponse> {
+    if (request.method === 'POST' && request.pathname === '/cockpit/runs') {
+      const parsed = parseJsonBody(request.bodyText);
+      if (!parsed.ok) {
+        return buildResponse(400, { error: 'ERR_COCKPIT_INVALID_RUN_INPUT' });
+      }
+
+      try {
+        const run = cockpitRunService.createRun(parsed.value as {
+          projectId: string;
+          teamId: string;
+          goalId: string;
+        });
+        return buildResponse(201, {
+          runId: run.runId,
+          status: run.status,
+          attemptIndex: run.attemptIndex
+        });
+      } catch (error) {
+        if (error instanceof CockpitRunServiceError) {
+          if (error.code === 'ERR_COCKPIT_GOAL_NOT_FOUND') {
+            return buildResponse(404, { error: error.message });
+          }
+          if (error.code === 'ERR_COCKPIT_GOAL_SCOPE_MISMATCH') {
+            return buildResponse(409, { error: error.message });
+          }
+          if (error.code === 'ERR_COCKPIT_INVALID_RUN_INPUT') {
+            return buildResponse(400, { error: error.code });
+          }
+          return buildResponse(400, { error: error.code });
+        }
+
+        if (error instanceof Error && error.message === 'ERR_COCKPIT_INVALID_RUN_INPUT') {
+          return buildResponse(400, { error: error.message });
+        }
+        return buildResponse(500, { error: 'ERR_COCKPIT_RUN_CREATE_FAILED' });
+      }
+    }
+
+    if (request.method === 'GET' && request.pathname.startsWith('/cockpit/runs/')) {
+      const runId = request.pathname.slice('/cockpit/runs/'.length).trim();
+      if (runId.length === 0) {
+        return buildResponse(404, { error: 'ERR_COCKPIT_RUN_NOT_FOUND' });
+      }
+
+      const run = cockpitRunRepo.getRun(runId);
+      if (!run) {
+        return buildResponse(404, { error: 'ERR_COCKPIT_RUN_NOT_FOUND' });
+      }
+
+      return buildResponse(200, run);
+    }
+
+    if (request.method === 'GET' && request.pathname.startsWith('/cockpit/projects/') && request.pathname.endsWith('/runs')) {
+      const projectId = request.pathname.slice('/cockpit/projects/'.length, -'/runs'.length).trim();
+      if (projectId.length === 0) {
+        return buildResponse(400, { error: 'ERR_COCKPIT_INVALID_PROJECT_ID' });
+      }
+      return buildResponse(200, { runs: cockpitRunRepo.listRunsByProject(projectId) });
+    }
+
+    if (request.method === 'GET' && request.pathname.startsWith('/cockpit/goals/') && request.pathname.endsWith('/runs')) {
+      const goalId = request.pathname.slice('/cockpit/goals/'.length, -'/runs'.length).trim();
+      if (goalId.length === 0) {
+        return buildResponse(400, { error: 'ERR_COCKPIT_INVALID_GOAL_ID' });
+      }
+      return buildResponse(200, { runs: cockpitRunRepo.listRunsByGoal(goalId) });
+    }
+
     if (request.method === 'POST' && request.pathname === '/webhooks/github') {
       if (!isJsonContentType(resolveHeader(request.headers, 'content-type'))) {
         return buildResponse(415, { error: 'unsupported_media_type: expected_application_json' });

@@ -6,6 +6,7 @@
     "control-plane/cli/governance-pr-body.test.ts",
     "control-plane/cli/governance-pr-body.ts",
     "control-plane/cli/pr-body-check.ts",
+    "control-plane/governance/evidence-contract.ts",
     "docs/runbooks/how-to-fix-evidence-drift.md",
     "docs/runbooks/how-to-repair-pr-body.md",
     "docs/runbooks/workflow-integrity.md",
@@ -17,7 +18,7 @@
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",
-  "mode": "autonomous",
+  "mode": "structured",
   "retrySemanticsModified": false,
   "tier": 3
 }

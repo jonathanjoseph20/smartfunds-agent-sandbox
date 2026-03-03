@@ -322,13 +322,29 @@ export function readEvidenceContract(options: ReadEvidenceContractOptions = {}):
   };
 }
 
-export function resolveImpliedExecutionMode(executionModesTouched: ExecutionMode[]): EvidenceMode | null {
+export function resolveImpliedExecutionMode(
+  executionModesTouched: ExecutionMode[]
+): EvidenceMode | null {
+
   const uniqueModes = Array.from(new Set(executionModesTouched));
-  if (uniqueModes.length !== 1) {
-    return null;
+
+  // Safe default: no signal -> structured
+  if (uniqueModes.length === 0) {
+    return 'structured';
   }
-  const mode = uniqueModes[0];
-  return mode === 'structured' || mode === 'autonomous' ? mode : null;
+
+  // If structured is touched at all, force structured.
+  if (uniqueModes.includes('structured')) {
+    return 'structured';
+  }
+
+  // Only autonomous present
+  if (uniqueModes.includes('autonomous')) {
+    return 'autonomous';
+  }
+
+  // Fallback safety
+  return 'structured';
 }
 
 export function validateEvidenceAgainstComputedState(params: {

@@ -1,7 +1,16 @@
 {
   "affectedPaths": [
-    "control-plane/projects/core-app.json",
-    "governance/evidence.json"
+    "control-plane/execution/cockpit/run.model.test.ts",
+    "control-plane/execution/cockpit/run.model.ts",
+    "control-plane/execution/cockpit/run.repo.test.ts",
+    "control-plane/execution/cockpit/run.repo.ts",
+    "control-plane/execution/cockpit/run.schema.ts",
+    "control-plane/execution/cockpit/run.service.test.ts",
+    "control-plane/execution/cockpit/run.service.ts",
+    "control-plane/execution/cockpit/run.types.ts",
+    "control-plane/execution/storage/cockpit-goals.json",
+    "control-plane/execution/storage/cockpit-runs.json",
+    "control-plane/service/index.ts"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",

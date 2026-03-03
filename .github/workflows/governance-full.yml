@@ -30,6 +30,7 @@ jobs:
         run: npm run lint:workflows
 
   policy_full:
+    if: github.event_name == 'pull_request'
     needs: workflow_integrity
     runs-on: ubuntu-latest
 

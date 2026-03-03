@@ -9,6 +9,7 @@ on:
 
 jobs:
   policy_lite:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       tier: ${{ steps.validate_pr.outputs.tier }}
@@ -35,6 +36,7 @@ jobs:
           echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
 
   lint_tier0:
+    if: github.event_name == 'pull_request'
     needs: policy_lite
     if: fromJSON(needs.policy_lite.outputs.final_tier) <= 1 && contains(needs.policy_lite.outputs.required_checks, 'lint_tier0')
     runs-on: ubuntu-latest

@@ -29,11 +29,7 @@ jobs:
         run: npm run governance:emit:ci
 
       - name: Validate full governance contract
-        id: validate_pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
-
-      - name: Report full policy resolution
-        run: node --experimental-strip-types control-plane/report-policy-resolution.ts

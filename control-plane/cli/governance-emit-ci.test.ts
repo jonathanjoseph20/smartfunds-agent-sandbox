@@ -110,6 +110,59 @@ describe('governance:emit:ci', () => {
     expect(fs.readFileSync(outFile, 'utf8')).toContain('"affectedPaths"');
   });
 
+  it('T-L1 prints stable Evidence SHA line', async () => {
+    const dir = makeTempDir();
+    const eventPath = path.join(dir, 'event.json');
+    const outFile = path.join(dir, 'evidence.json');
+    fs.writeFileSync(
+      eventPath,
+      JSON.stringify({
+        pull_request: {
+          number: 75
+        },
+        number: 75
+      }),
+      'utf8'
+    );
+
+    process.env.GITHUB_TOKEN = 'test-token';
+    process.env.GITHUB_REPOSITORY = 'owner/repo';
+    process.env.GITHUB_EVENT_PATH = eventPath;
+
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/pulls/75')) {
+        return new Response(
+          JSON.stringify({
+            body: 'tier-2',
+            labels: [{ name: 'tier-2' }]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes('/pulls/75/files')) {
+        return new Response(JSON.stringify([{ filename: 'apps/api/src/index.ts' }]), { status: 200 });
+      }
+      return new Response('', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    fs.writeFileSync(
+      outFile,
+      '{\n  "tier": 2,\n  "mode": "autonomous",\n  "affectedPaths": [\n    "apps/api/src/index.ts"\n  ],\n  "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",\n  "retrySemanticsModified": false,\n  "autonomyScopeExpanded": false\n}\n',
+      'utf8'
+    );
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runGovernanceEmitCi(['--out-file', outFile]);
+    const evidenceLine = logSpy.mock.calls
+      .map(([line]) => String(line))
+      .find((line) => line.startsWith('Evidence SHA: '));
+
+    expect(evidenceLine).toMatch(/^Evidence SHA: [0-9a-f]{64}$/);
+    logSpy.mockRestore();
+  });
+
   it('T-L1 reports deterministic remediation when evidence drift is detected', async () => {
     const dir = makeTempDir();
     const eventPath = path.join(dir, 'event.json');
@@ -213,5 +266,25 @@ describe('governance:emit:ci', () => {
       expect(result.errors.join('\n')).not.toContain('Evidence drift detected');
       expect(result.report.labelTier).toBe(2);
     });
+  });
+
+  it('T-L1 requires --pr for local usage when no pull_request event metadata is available', async () => {
+    const dir = makeTempDir();
+    const outFile = path.join(dir, 'evidence.json');
+    fs.writeFileSync(outFile, '{ "tier": 0 }\n', 'utf8');
+
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_REPOSITORY;
+    delete process.env.GITHUB_EVENT_PATH;
+
+    await expect(runGovernanceEmitCi(['--out-file', outFile])).rejects.toThrow(
+      'Missing pull request number. Provide --pr <N> when GITHUB_EVENT_PATH is unavailable or missing pull_request metadata.'
+    );
+    await expect(runGovernanceEmitCi(['--out-file', outFile])).rejects.toThrow(
+      'npm run governance:emit:ci -- --pr 73'
+    );
+    await expect(runGovernanceEmitCi(['--out-file', outFile])).rejects.toThrow(
+      'npm run governance:emit:ci:local -- 73'
+    );
   });
 });

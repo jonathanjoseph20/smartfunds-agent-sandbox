@@ -15,6 +15,8 @@
     "governance:autonomous-retry": "node --experimental-strip-types control-plane/cli/governance-autonomous-retry.ts",
     "governance:emit": "node --experimental-strip-types control-plane/cli/governance-emit.ts",
     "governance:emit:ci": "node --experimental-strip-types control-plane/cli/governance-emit-ci.ts",
+    "governance:emit:ci:local": "bash scripts/governance/emit-ci-parity.sh",
+    "governance:pr-body": "node --experimental-strip-types control-plane/cli/governance-pr-body.ts",
     "governance:doctor": "node --experimental-strip-types control-plane/cli/governance-doctor.ts",
     "governance:validate:local": "node --experimental-strip-types control-plane/cli/governance-validate-local.ts",
     "governance:sync-pr-body": "node --experimental-strip-types control-plane/cli/governance-sync-pr-body.ts",
@@ -35,6 +37,7 @@
     "swarm:run": "node --experimental-strip-types control-plane/cli/swarm-run.ts",
     "service:start": "node --experimental-strip-types control-plane/service/index.ts",
     "webhook:simulate": "node --experimental-strip-types control-plane/cli/webhook-simulate.ts",
+    "lint:workflows": "node --experimental-strip-types scripts/ci/verify-workflows.ts",
     "lint_tier0": "npm run lint --workspaces --if-present",
     "lint": "npm run lint_tier0"
   },

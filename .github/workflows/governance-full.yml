@@ -5,7 +5,29 @@ on:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
 
 jobs:
+  workflow_integrity:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR HEAD (workflow integrity)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify workflow YAML and entrypoints
+        run: npm run lint:workflows
+
   policy_full:
+    needs: workflow_integrity
     runs-on: ubuntu-latest
 
     steps:
@@ -27,6 +49,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run governance:emit:ci
+
+      - name: Assert evidence idempotent
+        run: |
+          git diff --exit-code -- governance/evidence.json || (echo "Evidence drift detected — canonical evidence must be committed. Fix: npm run governance:emit:ci -- --pr <N> ; commit governance/evidence.json ; push." && exit 1)
+
+      - name: Validate PR body contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run pr:body:check
 
       - name: Validate full governance contract
         env:

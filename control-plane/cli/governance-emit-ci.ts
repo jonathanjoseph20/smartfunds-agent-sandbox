@@ -8,7 +8,7 @@ import {
   stringifyEvidenceJson
 } from '../governance/evidence-contract.ts';
 import { generateEvidenceFromPullRequestMetadata } from '../governance/evidence-generation.ts';
-import { parsePullNumber, resolvePullRequestMetadata } from '../governance/pr-files-api.ts';
+import { parsePullNumber, readPullNumberFromGitHubEvent, resolvePullRequestMetadata } from '../governance/pr-files-api.ts';
 
 type ParsedArgs = {
   outFile: string;
@@ -17,6 +17,12 @@ type ParsedArgs = {
 
 const DRIFT_REMEDIATION =
   'Evidence drift detected. Run: npm run governance:emit && git add governance/evidence.json && git commit -m "fix(governance): emit canonical evidence"';
+const LOCAL_PR_GUIDANCE = [
+  'Missing pull request number. Provide --pr <N> when GITHUB_EVENT_PATH is unavailable or missing pull_request metadata.',
+  'Examples:',
+  'npm run governance:emit:ci -- --pr 73',
+  'npm run governance:emit:ci:local -- 73'
+].join('\n');
 
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
@@ -78,6 +84,16 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
 }> {
   const args = parseArgs(argv);
   const outputPath = resolveEvidencePath(args.outFile);
+  const eventPath = process.env.GITHUB_EVENT_PATH ?? '';
+
+  if (args.pr === undefined) {
+    const hasUsableEventPullNumber = eventPath && fs.existsSync(eventPath)
+      ? readPullNumberFromGitHubEvent(eventPath) !== null
+      : false;
+    if (!hasUsableEventPullNumber) {
+      throw new Error(LOCAL_PR_GUIDANCE);
+    }
+  }
 
   let metadata;
   try {
@@ -105,6 +121,7 @@ export async function runGovernanceEmitCi(argv: string[]): Promise<{
   fs.writeFileSync(outputPath, content, 'utf8');
 
   const evidenceHash = sha256(generatedCanonical);
+  console.log(`Evidence SHA: ${evidenceHash}`);
   console.log(`governance/evidence.json sha256=${evidenceHash}`);
 
   if (driftDetected) {

@@ -1,7 +1,7 @@
 {
   "affectedPaths": [
     "control-plane/projects/core-app.json",
-    "docs/cockpit/sprint-55-checklist.md"
+    "governance/evidence.json"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",

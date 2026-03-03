@@ -1,17 +1,8 @@
 {
   "affectedPaths": [
     ".github/workflows/governance-full.yml",
-    "control-plane/cli/governance-emit-ci.test.ts",
-    "control-plane/cli/governance-emit-ci.ts",
-    "control-plane/cli/governance-pr-body.test.ts",
-    "control-plane/cli/governance-pr-body.ts",
-    "control-plane/cli/pr-body-check.ts",
-    "control-plane/governance/evidence-contract.ts",
-    "governance/evidence.json",
-    "package.json",
-    "scripts/ci/verify-workflows.test.ts",
-    "scripts/ci/verify-workflows.ts",
-    "scripts/governance/emit-ci-parity.sh"
+    ".github/workflows/governance-lite.yml",
+    "governance/evidence.json"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",

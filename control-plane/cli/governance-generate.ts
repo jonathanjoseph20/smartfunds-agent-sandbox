@@ -102,11 +102,11 @@ function collectChangedPaths(execGit: GitExec): string[] {
 
 export function generateBody(options: GenerateOptions): string {
   const orderedPaths = [...options.changedPaths].sort((a, b) => a.localeCompare(b));
-  const affectedPaths = orderedPaths.length > 0
-    ? orderedPaths.join(', ')
-    : 'none';
-
-  const lines = [
+  const affectedPaths = Array.from(new Set(
+  (orderedPaths.length > 0 ? orderedPaths : changedFiles)
+    .filter((p) => p !== 'governance/evidence.json')
+)).sort();
+const lines = [
     `tier-${options.tier}`,
     '',
     OPEN_FENCE,

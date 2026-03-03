@@ -1,8 +1,7 @@
 {
   "affectedPaths": [
     ".github/workflows/governance-full.yml",
-    ".github/workflows/governance-lite.yml",
-    "governance/evidence.json"
+    ".github/workflows/governance-lite.yml"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",

@@ -17,12 +17,14 @@ jobs:
       run_schema: ${{ steps.impact.outputs.run_schema }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Generate canonical evidence (CI)
+  with:
+    fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
+- uses: actions/setup-node@v4
+  with:
+    node-version: 22
+
+- name: Generate canonical evidence (CI)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run governance:emit:ci

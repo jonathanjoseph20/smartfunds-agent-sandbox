@@ -2,6 +2,7 @@
   "projectId": "core-app",
   "ownedPaths": [
     "**",
-    "control-plane/**"
+    "control-plane/**",
+    "control-plane/cockpit/**"
   ]
 }

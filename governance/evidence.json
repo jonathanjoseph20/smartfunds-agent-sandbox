@@ -9,6 +9,7 @@
     "docs/runbooks/how-to-fix-evidence-drift.md",
     "docs/runbooks/how-to-repair-pr-body.md",
     "docs/runbooks/workflow-integrity.md",
+    "governance/evidence.json",
     "package.json",
     "scripts/ci/verify-workflows.test.ts",
     "scripts/ci/verify-workflows.ts",

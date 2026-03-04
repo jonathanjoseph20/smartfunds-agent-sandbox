@@ -14,6 +14,21 @@ import {
 import { type Tier, extractTierFromLabels } from '../governance/diagnostics.ts';
 import { classifyPaths } from '../governance/tier-policy.ts';
 import {
+
+const sanitizeAffectedPaths = (paths: readonly string[]): string[] => {
+  const cleaned = paths
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => (x.startsWith('./') ? x.slice(2) : x))
+    // exclude generated artifacts / self-referential evidence outputs
+    .filter((x) => x !== 'governance/evidence.json')
+    .filter((x) => x !== 'governance/evidence.js');
+
+  return Array.from(new Set(cleaned)).sort((a, b) => a.localeCompare(b));
+};
+
+
+
   DEFAULT_DETERMINISM_STATEMENT,
   resolveEvidenceModeFromChangedFiles
 } from '../governance/evidence-generation.ts';
@@ -273,7 +288,7 @@ export async function runGovernanceEmit(
   const evidence = buildCanonicalEvidence({
     tier: resolveLocalTier(args, changedFiles, existing),
     mode: resolveLocalMode(args, changedFiles, existing),
-    affectedPaths: changedFiles,
+    affectedPaths: sanitizeAffectedPaths(changedFiles),
     determinismStatement: args.determinismStatement ?? existing?.determinismStatement ?? DEFAULT_DETERMINISM_STATEMENT,
     retrySemanticsModified: args.retrySemanticsModified ?? existing?.retrySemanticsModified ?? false,
     autonomyScopeExpanded: args.autonomyScopeExpanded ?? existing?.autonomyScopeExpanded ?? false,

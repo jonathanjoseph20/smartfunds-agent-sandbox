@@ -2,6 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+const sanitizeAffectedPaths = (paths: readonly string[]): string[] => {
+  const cleaned = paths
+    .map((x) => String(x).trim())
+    .filter(Boolean)
+    .map((x) => (x.startsWith('./') ? x.slice(2) : x))
+    // exclude generated artifacts / self-referential evidence outputs
+    .filter((x) => x !== 'governance/evidence.json')
+    .filter((x) => x !== 'governance/evidence.js');
+
+  return Array.from(new Set(cleaned)).sort((a, b) => a.localeCompare(b));
+};
+
+
 import { getChangedFilesFromMain, defaultGitExec, type GitExec } from '../governance/changed-files.ts';
 import {
   EVIDENCE_JSON_PATH,
@@ -14,21 +27,6 @@ import {
 import { type Tier, extractTierFromLabels } from '../governance/diagnostics.ts';
 import { classifyPaths } from '../governance/tier-policy.ts';
 import {
-
-const sanitizeAffectedPaths = (paths: readonly string[]): string[] => {
-  const cleaned = paths
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .map((x) => (x.startsWith('./') ? x.slice(2) : x))
-    // exclude generated artifacts / self-referential evidence outputs
-    .filter((x) => x !== 'governance/evidence.json')
-    .filter((x) => x !== 'governance/evidence.js');
-
-  return Array.from(new Set(cleaned)).sort((a, b) => a.localeCompare(b));
-};
-
-
-
   DEFAULT_DETERMINISM_STATEMENT,
   resolveEvidenceModeFromChangedFiles
 } from '../governance/evidence-generation.ts';
@@ -259,7 +257,7 @@ function resolveLocalTier(args: ParsedArgs, changedFiles: string[], existing: Re
     return existing.tier;
   }
 
-  return classifyPaths(changedFiles).impliedTier;
+  return classifyPaths(sanitizedChangedFiles).impliedTier;
 }
 
 function resolveLocalMode(args: ParsedArgs, changedFiles: string[], existing: ReturnType<typeof readExistingEvidence>): EvidenceMode {
@@ -271,7 +269,7 @@ function resolveLocalMode(args: ParsedArgs, changedFiles: string[], existing: Re
     return existing.mode;
   }
 
-  return resolveEvidenceModeFromChangedFiles(changedFiles);
+  return resolveEvidenceModeFromChangedFiles(sanitizedChangedFiles);
 }
 
 export async function runGovernanceEmit(
@@ -283,12 +281,13 @@ export async function runGovernanceEmit(
   const args = parseArgs(argv);
   const gitExec = deps.gitExec ?? defaultGitExec;
   const changedFiles = getChangedFilesFromMain(gitExec);
+  const sanitizedChangedFiles = sanitizeAffectedPaths(changedFiles);
   const existing = readExistingEvidence();
 
   const evidence = buildCanonicalEvidence({
     tier: resolveLocalTier(args, changedFiles, existing),
     mode: resolveLocalMode(args, changedFiles, existing),
-    affectedPaths: sanitizeAffectedPaths(changedFiles),
+    affectedPaths: sanitizedChangedFiles,
     determinismStatement: args.determinismStatement ?? existing?.determinismStatement ?? DEFAULT_DETERMINISM_STATEMENT,
     retrySemanticsModified: args.retrySemanticsModified ?? existing?.retrySemanticsModified ?? false,
     autonomyScopeExpanded: args.autonomyScopeExpanded ?? existing?.autonomyScopeExpanded ?? false,

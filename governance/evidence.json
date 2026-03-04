@@ -1,7 +1,6 @@
 {
   "affectedPaths": [
-    ".github/workflows/governance-full.yml",
-    ".github/workflows/governance-lite.yml",
+    "control-plane/cli/governance-emit.ts",
     "governance/evidence.json"
   ],
   "autonomyScopeExpanded": false,

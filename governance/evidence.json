@@ -1,6 +1,7 @@
 {
   "affectedPaths": [
-    "control-plane/cli/governance-emit.ts"
+    "control-plane/cli/governance-emit.ts",
+    "governance/evidence.json"
   ],
   "autonomyScopeExpanded": false,
   "determinismStatement": "Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.",

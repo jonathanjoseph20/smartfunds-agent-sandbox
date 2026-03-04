@@ -281,6 +281,13 @@ export async function runGovernanceEmit(
   const args = parseArgs(argv);
   const gitExec = deps.gitExec ?? defaultGitExec;
   const changedFiles = getChangedFilesFromMain(gitExec);
+  // NO-OP GUARD: In non-PR contexts (e.g., main with no diff), changedFiles can be empty.
+  // Do NOT rewrite governance/evidence.json into an invalid empty affectedPaths state.
+  if (changedFiles.length === 0) {
+    console.log('No changed files detected; skipping evidence emit (no-op).');
+    process.exit(0);
+  }
+
   const sanitizedChangedFiles = sanitizeAffectedPaths(changedFiles);
   const existing = readExistingEvidence();
 

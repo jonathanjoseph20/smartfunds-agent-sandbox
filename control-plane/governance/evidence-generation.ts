@@ -38,6 +38,10 @@ export function resolveEvidenceModeFromChangedFiles(changedFiles: string[]): Evi
   return 'structured';
 }
 
+// Paths excluded from affectedPaths to avoid self-referential evidence cycles.
+// Must match the sanitizeAffectedPaths filter in control-plane/cli/governance-emit.ts.
+const EVIDENCE_SELF_REFERENTIAL_PATHS = new Set(['governance/evidence.json', 'governance/evidence.js']);
+
 export function generateEvidenceFromPullRequestMetadata(input: {
   labels: string[];
   changedFiles: string[];
@@ -45,7 +49,9 @@ export function generateEvidenceFromPullRequestMetadata(input: {
   retrySemanticsModified?: boolean;
   autonomyScopeExpanded?: boolean;
 }): GovernanceEvidence {
-  const changedFiles = normalizeChangedFiles(input.changedFiles);
+  const changedFiles = normalizeChangedFiles(
+    input.changedFiles.filter((f) => !EVIDENCE_SELF_REFERENTIAL_PATHS.has(f))
+  );
   return buildCanonicalEvidence({
     tier: resolveEvidenceTierFromLabels(input.labels),
     mode: resolveEvidenceModeFromChangedFiles(changedFiles),

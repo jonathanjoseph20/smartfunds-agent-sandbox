@@ -18,6 +18,7 @@
     "entities/organizations/smartfunds-os.json",
     "entities/pods/agent-marketplace.json",
     "entities/pods/smartfunds.json",
+    "entities/projects/control-plane.json",
     "entities/projects/marketplace-core.json",
     "entities/projects/smartfunds-core.json",
     "entities/projects/smartfunds-docs.json",

@@ -5,6 +5,7 @@
     "control-plane/cli/governance-emit.ts",
     "control-plane/cli/governance-preflight.test.ts",
     "control-plane/cli/governance-preflight.ts",
+    "control-plane/entities/registry.json",
     "control-plane/governance-check.ts",
     "control-plane/governance/diagnostics.test.ts",
     "control-plane/governance/diagnostics.ts",

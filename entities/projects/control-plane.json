@@ -2,9 +2,18 @@
   "id": "control-plane",
   "ownedPaths": [
     "control-plane/cli/",
+    "control-plane/entities/",
     "control-plane/governance/",
     "control-plane/studio/",
-    "control-plane/entities/"
+    "entities/",
+    "governance/",
+    "runtime/"
+  ],
+  "ownedFiles": [
+    ".gitignore",
+    ".pr-body.md",
+    "control-plane/governance-check.ts",
+    "package.json"
   ],
   "pod": "smartfunds"
 }

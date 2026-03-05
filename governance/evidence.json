@@ -9,6 +9,7 @@
     "control-plane/governance-check.ts",
     "control-plane/governance/diagnostics.test.ts",
     "control-plane/governance/diagnostics.ts",
+    "control-plane/governance/evidence-generation.ts",
     "control-plane/governance/validate.ts",
     "control-plane/studio/registry.ts",
     "entities/agents/compliance-agent.json",

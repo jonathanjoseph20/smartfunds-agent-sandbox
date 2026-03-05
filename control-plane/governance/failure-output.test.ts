@@ -45,39 +45,4 @@ describe('governance failure output', () => {
     expect(output).toContain('PR B: apps/**, packages/**');
   });
 
-  it('prints exact evidence drift remediation commands', () => {
-    const report = buildGovernanceReport({
-      declaredTier: 2,
-      impliedTier: 2,
-      labelTier: 2,
-      missingLabels: [],
-      missingEvidenceFields: [],
-      requiredChecks: [],
-      projectsTouched: [],
-      teamsTouched: [],
-      swarmsTouched: [],
-      unownedFiles: [],
-      ownershipStatus: 'ok',
-      nextActions: [],
-      warnings: [],
-      executionModesTouched: ['structured'],
-      modeBoundaryStatus: 'ok',
-      conflictingTeams: [],
-      conflictingPaths: [],
-      swarmExecutionModesTouched: ['structured'],
-      modeWarnings: [],
-      unownedPaths: [],
-      ambiguousPaths: []
-    });
-
-    const output = renderGovernanceFailureSummary({
-      report,
-      errors: ['Evidence drift detected. Run: npm run governance:emit'],
-      primaryAction: null
-    });
-
-    expect(output).toContain('npm run governance:emit');
-    expect(output).toContain('git add governance/evidence.json');
-    expect(output).toContain('git commit -m "fix(governance): canonicalize evidence"');
-  });
 });

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -32,28 +33,10 @@ import { resolveSwarmsForProjects } from './swarms/resolution.ts';
 import { evaluateSwarmOrchestration } from './swarms/orchestration.ts';
 import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
+=======
+>>>>>>> origin/main
 import { classifyIsolation, type ClassifyIsolationArgs } from './isolation/path-classifier.ts';
 import type { IsolationClassification } from './isolation/types.ts';
-import { defaultGitExec, getChangedFilesFromBase } from './governance/changed-files.ts';
-import { fetchWithGitHubRetry } from './governance/github-retry.ts';
-
-type GitExec = (args: string[]) => string;
-
-type GovernanceCheckOptions = {
-  bodyFile?: string;
-  labelsFile?: string;
-  repo?: string;
-  token?: string;
-  branchName?: string;
-  gitExec?: GitExec;
-  readFile?: (filePath: string) => string;
-  existsSync?: (filePath: string) => boolean;
-  fetchImpl?: typeof fetch;
-};
-
-type LabelInfo = {
-  name: string;
-};
 
 export const ISOLATION_REMEDIATION_ACTION =
   'Autonomous contexts (swarm/*) must not touch structured paths; move change to structured branch or restrict task to autonomous paths.';
@@ -62,6 +45,7 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
+<<<<<<< HEAD
 function buildPodOwnership(projectsTouched: string[], projects: Project[]): {
   podsTouched: string[];
   podByProject: Record<string, string | null>;
@@ -147,6 +131,8 @@ function collectChangedFiles(execGit: GitExec, baseSha: string): string[] {
   return getChangedFilesFromBase(execGit, baseSha);
 }
 
+=======
+>>>>>>> origin/main
 function buildIsolationErrorMessage(classification: IsolationClassification): string {
   const statusCode = `isolation_violation:${classification.isolationStatus}`;
   if (classification.isolationStatus === 'invalid_autonomous_branch_namespace') {
@@ -187,6 +173,7 @@ export function buildIsolationEnforcement(args: {
     nextActions: [ISOLATION_REMEDIATION_ACTION]
   };
 }
+<<<<<<< HEAD
 
 async function fetchRepoLabels(fetchImpl: typeof fetch, repo: string, token: string): Promise<string[]> {
   const labels: string[] = [];
@@ -550,3 +537,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { parseArgs, resolveMergeBase, collectChangedFiles, getBranchName };
+=======
+>>>>>>> origin/main

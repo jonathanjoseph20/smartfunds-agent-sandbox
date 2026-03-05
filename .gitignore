@@ -8,6 +8,11 @@ coverage/
 *.save
 node_modules/.vite
 .tmp/
+<<<<<<< HEAD
 
 .pr-body.md
 .pr-body.md
+=======
+.DS_Store
+.DS_Store
+>>>>>>> origin/main

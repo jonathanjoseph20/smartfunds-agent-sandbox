@@ -32,8 +32,6 @@ import { resolveSwarmsForProjects } from './swarms/resolution.ts';
 import { evaluateSwarmOrchestration } from './swarms/orchestration.ts';
 import type { SwarmDefinition } from './swarms/types.ts';
 import { resolveTeamsForChangedFiles } from './teams/team-resolver.ts';
-=======
->>>>>>> origin/main
 import { classifyIsolation, type ClassifyIsolationArgs } from './isolation/path-classifier.ts';
 import type { IsolationClassification } from './isolation/types.ts';
 

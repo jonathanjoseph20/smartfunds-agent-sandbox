@@ -1,0 +1,19 @@
+# CODEOWNERS — required reviewers for critical paths
+# Changes to these paths require approval from @jonathanjoseph20.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Catch-all: everything requires review
+* @jonathanjoseph20
+
+# CI and workflow configuration
+.github/ @jonathanjoseph20
+scripts/ci/ @jonathanjoseph20
+
+# Governance contract and validation
+governance/ @jonathanjoseph20
+control-plane/governance/ @jonathanjoseph20
+control-plane/governance-check.ts @jonathanjoseph20
+control-plane/validate-pr.ts @jonathanjoseph20
+
+# Risk and tier configuration
+control-plane/risk-contract.json @jonathanjoseph20

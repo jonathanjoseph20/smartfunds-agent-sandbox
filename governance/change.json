@@ -1,0 +1,5 @@
+{
+  "tier": 3,
+  "mode": "structured",
+  "justification": "Governance reset: replace computed evidence.json drift loop with authored change declaration. Remove PR body tier-line and evidence fence requirements."
+}

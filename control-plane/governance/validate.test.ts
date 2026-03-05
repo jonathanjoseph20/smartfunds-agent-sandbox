@@ -3,27 +3,28 @@ import fs from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { runGovernanceValidation } from './validate.ts';
-import { buildCanonicalEvidence, stringifyEvidenceJson } from './evidence-contract.ts';
 
-function withMockedEvidence(evidenceContent: string, run: () => Promise<void>): Promise<void> {
+function withMockedDeclaration(
+  declarationContent: string | null,
+  run: () => Promise<void>
+): Promise<void> {
   const originalExistsSync = fs.existsSync.bind(fs);
   const originalReadFileSync = fs.readFileSync.bind(fs);
-  const schema = originalReadFileSync('governance/schema/evidence.schema.json', 'utf8');
+
   vi.spyOn(fs, 'existsSync').mockImplementation((filePath: fs.PathLike) => {
-    const normalized = String(filePath);
-    if (normalized === 'governance/evidence.json' || normalized === 'governance/schema/evidence.schema.json') {
-      return true;
+    if (String(filePath) === 'governance/change.json') {
+      return declarationContent !== null;
     }
     return originalExistsSync(filePath);
   });
+
   vi.spyOn(fs, 'readFileSync').mockImplementation(
-    (filePath: fs.PathOrFileDescriptor, options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null) => {
-      const normalized = String(filePath);
-      if (normalized === 'governance/evidence.json') {
-        return evidenceContent;
-      }
-      if (normalized === 'governance/schema/evidence.schema.json') {
-        return schema;
+    (
+      filePath: fs.PathOrFileDescriptor,
+      options?: BufferEncoding | { encoding?: BufferEncoding | null; flag?: string } | null
+    ) => {
+      if (String(filePath) === 'governance/change.json') {
+        return declarationContent ?? '';
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return originalReadFileSync(filePath as any, options as any);
@@ -40,7 +41,7 @@ describe('governance validate tier routing', () => {
     const result = await runGovernanceValidation({
       mode: 'lite',
       prData: {
-        body: 'tier-1\n\n```evidence\nRisk Tier: 1\nJustification: ok\nAffected Paths: docs/readme.md\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        body: '',
         labels: [],
         changedFiles: ['docs/readme.md']
       }
@@ -54,7 +55,7 @@ describe('governance validate tier routing', () => {
     const result = await runGovernanceValidation({
       mode: 'lite',
       prData: {
-        body: 'tier-1\n\n```evidence\nRisk Tier: 1\nJustification: ok\nAffected Paths: control-plane/validate-pr.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        body: '',
         labels: ['tier-1'],
         changedFiles: ['control-plane/validate-pr.ts']
       }
@@ -69,7 +70,7 @@ describe('governance validate tier routing', () => {
     const result = await runGovernanceValidation({
       mode: 'full',
       prData: {
-        body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: governance/evidence.json\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+        body: '',
         labels: ['tier-2'],
         changedFiles: ['governance/evidence.json']
       }
@@ -79,50 +80,41 @@ describe('governance validate tier routing', () => {
     expect(result.errors.join('\n')).toContain('TIER_LABEL_TOO_LOW');
   });
 
-  it('fails tier-2 full mode on semantic evidence drift with deterministic remediation', async () => {
-    const evidence = stringifyEvidenceJson(
-      buildCanonicalEvidence({
-        tier: 2,
-        mode: 'autonomous',
-        affectedPaths: ['apps/api/src/other.ts'],
-        determinismStatement: 'No identity surfaces mutated.',
-        retrySemanticsModified: false,
-        autonomyScopeExpanded: false
-      })
-    );
-
-    await withMockedEvidence(evidence, async () => {
+  it('fails full mode when change.json is missing', async () => {
+    await withMockedDeclaration(null, async () => {
       const result = await runGovernanceValidation({
         mode: 'full',
         prData: {
-          body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: apps/api/src/index.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+          body: '',
           labels: ['tier-2'],
           changedFiles: ['apps/api/src/index.ts']
         }
       });
 
       expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('Evidence drift detected.');
-      expect(result.errors.join('\n')).toContain('npm run governance:emit');
-      expect(result.errors.join('\n')).toContain('git add governance/evidence.json');
-      expect(result.errors.join('\n')).toContain('git commit -m "fix(governance): canonicalize evidence"');
+      expect(result.errors.join('\n')).toContain('Missing governance/change.json');
     });
   });
 
-  it('accepts non-canonical evidence formatting when semantic content matches', async () => {
-    const nonCanonical = '{\"tier\":2,\"mode\":\"autonomous\",\"affectedPaths\":[\"apps/api/src/index.ts\"],\"determinismStatement\":\"Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.\",\"retrySemanticsModified\":false,\"autonomyScopeExpanded\":false}\n';
+  it('fails full mode when change.json tier does not match label tier', async () => {
+    const declaration = JSON.stringify({
+      tier: 1,
+      mode: 'structured',
+      justification: 'test'
+    });
 
-    await withMockedEvidence(nonCanonical, async () => {
+    await withMockedDeclaration(declaration, async () => {
       const result = await runGovernanceValidation({
         mode: 'full',
         prData: {
-          body: 'tier-2\n\n```evidence\nRisk Tier: 2\nJustification: ok\nAffected Paths: apps/api/src/index.ts\nTests Added: npm test\nDeterminism Statement: deterministic\n```',
+          body: '',
           labels: ['tier-2'],
           changedFiles: ['apps/api/src/index.ts']
         }
       });
 
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      expect(result.errors.join('\n')).toContain('Risk tier mismatch');
     });
   });
 });

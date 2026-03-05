@@ -15,9 +15,7 @@ import {
   type PullRequestData,
   type RiskContract
 } from './diagnostics.ts';
-import {
-  readEvidenceContract
-} from './evidence-contract.ts';
+import { readChangeDeclaration } from './change-declaration.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
@@ -31,14 +29,7 @@ import type { SwarmDefinition } from '../swarms/types.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 import { buildIsolationEnforcement } from '../governance-check.ts';
 import { normalizeChangedFiles } from './changed-files.ts';
-import { validatePrBody } from './pr-body.ts';
 import { classifyPaths, type Tier as PolicyTier } from './tier-policy.ts';
-import { canonicalStringify } from '../finance/determinism.ts';
-import {
-  buildGovernanceMetadataSnapshot,
-  generateEvidenceFromPullRequestMetadata,
-  stringifyGovernanceMetadataSnapshot
-} from './evidence-generation.ts';
 import { resolvePullRequestMetadata } from './pr-files-api.ts';
 
 type GovernanceValidationResult = {
@@ -98,7 +89,7 @@ function buildNextActions(
   }
 
   if (result.declaredTier !== null && result.declaredTier < result.impliedTier) {
-    actions.push(`Update governance/evidence.json tier to ${result.impliedTier} and align the tier label.`);
+    actions.push(`Update governance/change.json tier to ${result.impliedTier} and align the tier label.`);
   }
 
   if (result.tierLabel === 3 && !pr.labels.includes('tier-3-approved')) {
@@ -119,7 +110,7 @@ function buildWarnings(errors: string[]): string[] {
   const warnings: string[] = [];
   if (shouldWarnStalePayload(errors)) {
     warnings.push(
-      'GitHub Actions re-runs can read stale governance metadata/labels. If you updated evidence.json or labels, push a new commit to refresh the payload.'
+      'GitHub Actions re-runs can read stale governance metadata/labels. If you updated labels or change.json, push a new commit to refresh the payload.'
     );
   }
   return warnings;
@@ -157,12 +148,6 @@ async function buildReport(
   const warnings: string[] = [];
   const sealWarnings: string[] = [];
   const missingEvidenceFields: string[] = [];
-
-  try {
-    validatePrBody(prData.body);
-  } catch (error) {
-    errors.push(formatGovernanceError('PR_BODY_CONTRACT_INVALID', (error as Error).message));
-  }
 
   let labelTier: Tier | null = null;
   try {
@@ -356,7 +341,7 @@ async function buildReport(
     return { report, errors: [] };
   }
 
-  const evidenceContract = readEvidenceContract({ enforceCanonical: false });
+  const changeDeclaration = readChangeDeclaration();
   let declaredTier: number | null = null;
   const requiredChecks: string[] = getRequiredChecksForTier(finalTier, contract);
   let missingLabels: string[] = [];
@@ -371,11 +356,11 @@ async function buildReport(
     nextActions: []
   };
 
-  if ('evidence' in evidenceContract) {
-    declaredTier = evidenceContract.evidence.tier;
+  if (changeDeclaration.ok) {
+    declaredTier = changeDeclaration.declaration.tier;
     if (labelTier !== null && labelTier !== declaredTier) {
       errors.push(
-        `Risk tier mismatch: label tier is ${labelTier}; governance/evidence.json tier must be ${labelTier}.`
+        `Risk tier mismatch: label tier-${labelTier} does not match governance/change.json tier ${declaredTier}. Update change.json or the label so they agree.`
       );
     }
 
@@ -386,11 +371,13 @@ async function buildReport(
 
     if (finalTier === 3 && !prData.labels.includes('tier-3-approved')) {
       errors.push(
-        'Tier 3 requires `tier-3-approved` label. Add it, and if CI still shows stale labels/evidence, push a new commit to refresh the PR payload.'
+        'Tier 3 requires `tier-3-approved` label. Add it and push a new commit if CI shows stale labels.'
       );
     }
   } else {
-    errors.push(...evidenceContract.errors);
+    for (const e of changeDeclaration.errors) {
+      errors.push(e);
+    }
   }
 
   if (finalTier >= 2) {
@@ -418,21 +405,9 @@ async function buildReport(
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
-  if ('evidence' in evidenceContract && finalTier >= 2) {
-    const expectedEvidence = generateEvidenceFromPullRequestMetadata({
-      labels: prData.labels,
-      changedFiles: prData.changedFiles
-    });
-    if (canonicalStringify(evidenceContract.evidence) !== canonicalStringify(expectedEvidence)) {
-      errors.push(
-        'Evidence drift detected.\nRun:\n  npm run governance:emit\n  git add governance/evidence.json\n  git commit -m "fix(governance): canonicalize evidence"'
-      );
-    }
-  }
-
   const swarmMetadata = {
     swarmsDeclared: [],
-    swarmMode: 'evidence' in evidenceContract ? evidenceContract.evidence.mode : null,
+    swarmMode: changeDeclaration.ok ? changeDeclaration.declaration.mode : null,
     swarmTeamId: null,
     hasSwarmModeField: false,
     hasSwarmTeamField: false,
@@ -615,7 +590,6 @@ export async function runGovernanceValidation(
   let repository: string | null;
   let bodySource: 'gh' | 'stub';
   let labelSource: 'gh' | 'stub';
-  let pullNumberForSnapshot: number | null = null;
   let metadataWarnings: string[] = [];
 
   if (options.prData) {
@@ -623,7 +597,6 @@ export async function runGovernanceValidation(
     repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
     bodySource = 'stub';
     labelSource = 'stub';
-    pullNumberForSnapshot = options.prNumber ?? null;
   } else {
     const metadata = await resolvePullRequestMetadata({
       token: options.token,
@@ -642,7 +615,6 @@ export async function runGovernanceValidation(
     repository = options.repository ?? process.env.GITHUB_REPOSITORY ?? null;
     bodySource = metadata.source === 'api' ? 'gh' : 'stub';
     labelSource = metadata.source === 'api' ? 'gh' : 'stub';
-    pullNumberForSnapshot = metadata.pullNumber;
     metadataWarnings = metadata.warnings;
   }
 
@@ -657,28 +629,6 @@ export async function runGovernanceValidation(
   const { report, errors } = await buildReport(prData, contract, { repo, bodySource, labelSource, mode });
   if (metadataWarnings.length > 0) {
     report.warnings = sortedUnique([...report.warnings, ...metadataWarnings]);
-  }
-
-  if (pullNumberForSnapshot !== null) {
-    const parsedEvidence = readEvidenceContract({ enforceCanonical: false });
-    const snapshotEvidence =
-      parsedEvidence.exists && 'evidence' in parsedEvidence
-        ? parsedEvidence.evidence
-        : generateEvidenceFromPullRequestMetadata({
-            labels: prData.labels,
-            changedFiles: prData.changedFiles
-          });
-
-    const snapshot = buildGovernanceMetadataSnapshot({
-      pr: pullNumberForSnapshot,
-      labels: prData.labels,
-      files: prData.changedFiles,
-      evidence: snapshotEvidence
-    });
-
-    console.log('GOVERNANCE_METADATA_SNAPSHOT_START');
-    console.log(stringifyGovernanceMetadataSnapshot(snapshot));
-    console.log('GOVERNANCE_METADATA_SNAPSHOT_END');
   }
 
   const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';

@@ -39,15 +39,6 @@ function buildMixedModeSplitSuggestion(report: GovernanceReport): {
 }
 
 function buildRecommendedAction(input: FailureSummaryInput, primaryViolation: string): string {
-  const hasEvidenceDrift = input.errors.some((error) => error.includes('Evidence drift detected'));
-  if (hasEvidenceDrift) {
-    return [
-      'npm run governance:emit',
-      'git add governance/evidence.json',
-      'git commit -m "fix(governance): canonicalize evidence"'
-    ].join('\n');
-  }
-
   if (input.report.modeViolation === 'mixed_execution_modes') {
     const split = buildMixedModeSplitSuggestion(input.report);
     return [

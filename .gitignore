@@ -8,3 +8,5 @@ coverage/
 *.save
 node_modules/.vite
 .tmp/
+
+.pr-body.md

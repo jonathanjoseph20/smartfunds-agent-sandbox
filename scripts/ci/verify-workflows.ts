@@ -24,8 +24,7 @@ type VerifyOptions = {
 };
 
 const DEFAULT_ALLOWLIST = [
-  'control-plane/validate-pr.ts',
-  'control-plane/cli/governance-emit-ci.ts'
+  'control-plane/validate-pr.ts'
 ] as const;
 
 function countLeadingSpaces(line: string): number {

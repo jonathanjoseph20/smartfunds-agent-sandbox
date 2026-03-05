@@ -8,3 +8,4 @@ coverage/
 *.save
 node_modules/.vite
 .tmp/
+.DS_Store

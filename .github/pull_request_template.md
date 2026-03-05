@@ -1,18 +1,16 @@
-## Evidence (required)
+## What does this PR do?
 
-```evidence
-Risk Tier: <0|1|2|3>
-Justification: <why this tier>
-Affected Paths: <comma-separated globs or file list>
-Tests Added: <what you ran/added, or "N/A" with reason>
-Determinism Statement: <why this change is deterministic and reproducible>
-```
+<!-- Describe the change. -->
 
-## Governance checklist
+## Governance
 
-- [ ] Exactly one risk tier label is set: `tier-0`, `tier-1`, `tier-2`, or `tier-3`
-- [ ] Evidence block is present and all required fields are populated
-- [ ] Evidence `Risk Tier` matches the risk tier label (labels are authoritative)
-- [ ] Declared tier is at least as high as the tier implied by changed paths in `control-plane/risk-contract.json`
-- [ ] If Tier 3, `tier-3-approved` label is applied
-- [ ] If labels/body were updated after a failed run, push a new commit to refresh PR payload (re-run alone can be stale)
+<!-- governance/change.json is the machine-readable contract. This is for humans. -->
+
+- **Tier**: <!-- matches governance/change.json — 0=docs, 1=normal, 2=core, 3=critical -->
+- **Why this tier**: <!-- one sentence justification -->
+
+### Checklist
+
+- [ ] `governance/change.json` updated with correct tier, mode, and justification
+- [ ] Tier label set on PR matches `governance/change.json` tier
+- [ ] If tier 3: `tier-3-approved` label is applied

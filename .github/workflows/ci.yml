@@ -1,4 +1,4 @@
-name: Governance Lite
+name: CI
 
 on:
   push:
@@ -8,25 +8,54 @@ on:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
 
 jobs:
-  policy_lite:
+  workflow_integrity:
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify workflow YAML and entrypoints
+        run: npm run lint:workflows
+
+  policy_lite:
+    needs: workflow_integrity
+    runs-on: ubuntu-latest
+
     outputs:
       tier: ${{ steps.validate_pr.outputs.tier }}
       detected_tier: ${{ steps.validate_pr.outputs.detected_tier }}
       implied_tier: ${{ steps.validate_pr.outputs.implied_tier }}
       final_tier: ${{ steps.validate_pr.outputs.final_tier }}
       required_checks: ${{ steps.validate_pr.outputs.required_checks }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate lite governance contract (PR Files API canonical source)
+
+      - run: npm ci
+
+      - name: Validate lite governance contract
         id: validate_pr
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode lite
+
       - name: Report lite policy resolution
         run: |
           echo "Detected tier: ${{ steps.validate_pr.outputs.detected_tier }}"
@@ -34,15 +63,44 @@ jobs:
           echo "Final tier: ${{ steps.validate_pr.outputs.final_tier }}"
           echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
 
+  policy_full:
+    needs: workflow_integrity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate full governance contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GOVERNANCE_SUMMARY: 'true'
+        run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
+
   lint_tier0:
     needs: policy_lite
     if: fromJSON(needs.policy_lite.outputs.final_tier) <= 1 && contains(needs.policy_lite.outputs.required_checks, 'lint_tier0')
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - name: Run lite lane lint checks
+
+      - run: npm ci
+
+      - name: Run lint checks
         run: npm run lint_tier0

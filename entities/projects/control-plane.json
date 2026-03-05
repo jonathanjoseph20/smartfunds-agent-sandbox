@@ -1,0 +1,10 @@
+{
+  "id": "control-plane",
+  "ownedPaths": [
+    "control-plane/cli/",
+    "control-plane/governance/",
+    "control-plane/studio/",
+    "control-plane/entities/"
+  ],
+  "pod": "smartfunds"
+}

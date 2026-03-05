@@ -176,7 +176,8 @@ export function loadProjectsFromDir(dir: string): Project[] {
     if (!isNonEmptyString(data.projectId)) {
       throw new Error(`Project ${file} must include non-empty projectId.`);
     }
-    const ownedPaths = ensureNonEmptyArray(data.ownedPaths, `Project ${data.projectId} ownedPaths`);
+    const ownedFiles = Array.isArray(project.ownedFiles) ? project.ownedFiles : [];
+const ownedPaths = ensureNonEmptyArray(data.ownedPaths, `Project ${data.projectId} ownedPaths`);
     const project: Project = {
       projectId: data.projectId,
       ownedPaths: ownedPaths,
@@ -229,7 +230,8 @@ export function loadTeamsFromDir(dir: string, projects: Project[]): Team[] {
       throw new Error(`Team ${data.teamId} references unknown projectId ${data.projectId}.`);
     }
 
-    const ownedPaths = ensureNonEmptyArray(data.ownedPaths, `Team ${data.teamId} ownedPaths`);
+    const ownedFiles = Array.isArray(project.ownedFiles) ? project.ownedFiles : [];
+const ownedPaths = ensureNonEmptyArray(data.ownedPaths, `Team ${data.teamId} ownedPaths`);
     const team: Team = {
       teamId: data.teamId,
       projectId: data.projectId,

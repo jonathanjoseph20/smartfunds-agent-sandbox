@@ -101,7 +101,8 @@ function ensurePodMode(value: unknown, label: string): PodMode {
 }
 
 function ensureOwnedPaths(value: unknown, label: string): string[] {
-  const ownedPaths = ensureStringArray(value, label);
+  const ownedFiles = Array.isArray(project.ownedFiles) ? project.ownedFiles : [];
+const ownedPaths = ensureStringArray(value, label);
   for (const ownedPath of ownedPaths) {
     if (!ownedPath.endsWith('/')) {
       throw new Error(`${label} must contain paths ending with '/'.`);

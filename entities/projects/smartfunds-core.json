@@ -2,14 +2,11 @@
   "id": "smartfunds-core",
   "ownedPaths": [
     "apps/api/",
-    "control-plane/",
-    "control-plane/cli/",
-    "control-plane/entities/",
-    "control-plane/governance/",
-    "control-plane/studio/",
-    "entities/",
-    "packages/mission-engine/",
-    "runtime/"
+    "packages/mission-engine/"
   ],
-  "pod": "smartfunds"
+  "pod": "smartfunds",
+  "ownedFiles": [
+    ".gitignore",
+    "package.json"
+  ]
 }

@@ -83,6 +83,8 @@ describe('governance diagnostics', () => {
         missingEvidenceFields: ['Affected Paths', 'Tests Added'],
         requiredChecks: ['lint_tier0', 'unit_tests'],
         projectsTouched: ['project-a', 'project-b'],
+        podsTouched: [],
+        podByProject: {},
         teamsTouched: ['team-a', 'team-b'],
         swarmsDeclared: ['swarm-a', 'swarm-b'],
         swarmsTouched: ['swarm-a', 'swarm-b'],

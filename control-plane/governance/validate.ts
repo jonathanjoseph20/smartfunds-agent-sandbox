@@ -21,7 +21,7 @@ import {
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
-import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
+import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
@@ -64,6 +64,24 @@ type GovernanceValidationOptions = {
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function buildPodOwnership(projectsTouched: string[], projects: Project[]): {
+  podsTouched: string[];
+  podByProject: Record<string, string | null>;
+} {
+  const podByProject: Record<string, string | null> = {};
+  const podByProjectId = new Map(projects.map((project) => [project.projectId, project.podId ?? null]));
+
+  for (const projectId of sortedUnique(projectsTouched)) {
+    podByProject[projectId] = podByProjectId.get(projectId) ?? null;
+  }
+
+  const podsTouched = sortedUnique(
+    Object.values(podByProject).filter((value): value is string => value !== null)
+  );
+
+  return { podsTouched, podByProject };
 }
 
 function formatGovernanceError(code: string, message: string): string {
@@ -360,8 +378,9 @@ async function buildReport(
   let declaredTier: number | null = null;
   const requiredChecks: string[] = getRequiredChecksForTier(finalTier, contract);
   let missingLabels: string[] = [];
-  let projects: Project[] = [];
-  let teams: Team[] = [];
+  let ownershipProjects: Project[] = [];
+  let ownershipTeams: Team[] = [];
+  let swarmProjects: Project[] = [];
   let swarms: SwarmDefinition[] = [];
   let ownershipResult: OwnershipResult = {
     projectsTouched: [],
@@ -395,17 +414,32 @@ async function buildReport(
 
   if (finalTier >= 2) {
     try {
-      projects = loadProjectsFromDir('control-plane/projects');
-      teams = loadTeamsFromDir('control-plane/teams', projects);
-      ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects, teams });
+      ownershipProjects = loadOwnershipProjects();
     } catch (error) {
       errors.push((error as Error).message);
-      ownershipResult = resolveOwnership({ changedFiles: prData.changedFiles, projects: [], teams: [] });
+      ownershipProjects = [];
+    }
+    try {
+      ownershipTeams = loadTeamsFromDir('control-plane/teams', ownershipProjects);
+    } catch (error) {
+      ownershipTeams = [];
+    }
+    ownershipResult = resolveOwnership({
+      changedFiles: prData.changedFiles,
+      projects: ownershipProjects,
+      teams: ownershipTeams
+    });
+
+    try {
+      swarmProjects = loadProjectsFromDir('control-plane/projects');
+    } catch (error) {
+      errors.push((error as Error).message);
+      swarmProjects = [];
     }
 
-    if (projects.length > 0) {
+    if (swarmProjects.length > 0) {
       try {
-        swarms = loadSwarmsFromDir('control-plane/swarms', projects);
+        swarms = loadSwarmsFromDir('control-plane/swarms', swarmProjects);
       } catch (error) {
         errors.push((error as Error).message);
         swarms = [];
@@ -530,6 +564,10 @@ async function buildReport(
   if (finalTier >= 2 && orchestrationResult.status !== 'ok') {
     errors.push(...orchestrationResult.violations);
   }
+  const podOwnership = buildPodOwnership(
+    Array.isArray(ownershipResult.projectsTouched) ? ownershipResult.projectsTouched : [],
+    ownershipProjects
+  );
 
   return {
     report: buildGovernanceReport({
@@ -540,6 +578,8 @@ async function buildReport(
       missingEvidenceFields,
       requiredChecks,
       projectsTouched: Array.isArray(ownershipResult.projectsTouched) ? ownershipResult.projectsTouched : [],
+      podsTouched: podOwnership.podsTouched,
+      podByProject: podOwnership.podByProject,
       teamsTouched: Array.isArray(teamResolution.teamsTouched) ? teamResolution.teamsTouched : [],
       swarmsDeclared: swarmMetadata.swarmsDeclared,
       swarmsTouched,

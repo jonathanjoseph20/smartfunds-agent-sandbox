@@ -1,0 +1,9 @@
+{
+  "created": "static",
+  "id": "smartfunds-os",
+  "name": "SmartFunds Venture Studio",
+  "pods": [
+    "agent-marketplace",
+    "smartfunds"
+  ]
+}

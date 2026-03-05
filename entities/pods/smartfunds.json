@@ -1,0 +1,13 @@
+{
+  "financeScope": "smartfunds",
+  "id": "smartfunds",
+  "mode": "regulated",
+  "name": "SmartFunds",
+  "projects": [
+    "smartfunds-core",
+    "smartfunds-docs"
+  ],
+  "teams": [
+    "compliance"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "limits": {
+    "maxCharge": 1000000
+  },
+  "rails": [
+    "stripe",
+    "usdc",
+    "wire"
+  ],
+  "scope": "smartfunds"
+}

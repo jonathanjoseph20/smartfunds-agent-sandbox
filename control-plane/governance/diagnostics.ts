@@ -78,6 +78,8 @@ export type GovernanceReport = {
   missingEvidenceFields: string[];
   requiredChecks: string[];
   projectsTouched: string[];
+  podsTouched: string[];
+  podByProject: Record<string, string | null>;
   teamsTouched: string[];
   swarmsDeclared: string[];
   swarmsTouched: string[];
@@ -537,6 +539,8 @@ export function buildGovernanceReport(input: {
   missingEvidenceFields: string[];
   requiredChecks: string[];
   projectsTouched: string[];
+  podsTouched?: string[];
+  podByProject?: Record<string, string | null>;
   teamsTouched: string[];
   swarmsDeclared?: string[];
   swarmsTouched: string[];
@@ -651,6 +655,8 @@ export function buildGovernanceReport(input: {
     missingEvidenceFields: sortedUnique(input.missingEvidenceFields),
     requiredChecks: sortedUnique(input.requiredChecks),
     projectsTouched: sortedUnique(input.projectsTouched),
+    podsTouched: sortedUnique(input.podsTouched ?? []),
+    podByProject: sortRecordByKey(input.podByProject ?? {}),
     teamsTouched: sortedUnique(input.teamsTouched),
     swarmsDeclared: sortedUnique(input.swarmsDeclared ?? []),
     swarmsTouched: sortedUnique(input.swarmsTouched),

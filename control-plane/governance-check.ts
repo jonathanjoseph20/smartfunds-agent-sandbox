@@ -25,7 +25,7 @@ import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { REQUIRED_LABELS } from './bootstrap-labels.ts';
 import { resolveEntityTelemetry } from './studio/entity-registry.ts';
 import { evaluateSwarmPolicy } from './swarm/validator.ts';
-import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
+import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
 import { loadSwarmsFromDir } from './swarms/registry.ts';
 import { resolveSwarmsForProjects } from './swarms/resolution.ts';
@@ -60,6 +60,24 @@ export const ISOLATION_REMEDIATION_ACTION =
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function buildPodOwnership(projectsTouched: string[], projects: Project[]): {
+  podsTouched: string[];
+  podByProject: Record<string, string | null>;
+} {
+  const podByProject: Record<string, string | null> = {};
+  const podByProjectId = new Map(projects.map((project) => [project.projectId, project.podId ?? null]));
+
+  for (const projectId of sortedUnique(projectsTouched)) {
+    podByProject[projectId] = podByProjectId.get(projectId) ?? null;
+  }
+
+  const podsTouched = sortedUnique(
+    Object.values(podByProject).filter((value): value is string => value !== null)
+  );
+
+  return { podsTouched, podByProject };
 }
 
 function getBranchName(execGit: GitExec): string {
@@ -284,21 +302,34 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   const errors: string[] = [];
 
   let ownershipResult: OwnershipResult;
-  let projects: Project[] = [];
-  let teams: Team[] = [];
+  let ownershipProjects: Project[] = [];
+  let ownershipTeams: Team[] = [];
+  let swarmProjects: Project[] = [];
   let swarms: SwarmDefinition[] = [];
   try {
-    projects = loadProjectsFromDir('control-plane/projects');
-    teams = loadTeamsFromDir('control-plane/teams', projects);
-    ownershipResult = resolveOwnership({ changedFiles, projects, teams });
+    ownershipProjects = loadOwnershipProjects();
   } catch (error) {
     errors.push((error as Error).message);
-    ownershipResult = resolveOwnership({ changedFiles, projects: [], teams: [] });
+    ownershipProjects = [];
+  }
+  try {
+    ownershipTeams = loadTeamsFromDir('control-plane/teams', ownershipProjects);
+  } catch (error) {
+    ownershipTeams = [];
+  }
+  ownershipResult = resolveOwnership({ changedFiles, projects: ownershipProjects, teams: ownershipTeams });
+  const podOwnership = buildPodOwnership(ownershipResult.projectsTouched, ownershipProjects);
+
+  try {
+    swarmProjects = loadProjectsFromDir('control-plane/projects');
+  } catch (error) {
+    errors.push((error as Error).message);
+    swarmProjects = [];
   }
 
-  if (projects.length > 0) {
+  if (swarmProjects.length > 0) {
     try {
-      swarms = loadSwarmsFromDir('control-plane/swarms', projects);
+      swarms = loadSwarmsFromDir('control-plane/swarms', swarmProjects);
     } catch (error) {
       errors.push((error as Error).message);
       swarms = [];
@@ -423,6 +454,8 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
     missingEvidenceFields,
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
+    podsTouched: podOwnership.podsTouched,
+    podByProject: podOwnership.podByProject,
     teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,

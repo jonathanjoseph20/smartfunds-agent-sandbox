@@ -1,0 +1,9 @@
+{
+  "id": "smartfunds-core",
+  "ownedPaths": [
+    "apps/api/",
+    "control-plane/cli/",
+    "packages/mission-engine/"
+  ],
+  "pod": "smartfunds"
+}

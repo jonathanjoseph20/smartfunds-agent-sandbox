@@ -1,0 +1,10 @@
+{
+  "capabilities": [
+    "analyze-code",
+    "propose-patches",
+    "run-validations"
+  ],
+  "id": "engineering-agent",
+  "model": "gpt-5",
+  "team": "engineering"
+}

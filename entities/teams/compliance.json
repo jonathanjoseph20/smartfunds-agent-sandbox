@@ -1,0 +1,9 @@
+{
+  "id": "compliance",
+  "permissions": [
+    "approve-mission",
+    "sign-export"
+  ],
+  "pod": "smartfunds",
+  "responsibility": "Regulatory review and approvals"
+}

@@ -1,9 +1,14 @@
 import fs from 'node:fs';
 
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildPreflightReport } from './governance-preflight';
 import { buildCanonicalEvidence, stringifyEvidenceJson } from '../governance/evidence-contract';
+import { loadOwnershipProjects } from '../studio/registry';
+import { resolveOwnership } from '../studio/ownership';
 
 function makeOwnership() {
   return {
@@ -47,6 +52,22 @@ function canonicalEvidence(overrides: Partial<{
     })
   );
 }
+
+const tmpRoot = path.join('control-plane', '__tests__', 'tmp-governance-preflight-entities');
+
+function resetTmp(): void {
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  fs.mkdirSync(path.join(tmpRoot, 'entities', 'projects'), { recursive: true });
+  fs.mkdirSync(path.join(tmpRoot, 'control-plane', 'projects'), { recursive: true });
+}
+
+function writeJson(filePath: string, data: unknown): void {
+  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
+afterEach(() => {
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
 
 describe('governance:preflight', () => {
   it('fails when governance/evidence.json is missing', () => {
@@ -120,5 +141,78 @@ Justification: markdown only
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('Ensure affectedPaths is sorted and non-empty');
+  });
+
+  it('uses entities/projects as ownership source-of-truth when present', () => {
+    resetTmp();
+    writeJson(path.join(tmpRoot, 'entities', 'projects', 'entity-project.json'), {
+      id: 'entity-project',
+      pod: 'smartfunds',
+      ownedPaths: ['apps/entity/']
+    });
+    writeJson(path.join(tmpRoot, 'control-plane', 'projects', 'fallback-project.json'), {
+      projectId: 'fallback-project',
+      ownedPaths: ['apps/fallback/**']
+    });
+
+    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
+    const evidence = canonicalEvidence({ tier: 1, affectedPaths: ['apps/entity/index.ts'] });
+
+    const result = buildPreflightReport(
+      'tier-1',
+      ['apps/entity/index.ts'],
+      ['tier-1'],
+      {
+        existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
+        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
+        loadProjects: () =>
+          loadOwnershipProjects({
+            entitiesProjectsDir: path.join(tmpRoot, 'entities', 'projects'),
+            fallbackProjectsDir: path.join(tmpRoot, 'control-plane', 'projects')
+          }),
+        loadTeams: () => [],
+        resolveOwnership
+      }
+    );
+
+    expect(result.report.projectsTouched).toEqual(['entity-project']);
+    expect(result.report.podsTouched).toEqual(['smartfunds']);
+    expect(result.report.podByProject).toEqual({ 'entity-project': 'smartfunds' });
+  });
+
+  it('keeps projectsTouched deterministic from entity-backed ownership', () => {
+    resetTmp();
+    writeJson(path.join(tmpRoot, 'entities', 'projects', 'b.json'), {
+      id: 'project-b',
+      pod: 'pod-b',
+      ownedPaths: ['apps/b/']
+    });
+    writeJson(path.join(tmpRoot, 'entities', 'projects', 'a.json'), {
+      id: 'project-a',
+      pod: 'pod-a',
+      ownedPaths: ['apps/a/']
+    });
+
+    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
+    const evidence = canonicalEvidence({ tier: 1, affectedPaths: ['apps/a/1.ts', 'apps/b/2.ts'] });
+
+    const result = buildPreflightReport(
+      'tier-1',
+      ['apps/b/2.ts', 'apps/a/1.ts'],
+      ['tier-1'],
+      {
+        existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
+        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
+        loadProjects: () =>
+          loadOwnershipProjects({
+            entitiesProjectsDir: path.join(tmpRoot, 'entities', 'projects'),
+            fallbackProjectsDir: path.join(tmpRoot, 'control-plane', 'projects')
+          }),
+        loadTeams: () => [],
+        resolveOwnership
+      }
+    );
+
+    expect(result.report.projectsTouched).toEqual(['project-a', 'project-b']);
   });
 });

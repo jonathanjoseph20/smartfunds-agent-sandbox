@@ -1,0 +1,10 @@
+{
+  "limits": {
+    "maxCharge": 500000
+  },
+  "rails": [
+    "stripe",
+    "wire"
+  ],
+  "scope": "agent-marketplace"
+}

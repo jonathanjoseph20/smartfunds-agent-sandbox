@@ -6,6 +6,7 @@ export type Project = {
   ownedPaths: string[];
   description?: string;
   tags?: string[];
+  podId?: string;
 };
 
 export type Team = {
@@ -131,6 +132,45 @@ function loadJsonFiles<T>(dir: string): Array<{ file: string; data: T }> {
   });
 }
 
+function toOwnershipGlobFromPrefix(prefix: string): string {
+  return `${prefix}**`;
+}
+
+function loadEntityProjectsFromDir(dir: string): Project[] {
+  const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
+    if (!isNonEmptyString(data.id)) {
+      throw new Error(`Entity project ${file} must include non-empty id.`);
+    }
+    if (!isNonEmptyString(data.pod)) {
+      throw new Error(`Entity project ${data.id} must include non-empty pod.`);
+    }
+    const ownedPrefixes = ensureNonEmptyArray(data.ownedPaths, `Entity project ${data.id} ownedPaths`);
+    for (const prefix of ownedPrefixes) {
+      if (!prefix.endsWith('/')) {
+        throw new Error(`Entity project ${data.id} ownedPath ${prefix} must end with '/'.`);
+      }
+    }
+
+    const project: Project = {
+      projectId: data.id,
+      podId: data.pod,
+      ownedPaths: ownedPrefixes.map(toOwnershipGlobFromPrefix)
+    };
+    return project;
+  });
+
+  const projectIds = loaded.map((project) => project.projectId);
+  const idSet = new Set(projectIds);
+  if (idSet.size !== projectIds.length) {
+    const duplicates = projectIds.filter((id, index) => projectIds.indexOf(id) !== index);
+    throw new Error(`Duplicate projectId detected: ${Array.from(new Set(duplicates)).join(', ')}.`);
+  }
+
+  const sorted = [...loaded].sort((a, b) => a.projectId.localeCompare(b.projectId));
+  assertNoProjectOverlap(sorted);
+  return sorted;
+}
+
 export function loadProjectsFromDir(dir: string): Project[] {
   const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
     if (!isNonEmptyString(data.projectId)) {
@@ -156,6 +196,23 @@ export function loadProjectsFromDir(dir: string): Project[] {
   const sorted = [...loaded].sort((a, b) => a.projectId.localeCompare(b.projectId));
   assertNoProjectOverlap(sorted);
   return sorted;
+}
+
+export function loadOwnershipProjects(options: {
+  entitiesProjectsDir?: string;
+  fallbackProjectsDir?: string;
+} = {}): Project[] {
+  const entitiesProjectsDir = options.entitiesProjectsDir ?? 'entities/projects';
+  const fallbackProjectsDir = options.fallbackProjectsDir ?? 'control-plane/projects';
+
+  const hasEntityProjectFiles = fs.existsSync(entitiesProjectsDir) &&
+    fs.readdirSync(entitiesProjectsDir).some((entry) => entry.endsWith('.json'));
+
+  if (hasEntityProjectFiles) {
+    return loadEntityProjectsFromDir(entitiesProjectsDir);
+  }
+
+  return loadProjectsFromDir(fallbackProjectsDir);
 }
 
 export function loadTeamsFromDir(dir: string, projects: Project[]): Team[] {

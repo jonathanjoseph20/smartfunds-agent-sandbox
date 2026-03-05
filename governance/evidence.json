@@ -1,5 +1,6 @@
 {
   "affectedPaths": [
+    ".gitignore",
     ".pr-body.md",
     "control-plane/cli/governance-emit.ts",
     "control-plane/cli/governance-preflight.test.ts",

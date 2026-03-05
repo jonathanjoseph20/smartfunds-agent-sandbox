@@ -14,11 +14,6 @@ import {
   type GovernanceReport,
   type Tier
 } from './governance/diagnostics.ts';
-import {
-  readEvidenceContract,
-  resolveImpliedExecutionMode,
-  validateEvidenceAgainstComputedState
-} from './governance/evidence-contract.ts';
 import { resolveLocalMetadata } from './governance/metadata-resolution.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
@@ -42,7 +37,6 @@ function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
-<<<<<<< HEAD
 function buildPodOwnership(projectsTouched: string[], projects: Project[]): {
   podsTouched: string[];
   podByProject: Record<string, string | null>;
@@ -128,8 +122,6 @@ function collectChangedFiles(execGit: GitExec, baseSha: string): string[] {
   return getChangedFilesFromBase(execGit, baseSha);
 }
 
-=======
->>>>>>> origin/main
 function buildIsolationErrorMessage(classification: IsolationClassification): string {
   const statusCode = `isolation_violation:${classification.isolationStatus}`;
   if (classification.isolationStatus === 'invalid_autonomous_branch_namespace') {
@@ -170,7 +162,6 @@ export function buildIsolationEnforcement(args: {
     nextActions: [ISOLATION_REMEDIATION_ACTION]
   };
 }
-<<<<<<< HEAD
 
 async function fetchRepoLabels(fetchImpl: typeof fetch, repo: string, token: string): Promise<string[]> {
   const labels: string[] = [];
@@ -534,5 +525,3 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { parseArgs, resolveMergeBase, collectChangedFiles, getBranchName };
-=======
->>>>>>> origin/main

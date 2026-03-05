@@ -3,12 +3,11 @@
     "entityId": "core-entity",
     "legalName": "SmartFunds Core Entity",
     "projects": [
-      "marketplace-core",
-      "smartfunds-core",
-      "smartfunds-docs"
+      "control-plane",
+      "core-app"
     ],
     "complianceProfile": "phase-1",
     "custodyMode": "non_custodial",
-    "notes": "Initial v1 entity covering the core-app boundary."
+    "notes": "Initial v1 entity covering the control-plane and core-app boundaries."
   }
 ]

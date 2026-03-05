@@ -23,7 +23,7 @@ import {
   resolveEvidencePath,
   stringifyEvidenceJson,
   type EvidenceMode
-} from '../governance/evidence-contract.ts';
+} from '../governance/evidence-generation.ts';
 import { type Tier, extractTierFromLabels } from '../governance/diagnostics.ts';
 import { classifyPaths } from '../governance/tier-policy.ts';
 import {

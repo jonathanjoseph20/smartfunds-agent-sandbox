@@ -2,12 +2,6 @@ import { canonicalStringify, sha256 } from '../finance/determinism.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 import { type Tier, extractTierFromLabels } from './diagnostics.ts';
 import { normalizeChangedFiles } from './changed-files.ts';
-import {
-  buildCanonicalEvidence,
-  resolveImpliedExecutionMode,
-  type EvidenceMode,
-  type GovernanceEvidence
-} from './evidence-contract.ts';
 
 export const DEFAULT_DETERMINISM_STATEMENT =
   'Deterministic evidence generation from PR metadata using canonical JSON and stable ordering.';

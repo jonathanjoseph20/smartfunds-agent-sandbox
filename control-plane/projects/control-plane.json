@@ -1,0 +1,13 @@
+{
+  "projectId": "control-plane",
+  "ownedPaths": [
+    "control-plane/**",
+    "scripts/**",
+    ".github/**",
+    "Governance Architecture Review/**",
+    ".gitignore",
+    ".pr-body.md",
+    "package-lock.json",
+    "TEST_GOVERNANCE.md"
+  ]
+}

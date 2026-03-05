@@ -14,10 +14,9 @@ import {
   type Tier
 } from '../governance/diagnostics.ts';
 import {
-  readEvidenceContract,
-  resolveImpliedExecutionMode,
-  validateEvidenceAgainstComputedState
-} from '../governance/evidence-contract.ts';
+  generateEvidenceFromPullRequestMetadata,
+  type EvidenceMode
+} from '../governance/evidence-generation.ts';
 import { defaultGitExec, getChangedFilesFromMain } from '../governance/changed-files.ts';
 import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';

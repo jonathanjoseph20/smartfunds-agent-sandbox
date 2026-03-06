@@ -1,0 +1,33 @@
+{
+  "missionId": "rwa-market-analysis",
+  "name": "RWA Market Opportunity Analysis",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "research-analysis-workflow",
+  "objective": "Analyze near-term tokenized RWA opportunities and produce a structured internal memo.",
+  "successCriteria": [
+    "Generate structured final memo",
+    "Identify top 5 opportunities",
+    "Flag regulatory constraints",
+    "Produce market landscape summary"
+  ],
+  "deliverables": [
+    "final-memo",
+    "market-summary",
+    "opportunity-list",
+    "regulatory-notes"
+  ],
+  "initialContext": {
+    "sector": "RWA",
+    "targetAssets": [
+      "commodities",
+      "credit",
+      "private equity"
+    ]
+  },
+  "tags": [
+    "market-intel",
+    "phase-1",
+    "rwa"
+  ]
+}

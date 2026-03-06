@@ -1,12 +1,10 @@
 import fs from 'node:fs';
-
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildPreflightReport } from './governance-preflight';
-import { buildCanonicalEvidence, stringifyEvidenceJson } from '../governance/evidence-contract';
+import { buildCanonicalEvidence, stringifyEvidenceJson } from '../governance/evidence-contract.ts';
 import { loadOwnershipProjects } from '../studio/registry';
 import { resolveOwnership } from '../studio/ownership';
 
@@ -21,14 +19,13 @@ function makeOwnership() {
 }
 
 function runWithEvidence(evidenceJson: string, labels: string[], changedFiles = ['apps/api/src/index.ts']) {
-  const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
   return buildPreflightReport(
     'tier-1\n\n```evidence\nRisk Tier: 1\n```',
     changedFiles,
     labels,
     {
       existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
-      readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidenceJson : schema),
+      readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidenceJson : '{}'),
       loadProjects: () => [],
       loadTeams: () => [],
       resolveOwnership: () => makeOwnership()
@@ -147,15 +144,18 @@ Justification: markdown only
     resetTmp();
     writeJson(path.join(tmpRoot, 'entities', 'projects', 'entity-project.json'), {
       id: 'entity-project',
+      name: 'Entity Project',
+      entity: 'core-entity',
       pod: 'smartfunds',
-      ownedPaths: ['apps/entity/']
+      mode: 'structured',
+      ownedPaths: ['apps/entity/'],
+      ownedFiles: []
     });
     writeJson(path.join(tmpRoot, 'control-plane', 'projects', 'fallback-project.json'), {
       projectId: 'fallback-project',
       ownedPaths: ['apps/fallback/**']
     });
 
-    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
     const evidence = canonicalEvidence({ tier: 1, affectedPaths: ['apps/entity/index.ts'] });
 
     const result = buildPreflightReport(
@@ -164,7 +164,7 @@ Justification: markdown only
       ['tier-1'],
       {
         existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
-        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
+        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : '{}'),
         loadProjects: () =>
           loadOwnershipProjects({
             entitiesProjectsDir: path.join(tmpRoot, 'entities', 'projects'),
@@ -184,16 +184,23 @@ Justification: markdown only
     resetTmp();
     writeJson(path.join(tmpRoot, 'entities', 'projects', 'b.json'), {
       id: 'project-b',
-      pod: 'pod-b',
-      ownedPaths: ['apps/b/']
+      name: 'Project B',
+      entity: 'core-entity',
+      pod: 'smartfunds',
+      mode: 'structured',
+      ownedPaths: ['apps/b/'],
+      ownedFiles: []
     });
     writeJson(path.join(tmpRoot, 'entities', 'projects', 'a.json'), {
       id: 'project-a',
-      pod: 'pod-a',
-      ownedPaths: ['apps/a/']
+      name: 'Project A',
+      entity: 'core-entity',
+      pod: 'smartfunds',
+      mode: 'structured',
+      ownedPaths: ['apps/a/'],
+      ownedFiles: []
     });
 
-    const schema = fs.readFileSync('governance/schema/evidence.schema.json', 'utf8');
     const evidence = canonicalEvidence({ tier: 1, affectedPaths: ['apps/a/1.ts', 'apps/b/2.ts'] });
 
     const result = buildPreflightReport(
@@ -202,7 +209,7 @@ Justification: markdown only
       ['tier-1'],
       {
         existsSync: (filePath) => filePath === 'governance/evidence.json' || filePath === 'governance/schema/evidence.schema.json',
-        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : schema),
+        readFile: (filePath) => (filePath === 'governance/evidence.json' ? evidence : '{}'),
         loadProjects: () =>
           loadOwnershipProjects({
             entitiesProjectsDir: path.join(tmpRoot, 'entities', 'projects'),

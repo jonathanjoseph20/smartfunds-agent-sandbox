@@ -10,6 +10,7 @@
     "control-plane/governance/",
     "control-plane/projects/",
     "control-plane/studio/",
+    "control-plane/journal/",
     "entities/",
     "governance/",
     "runtime/",

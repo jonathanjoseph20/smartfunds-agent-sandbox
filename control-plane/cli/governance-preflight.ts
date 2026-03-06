@@ -13,10 +13,13 @@ import {
   type GovernanceReport,
   type Tier
 } from '../governance/diagnostics.ts';
+import { generateEvidenceFromPullRequestMetadata } from '../governance/evidence-generation.ts';
 import {
-  generateEvidenceFromPullRequestMetadata,
+  readEvidenceContract,
+  resolveImpliedExecutionMode,
+  validateEvidenceAgainstComputedState,
   type EvidenceMode
-} from '../governance/evidence-generation.ts';
+} from '../governance/evidence-contract.ts';
 import { defaultGitExec, getChangedFilesFromMain } from '../governance/changed-files.ts';
 import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';

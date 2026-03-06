@@ -28,6 +28,7 @@
     "demo:scenario": "bash scripts/demo.sh --scenario",
     "swarm:execute": "node --experimental-strip-types control-plane/cli/swarm-execute.ts",
     "swarm:run": "node --experimental-strip-types control-plane/cli/swarm-run.ts",
+    "swarm:inspect": "node --experimental-strip-types control-plane/cli/swarm-inspect.ts",
     "journal:create": "node --experimental-strip-types control-plane/cli/journal-create.ts",
     "journal:event": "node --experimental-strip-types control-plane/cli/journal-event.ts",
     "journal:inspect": "node --experimental-strip-types control-plane/cli/journal-inspect.ts",

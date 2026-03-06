@@ -6,6 +6,7 @@
   "mode": "structured",
   "ownedPaths": [
     "control-plane/cli/",
+    "control-plane/execution/",
     "control-plane/entities/",
     "control-plane/governance/",
     "control-plane/projects/",

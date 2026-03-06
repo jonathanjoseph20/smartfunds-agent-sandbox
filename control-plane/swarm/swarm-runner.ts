@@ -1,4 +1,6 @@
 import { createExecutionJournal, type ExecutionJournal } from '../journal/journal.ts';
+import type { ExecutionContext } from '../execution/context-types.ts';
+import { createExecutionContext, createEmptyExecutionContext } from '../execution/execution-context.ts';
 import type { ExecutionEvent, ExecutionRun, RunKind } from '../journal/types.ts';
 import { getOrderedPhases } from './phase-engine.ts';
 import { executePhaseTasks } from './task-executor.ts';
@@ -135,7 +137,6 @@ function buildTaskDefinitions(
       description: task.description,
       type: task.type,
       inputs: task.inputs,
-      executionContext: {},
       ...(executor ? { executor } : {}),
       order: task.order
     });
@@ -277,6 +278,65 @@ function deriveSwarmRunSummary(
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toExecutionContextFromPayload(payload: unknown): ExecutionContext | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const snapshot = payload.context_snapshot;
+  if (!isRecord(snapshot)) {
+    return null;
+  }
+
+  const runId = snapshot.runId;
+  const phase = snapshot.phase;
+  const taskId = snapshot.taskId;
+  const memory = snapshot.memory;
+  const artifacts = snapshot.artifacts;
+  const metadata = snapshot.metadata;
+  const missionId = snapshot.missionId;
+
+  if (typeof runId !== 'string' || typeof phase !== 'string' || typeof taskId !== 'string') {
+    return null;
+  }
+  if (!isRecord(memory) || !Array.isArray(artifacts) || !isRecord(metadata)) {
+    return null;
+  }
+  if (!artifacts.every((entry) => typeof entry === 'string')) {
+    return null;
+  }
+  if (missionId !== undefined && typeof missionId !== 'string') {
+    return null;
+  }
+
+  return createExecutionContext({
+    runId,
+    ...(missionId ? { missionId } : {}),
+    phase,
+    taskId,
+    memory,
+    artifacts,
+    metadata
+  });
+}
+
+function deriveLatestExecutionContext(runId: string, events: ExecutionEvent[]): ExecutionContext {
+  const ordered = [...events].sort((left, right) => left.sequence - right.sequence);
+
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const context = toExecutionContextFromPayload(ordered[index].payload);
+    if (context) {
+      return context;
+    }
+  }
+
+  return createEmptyExecutionContext(runId);
+}
+
 export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
   const journal = options.journal ?? createExecutionJournal({ rootDir: options.rootDir });
   const tasksByPhase = buildTaskDefinitions(options.taskExecutors ?? {});
@@ -327,6 +387,8 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
       return initialSummary;
     }
 
+    const inspected = journal.inspectRun(input.runId);
+    let executionContext = deriveLatestExecutionContext(input.runId, inspected.events);
     const completedPhaseSet = new Set(initialSummary.completedPhases);
 
     for (const phase of getOrderedPhases()) {
@@ -345,6 +407,7 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
         runId: input.runId,
         phase,
         tasks: tasksByPhase[phase],
+        executionContext,
         emitEvent: (event) => {
           journal.appendEvent({
             runId: input.runId,
@@ -355,6 +418,7 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
           });
         }
       });
+      executionContext = result.executionContext;
 
       if (result.status === 'failed') {
         journal.appendEvent({
@@ -363,7 +427,8 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
           phase,
           taskId: result.failedTaskId,
           payload: {
-            failedTaskId: result.failedTaskId ?? null
+            failedTaskId: result.failedTaskId ?? null,
+            context_snapshot: executionContext
           }
         });
         return deriveRunSummary(input.runId);
@@ -381,7 +446,9 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
       runId: input.runId,
       type: 'RUN_COMPLETED',
       phase: 'release',
-      payload: {}
+      payload: {
+        context_snapshot: executionContext
+      }
     });
 
     return deriveRunSummary(input.runId);

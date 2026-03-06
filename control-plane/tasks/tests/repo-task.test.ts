@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createExecutionContext } from '../../execution/execution-context.ts';
 import { repoTaskAdapter } from '../adapters/repo-task.ts';
 import type { TaskContext } from '../task-context.ts';
 
@@ -20,7 +21,11 @@ function context(inputs: Record<string, unknown>): TaskContext {
     taskId: 'task_repo',
     taskType: 'repo',
     inputs,
-    executionContext: {}
+    executionContext: createExecutionContext({
+      runId: 'run_control-plane_0001',
+      phase: 'implement',
+      taskId: 'task_repo'
+    })
   };
 }
 

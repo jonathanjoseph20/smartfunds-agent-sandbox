@@ -5,6 +5,7 @@ export type TaskResult = {
   outputs: Record<string, unknown>;
   artifacts: Array<Record<string, unknown>>;
   logs: string[];
+  context_updates?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
 };

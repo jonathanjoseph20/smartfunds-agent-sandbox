@@ -11,6 +11,7 @@
     "control-plane/projects/",
     "control-plane/studio/",
     "control-plane/journal/",
+    "control-plane/swarm/",
     "entities/",
     "governance/",
     "runtime/",

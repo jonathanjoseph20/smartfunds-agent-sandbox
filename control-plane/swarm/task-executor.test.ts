@@ -9,6 +9,11 @@ function createTask(taskId: string, order: number, executed: string[], shouldThr
     phase: 'implement',
     description: `Task ${taskId}`,
     order,
+    type: 'repo',
+    inputs: {
+      operation: 'list_dir',
+      path: '.'
+    },
     executor: () => {
       executed.push(taskId);
       if (shouldThrow) {
@@ -23,11 +28,11 @@ function eventKey(event: TaskExecutionEvent): string {
 }
 
 describe('task-executor', () => {
-  it('emits TASK_STARTED before TASK_COMPLETED for each task', () => {
+  it('emits TASK_STARTED before TASK_COMPLETED for each task', async () => {
     const events: TaskExecutionEvent[] = [];
     const executed: string[] = [];
 
-    executePhaseTasks({
+    await executePhaseTasks({
       runId: 'run_control-plane_0001',
       phase: 'implement',
       tasks: [createTask('a', 1, executed)],
@@ -40,11 +45,11 @@ describe('task-executor', () => {
     expect(events.map(eventKey)).toEqual(['TASK_STARTED:a', 'TASK_COMPLETED:a']);
   });
 
-  it('executes tasks in stable order by order then taskId', () => {
+  it('executes tasks in stable order by order then taskId', async () => {
     const events: TaskExecutionEvent[] = [];
     const executed: string[] = [];
 
-    executePhaseTasks({
+    await executePhaseTasks({
       runId: 'run_control-plane_0001',
       phase: 'implement',
       tasks: [
@@ -68,11 +73,11 @@ describe('task-executor', () => {
     ]);
   });
 
-  it('emits TASK_FAILED on executor error and stops execution', () => {
+  it('emits TASK_FAILED on executor error and stops execution', async () => {
     const events: TaskExecutionEvent[] = [];
     const executed: string[] = [];
 
-    const result = executePhaseTasks({
+    const result = await executePhaseTasks({
       runId: 'run_control-plane_0001',
       phase: 'implement',
       tasks: [
@@ -96,27 +101,38 @@ describe('task-executor', () => {
     ]);
   });
 
-  it('produces deterministic event ordering across repeated runs', () => {
-    const buildExecution = (): string[] => {
-      const events: TaskExecutionEvent[] = [];
-      const executed: string[] = [];
+  it('produces deterministic event ordering across repeated runs', async () => {
+    const first: TaskExecutionEvent[] = [];
+    const second: TaskExecutionEvent[] = [];
+    const executedFirst: string[] = [];
+    const executedSecond: string[] = [];
 
-      executePhaseTasks({
-        runId: 'run_control-plane_0001',
-        phase: 'implement',
-        tasks: [
-          createTask('task-b', 1, executed),
-          createTask('task-a', 1, executed),
-          createTask('task-c', 2, executed)
-        ],
-        emitEvent: (event) => {
-          events.push(event);
-        }
-      });
+    await executePhaseTasks({
+      runId: 'run_control-plane_0001',
+      phase: 'implement',
+      tasks: [
+        createTask('task-b', 1, executedFirst),
+        createTask('task-a', 1, executedFirst),
+        createTask('task-c', 2, executedFirst)
+      ],
+      emitEvent: (event) => {
+        first.push(event);
+      }
+    });
 
-      return events.map(eventKey);
-    };
+    await executePhaseTasks({
+      runId: 'run_control-plane_0001',
+      phase: 'implement',
+      tasks: [
+        createTask('task-b', 1, executedSecond),
+        createTask('task-a', 1, executedSecond),
+        createTask('task-c', 2, executedSecond)
+      ],
+      emitEvent: (event) => {
+        second.push(event);
+      }
+    });
 
-    expect(buildExecution()).toEqual(buildExecution());
+    expect(first.map(eventKey)).toEqual(second.map(eventKey));
   });
 });

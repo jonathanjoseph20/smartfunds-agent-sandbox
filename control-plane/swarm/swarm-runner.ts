@@ -37,7 +37,9 @@ type TaskTemplate = {
   phase: SwarmPhase;
   description: string;
   order: number;
-  executorKey: string;
+  type: 'llm' | 'shell' | 'repo';
+  inputs: Record<string, unknown>;
+  executorKey?: string;
 };
 
 const TASK_TEMPLATES: readonly TaskTemplate[] = [
@@ -46,6 +48,11 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'plan',
     description: 'Validate canonical project context',
     order: 1,
+    type: 'repo',
+    inputs: {
+      operation: 'list_dir',
+      path: 'control-plane'
+    },
     executorKey: 'validate-project-context'
   },
   {
@@ -53,6 +60,10 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'setup',
     description: 'Load deterministic run context',
     order: 1,
+    type: 'llm',
+    inputs: {
+      prompt: 'Load deterministic run context'
+    },
     executorKey: 'load-run-context'
   },
   {
@@ -60,6 +71,11 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'implement',
     description: 'Execute deterministic work unit',
     order: 1,
+    type: 'repo',
+    inputs: {
+      operation: 'list_dir',
+      path: 'control-plane/swarm'
+    },
     executorKey: 'execute-work-unit'
   },
   {
@@ -67,6 +83,11 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'verify',
     description: 'Verify phase output deterministically',
     order: 1,
+    type: 'shell',
+    inputs: {
+      command: 'printf',
+      args: ['verify-phase-output\n']
+    },
     executorKey: 'verify-phase-output'
   },
   {
@@ -74,6 +95,10 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'test',
     description: 'Run deterministic phase checks',
     order: 1,
+    type: 'llm',
+    inputs: {
+      prompt: 'Run deterministic phase checks'
+    },
     executorKey: 'run-phase-checks'
   },
   {
@@ -81,13 +106,14 @@ const TASK_TEMPLATES: readonly TaskTemplate[] = [
     phase: 'release',
     description: 'Finalize run outputs',
     order: 1,
+    type: 'repo',
+    inputs: {
+      operation: 'list_dir',
+      path: '.'
+    },
     executorKey: 'finalize-run'
   }
 ] as const;
-
-function noopExecutor(): void {
-  // Deterministic no-op executor for Sprint 63.
-}
 
 function buildTaskDefinitions(
   taskExecutors: Partial<Record<string, SwarmTaskExecutor>>
@@ -102,11 +128,15 @@ function buildTaskDefinitions(
   };
 
   for (const task of TASK_TEMPLATES) {
+    const executor = task.executorKey ? taskExecutors[task.executorKey] : undefined;
     byPhase[task.phase].push({
       taskId: task.taskId,
       phase: task.phase,
       description: task.description,
-      executor: taskExecutors[task.executorKey] ?? noopExecutor,
+      type: task.type,
+      inputs: task.inputs,
+      executionContext: {},
+      ...(executor ? { executor } : {}),
       order: task.order
     });
   }
@@ -291,7 +321,7 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
     return deriveRunSummary(run.runId);
   }
 
-  function executeSwarmRun(input: ExecuteSwarmRunInput): SwarmRunSummary {
+  async function executeSwarmRun(input: ExecuteSwarmRunInput): Promise<SwarmRunSummary> {
     const initialSummary = deriveRunSummary(input.runId);
     if (initialSummary.status === 'completed' || initialSummary.status === 'failed') {
       return initialSummary;
@@ -311,7 +341,7 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
         payload: {}
       });
 
-      const result = executePhaseTasks({
+      const result = await executePhaseTasks({
         runId: input.runId,
         phase,
         tasks: tasksByPhase[phase],

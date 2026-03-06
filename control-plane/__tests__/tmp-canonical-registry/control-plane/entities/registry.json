@@ -1,9 +1,9 @@
 [
   {
-    "entityId": "alpha-entity",
-    "legalName": "Alpha Holdings",
+    "entityId": "core-entity",
+    "legalName": "core-entity Legal",
     "projects": [
-      "project-a"
+      "alpha-project"
     ],
     "complianceProfile": "phase-1",
     "custodyMode": "managed"

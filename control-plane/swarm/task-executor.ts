@@ -1,3 +1,6 @@
+import { getAdapter } from '../tasks/adapter-registry.ts';
+import type { TaskContext } from '../tasks/task-context.ts';
+import type { TaskResult } from '../tasks/task-result.ts';
 import type { SwarmPhase, SwarmTaskDefinition } from './swarm-types.ts';
 
 export type TaskExecutionEvent = {
@@ -38,7 +41,52 @@ function toErrorMessage(error: unknown): string {
   return 'TASK_EXECUTION_FAILED';
 }
 
-export function executePhaseTasks(input: ExecutePhaseTasksInput): PhaseTaskExecutionResult {
+function failedResult(errorCode: string, errorMessage: string): TaskResult {
+  return {
+    status: 'failed',
+    outputs: {},
+    artifacts: [],
+    logs: ['TASK_ADAPTER_EXECUTION_FAILED'],
+    errorCode,
+    errorMessage
+  };
+}
+
+async function executeByAdapter(context: TaskContext): Promise<TaskResult> {
+  try {
+    const adapter = getAdapter(context.taskType);
+    return await adapter.execute(context);
+  } catch (error) {
+    return failedResult('ERR_TASK_ADAPTER_EXECUTION', toErrorMessage(error));
+  }
+}
+
+function runLegacyExecutor(task: SwarmTaskDefinition): TaskResult {
+  try {
+    task.executor?.();
+    return {
+      status: 'success',
+      outputs: {},
+      artifacts: [],
+      logs: ['TASK_EXECUTOR_EXECUTED']
+    };
+  } catch (error) {
+    return failedResult('ERR_TASK_EXECUTOR_FAILED', toErrorMessage(error));
+  }
+}
+
+function buildTaskContext(runId: string, phase: SwarmPhase, task: SwarmTaskDefinition): TaskContext {
+  return {
+    runId,
+    phase,
+    taskId: task.taskId,
+    taskType: task.type,
+    inputs: task.inputs,
+    executionContext: task.executionContext ?? {}
+  };
+}
+
+export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<PhaseTaskExecutionResult> {
   const orderedTasks = sortTasks(input.tasks);
   const executedTaskIds: string[] = [];
 
@@ -47,44 +95,56 @@ export function executePhaseTasks(input: ExecutePhaseTasksInput): PhaseTaskExecu
       throw new Error(`TASK_PHASE_MISMATCH: ${task.taskId}`);
     }
 
+    const taskContext = buildTaskContext(input.runId, input.phase, task);
+
     input.emitEvent({
       type: 'TASK_STARTED',
       phase: input.phase,
       taskId: task.taskId,
       payload: {
-        runId: input.runId
+        runId: input.runId,
+        taskType: task.type,
+        inputs: task.inputs
       }
     });
 
-    try {
-      task.executor();
+    const result = task.executor
+      ? runLegacyExecutor(task)
+      : await executeByAdapter(taskContext);
+
+    if (result.status === 'success') {
       executedTaskIds.push(task.taskId);
       input.emitEvent({
         type: 'TASK_COMPLETED',
         phase: input.phase,
         taskId: task.taskId,
         payload: {
-          runId: input.runId
-        }
-      });
-    } catch (error) {
-      input.emitEvent({
-        type: 'TASK_FAILED',
-        phase: input.phase,
-        taskId: task.taskId,
-        payload: {
           runId: input.runId,
-          error: toErrorMessage(error)
+          taskType: task.type,
+          result
         }
       });
-
-      return {
-        phase: input.phase,
-        status: 'failed',
-        executedTaskIds,
-        failedTaskId: task.taskId
-      };
+      continue;
     }
+
+    input.emitEvent({
+      type: 'TASK_FAILED',
+      phase: input.phase,
+      taskId: task.taskId,
+      payload: {
+        runId: input.runId,
+        taskType: task.type,
+        result,
+        error: result.errorMessage ?? 'TASK_EXECUTION_FAILED'
+      }
+    });
+
+    return {
+      phase: input.phase,
+      status: 'failed',
+      executedTaskIds,
+      failedTaskId: task.taskId
+    };
   }
 
   return {

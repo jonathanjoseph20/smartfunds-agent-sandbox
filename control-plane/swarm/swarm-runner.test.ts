@@ -88,6 +88,14 @@ describe('swarm-runner', () => {
       'test',
       'release'
     ]);
+
+    const completed = inspected.events[inspected.events.length - 1];
+    expect(completed.type).toBe('RUN_COMPLETED');
+    expect(completed.payload).toMatchObject({
+      context_snapshot: {
+        runId: created.runId
+      }
+    });
   });
 
   it('emits TASK_FAILED and RUN_FAILED and stops later phases on task failure', async () => {

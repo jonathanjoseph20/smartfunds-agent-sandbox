@@ -46,21 +46,36 @@ describe('swarm runner task adapter integration', () => {
       inputs: {
         prompt: 'Load deterministic run context'
       },
-      executionContext: {}
+      executionContext: {
+        runId: created.runId,
+        phase: 'setup',
+        taskId: 'load-run-context',
+        memory: {},
+        artifacts: [],
+        metadata: {}
+      }
     });
 
     const taskStarted = inspected.events.find((event) => event.type === 'TASK_STARTED' && event.taskId === 'load-run-context');
     const taskCompleted = inspected.events.find((event) => event.type === 'TASK_COMPLETED' && event.taskId === 'load-run-context');
 
-    expect(taskStarted?.payload).toEqual({
+    expect(taskStarted?.payload).toMatchObject({
       runId: created.runId,
       taskType: 'llm',
       inputs: {
         prompt: 'Load deterministic run context'
+      },
+      task_inputs: {
+        prompt: 'Load deterministic run context'
+      },
+      context_snapshot: {
+        runId: created.runId,
+        phase: 'setup',
+        taskId: 'load-run-context'
       }
     });
 
-    expect(taskCompleted?.payload).toEqual({
+    expect(taskCompleted?.payload).toMatchObject({
       runId: created.runId,
       taskType: 'llm',
       result: {
@@ -71,6 +86,18 @@ describe('swarm runner task adapter integration', () => {
         },
         artifacts: [],
         logs: ['LLM_TASK_EXECUTED_STUB_MODE']
+      },
+      task_outputs: {
+        response: 'stub:deterministic-stub-model:Load deterministic run context',
+        mode: 'stub'
+      },
+      context_snapshot: {
+        runId: created.runId,
+        phase: 'setup',
+        taskId: 'load-run-context',
+        memory: {},
+        artifacts: [],
+        metadata: {}
       }
     });
   });
@@ -96,7 +123,7 @@ describe('swarm runner task adapter integration', () => {
     expect(finalSummary.failedPhase).toBe('setup');
 
     const failedEvent = inspected.events.find((event) => event.type === 'TASK_FAILED' && event.taskId === 'load-run-context');
-    expect(failedEvent?.payload).toEqual({
+    expect(failedEvent?.payload).toMatchObject({
       runId: created.runId,
       taskType: 'llm',
       result: {
@@ -107,9 +134,122 @@ describe('swarm runner task adapter integration', () => {
         errorCode: 'ERR_TEST_FAILURE',
         errorMessage: 'forced-failure'
       },
+      task_outputs: {},
+      context_snapshot: {
+        runId: created.runId,
+        phase: 'setup',
+        taskId: 'load-run-context'
+      },
       error: 'forced-failure'
     });
 
     expect(inspected.events[inspected.events.length - 1].type).toBe('RUN_FAILED');
+  });
+
+  it('propagates context_updates to downstream tasks across phases', async () => {
+    vi.spyOn(llmTaskAdapter, 'execute').mockImplementation(async (context) => {
+      if (context.taskId === 'load-run-context') {
+        return {
+          status: 'success',
+          outputs: { seeded: true },
+          artifacts: [],
+          logs: ['LLM_TASK_EXECUTED_STUB_MODE'],
+          context_updates: {
+            research_summary: 'deterministic-summary'
+          }
+        };
+      }
+
+      if (context.taskId === 'run-phase-checks') {
+        return {
+          status: 'success',
+          outputs: {
+            observed: context.executionContext.memory.research_summary
+          },
+          artifacts: [],
+          logs: ['LLM_TASK_EXECUTED_STUB_MODE']
+        };
+      }
+
+      return {
+        status: 'success',
+        outputs: {},
+        artifacts: [],
+        logs: ['LLM_TASK_EXECUTED_STUB_MODE']
+      };
+    });
+
+    const runner = createSwarmRunner({ rootDir: tmpRoot });
+    const created = runner.createSwarmRun({ projectId: 'control-plane' });
+    await runner.executeSwarmRun({ runId: created.runId });
+
+    const journal = createExecutionJournal({ rootDir: tmpRoot });
+    const inspected = journal.inspectRun(created.runId);
+    const downstream = inspected.events.find((event) => event.type === 'TASK_COMPLETED' && event.taskId === 'run-phase-checks');
+
+    expect(downstream?.payload).toMatchObject({
+      task_outputs: {
+        observed: 'deterministic-summary'
+      },
+      context_snapshot: {
+        memory: {
+          research_summary: 'deterministic-summary'
+        }
+      }
+    });
+  });
+
+  it('prevents adapters from mutating shared execution context by reference', async () => {
+    vi.spyOn(llmTaskAdapter, 'execute').mockImplementation(async (context) => {
+      if (context.taskId === 'load-run-context') {
+        expect(() => {
+          (context.executionContext.memory as Record<string, unknown>).unsafe = 'mutation';
+        }).toThrow();
+
+        return {
+          status: 'success',
+          outputs: {},
+          artifacts: [],
+          logs: ['LLM_TASK_EXECUTED_STUB_MODE'],
+          context_updates: {
+            safe: 'update'
+          }
+        };
+      }
+
+      if (context.taskId === 'run-phase-checks') {
+        return {
+          status: 'success',
+          outputs: {
+            safe: context.executionContext.memory.safe,
+            unsafe: context.executionContext.memory.unsafe ?? null
+          },
+          artifacts: [],
+          logs: ['LLM_TASK_EXECUTED_STUB_MODE']
+        };
+      }
+
+      return {
+        status: 'success',
+        outputs: {},
+        artifacts: [],
+        logs: ['LLM_TASK_EXECUTED_STUB_MODE']
+      };
+    });
+
+    const runner = createSwarmRunner({ rootDir: tmpRoot });
+    const created = runner.createSwarmRun({ projectId: 'control-plane' });
+    await runner.executeSwarmRun({ runId: created.runId });
+
+    const journal = createExecutionJournal({ rootDir: tmpRoot });
+    const inspected = journal.inspectRun(created.runId);
+    const downstream = inspected.events.find((event) => event.type === 'TASK_COMPLETED' && event.taskId === 'run-phase-checks');
+
+    expect(downstream?.payload).toMatchObject({
+      task_outputs: {
+        safe: 'update',
+        unsafe: null
+      }
+    });
   });
 });

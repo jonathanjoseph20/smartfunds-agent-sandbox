@@ -1,3 +1,7 @@
+import { applyTaskResultToContext } from '../execution/context-merge.ts';
+import { serializeExecutionContext } from '../execution/context-serializer.ts';
+import { toReadonlyExecutionContext, withExecutionIdentity } from '../execution/execution-context.ts';
+import type { ExecutionContext } from '../execution/context-types.ts';
 import { getAdapter } from '../tasks/adapter-registry.ts';
 import type { TaskContext } from '../tasks/task-context.ts';
 import type { TaskResult } from '../tasks/task-result.ts';
@@ -15,12 +19,14 @@ export type PhaseTaskExecutionResult = {
   status: 'completed' | 'failed';
   executedTaskIds: string[];
   failedTaskId?: string;
+  executionContext: ExecutionContext;
 };
 
 export type ExecutePhaseTasksInput = {
   runId: string;
   phase: SwarmPhase;
   tasks: SwarmTaskDefinition[];
+  executionContext: ExecutionContext;
   emitEvent: (event: TaskExecutionEvent) => void;
 };
 
@@ -75,27 +81,42 @@ function runLegacyExecutor(task: SwarmTaskDefinition): TaskResult {
   }
 }
 
-function buildTaskContext(runId: string, phase: SwarmPhase, task: SwarmTaskDefinition): TaskContext {
+function buildTaskContext(
+  runId: string,
+  phase: SwarmPhase,
+  task: SwarmTaskDefinition,
+  executionContext: ExecutionContext
+): TaskContext {
   return {
     runId,
     phase,
     taskId: task.taskId,
     taskType: task.type,
     inputs: task.inputs,
-    executionContext: task.executionContext ?? {}
+    executionContext: toReadonlyExecutionContext(executionContext)
   };
+}
+
+function parseSerializedContext(serialized: string): Record<string, unknown> {
+  return JSON.parse(serialized) as Record<string, unknown>;
 }
 
 export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<PhaseTaskExecutionResult> {
   const orderedTasks = sortTasks(input.tasks);
   const executedTaskIds: string[] = [];
+  let phaseContext = input.executionContext;
 
   for (const task of orderedTasks) {
     if (task.phase !== input.phase) {
       throw new Error(`TASK_PHASE_MISMATCH: ${task.taskId}`);
     }
 
-    const taskContext = buildTaskContext(input.runId, input.phase, task);
+    const taskExecutionContext = withExecutionIdentity(phaseContext, {
+      phase: input.phase,
+      taskId: task.taskId
+    });
+
+    const taskContext = buildTaskContext(input.runId, input.phase, task, taskExecutionContext);
 
     input.emitEvent({
       type: 'TASK_STARTED',
@@ -104,7 +125,9 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       payload: {
         runId: input.runId,
         taskType: task.type,
-        inputs: task.inputs
+        inputs: task.inputs,
+        task_inputs: task.inputs,
+        context_snapshot: parseSerializedContext(serializeExecutionContext(taskExecutionContext))
       }
     });
 
@@ -112,8 +135,11 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       ? runLegacyExecutor(task)
       : await executeByAdapter(taskContext);
 
+    const nextContext = applyTaskResultToContext(taskExecutionContext, result);
+
     if (result.status === 'success') {
       executedTaskIds.push(task.taskId);
+      phaseContext = nextContext;
       input.emitEvent({
         type: 'TASK_COMPLETED',
         phase: input.phase,
@@ -121,12 +147,15 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
         payload: {
           runId: input.runId,
           taskType: task.type,
-          result
+          result,
+          task_outputs: result.outputs,
+          context_snapshot: parseSerializedContext(serializeExecutionContext(nextContext))
         }
       });
       continue;
     }
 
+    phaseContext = nextContext;
     input.emitEvent({
       type: 'TASK_FAILED',
       phase: input.phase,
@@ -135,6 +164,8 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
         runId: input.runId,
         taskType: task.type,
         result,
+        task_outputs: result.outputs,
+        context_snapshot: parseSerializedContext(serializeExecutionContext(nextContext)),
         error: result.errorMessage ?? 'TASK_EXECUTION_FAILED'
       }
     });
@@ -143,13 +174,15 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       phase: input.phase,
       status: 'failed',
       executedTaskIds,
-      failedTaskId: task.taskId
+      failedTaskId: task.taskId,
+      executionContext: phaseContext
     };
   }
 
   return {
     phase: input.phase,
     status: 'completed',
-    executedTaskIds
+    executedTaskIds,
+    executionContext: phaseContext
   };
 }

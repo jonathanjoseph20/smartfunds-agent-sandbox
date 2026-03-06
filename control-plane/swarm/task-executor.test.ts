@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { createEmptyExecutionContext } from '../execution/execution-context.ts';
 import { executePhaseTasks, type TaskExecutionEvent } from './task-executor.ts';
 import type { SwarmTaskDefinition } from './swarm-types.ts';
 
@@ -36,6 +37,7 @@ describe('task-executor', () => {
       runId: 'run_control-plane_0001',
       phase: 'implement',
       tasks: [createTask('a', 1, executed)],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
       emitEvent: (event) => {
         events.push(event);
       }
@@ -57,6 +59,7 @@ describe('task-executor', () => {
         createTask('task-c', 1, executed),
         createTask('task-a', 1, executed)
       ],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
       emitEvent: (event) => {
         events.push(event);
       }
@@ -85,6 +88,7 @@ describe('task-executor', () => {
         createTask('task-b', 2, executed, true),
         createTask('task-c', 3, executed)
       ],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
       emitEvent: (event) => {
         events.push(event);
       }
@@ -115,6 +119,7 @@ describe('task-executor', () => {
         createTask('task-a', 1, executedFirst),
         createTask('task-c', 2, executedFirst)
       ],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
       emitEvent: (event) => {
         first.push(event);
       }
@@ -128,6 +133,7 @@ describe('task-executor', () => {
         createTask('task-a', 1, executedSecond),
         createTask('task-c', 2, executedSecond)
       ],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
       emitEvent: (event) => {
         second.push(event);
       }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { createExecutionContext } from '../../execution/execution-context.ts';
 import { llmTaskAdapter } from '../adapters/llm-task.ts';
 import type { TaskContext } from '../task-context.ts';
 
@@ -10,7 +11,11 @@ function context(inputs: Record<string, unknown>): TaskContext {
     taskId: 'task_llm',
     taskType: 'llm',
     inputs,
-    executionContext: {}
+    executionContext: createExecutionContext({
+      runId: 'run_control-plane_0001',
+      phase: 'setup',
+      taskId: 'task_llm'
+    })
   };
 }
 

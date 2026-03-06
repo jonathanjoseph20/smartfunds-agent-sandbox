@@ -1,4 +1,10 @@
 import { canonicalStringify, sha256 } from '../finance/determinism.ts';
+import {
+  buildCanonicalEvidence,
+  type EvidenceMode,
+  type GovernanceEvidence,
+  resolveImpliedExecutionMode
+} from './evidence-contract.ts';
 import { resolveTeamsForChangedFiles } from '../teams/team-resolver.ts';
 import { type Tier, extractTierFromLabels } from './diagnostics.ts';
 import { normalizeChangedFiles } from './changed-files.ts';

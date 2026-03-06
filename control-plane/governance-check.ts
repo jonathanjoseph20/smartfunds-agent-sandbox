@@ -15,6 +15,11 @@ import {
   type Tier
 } from './governance/diagnostics.ts';
 import { resolveLocalMetadata } from './governance/metadata-resolution.ts';
+import {
+  readEvidenceContract,
+  resolveImpliedExecutionMode,
+  validateEvidenceAgainstComputedState
+} from './governance/evidence-contract.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { REQUIRED_LABELS } from './bootstrap-labels.ts';

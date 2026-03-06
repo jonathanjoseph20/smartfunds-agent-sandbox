@@ -6,10 +6,13 @@
   "mode": "structured",
   "ownedPaths": [
     "control-plane/cli/",
+    "control-plane/agents/",
     "control-plane/execution/",
     "control-plane/entities/",
     "control-plane/governance/",
+    "control-plane/missions/",
     "control-plane/projects/",
+    "control-plane/teams/",
     "control-plane/tasks/",
     "control-plane/__tests__/tmp-canonical-registry/",
     "control-plane/__tests__/tmp-cockpit-run-repo/",

@@ -18,6 +18,10 @@ type CreateSwarmRunInput = {
   projectId: string;
   kind?: RunKind;
   entrypoint?: string;
+  missionId?: string;
+  initialMemory?: Record<string, unknown>;
+  initialArtifacts?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 type ExecuteSwarmRunInput = {
@@ -368,13 +372,25 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
       entrypoint
     });
 
+    const initialContext = createExecutionContext({
+      runId: run.runId,
+      ...(input.missionId ? { missionId: input.missionId } : {}),
+      phase: 'plan',
+      taskId: '__run_start__',
+      memory: input.initialMemory ?? {},
+      artifacts: input.initialArtifacts ?? [],
+      metadata: input.metadata ?? {}
+    });
+
     journal.appendEvent({
       runId: run.runId,
       type: 'RUN_CREATED',
       phase: 'plan',
       payload: {
         kind,
-        entrypoint
+        entrypoint,
+        context_snapshot: initialContext,
+        ...(input.missionId ? { missionLifecycleEvent: 'MISSION_STARTED' } : {})
       }
     });
 
@@ -447,7 +463,8 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
       type: 'RUN_COMPLETED',
       phase: 'release',
       payload: {
-        context_snapshot: executionContext
+        context_snapshot: executionContext,
+        ...(executionContext.missionId ? { missionLifecycleEvent: 'MISSION_COMPLETED' } : {})
       }
     });
 

@@ -1,19 +1,26 @@
 {
   "id": "control-plane",
+  "pod": "smartfunds",
   "ownedPaths": [
     "control-plane/cli/",
     "control-plane/entities/",
     "control-plane/governance/",
+    "control-plane/projects/",
     "control-plane/studio/",
     "entities/",
     "governance/",
-    "runtime/"
+    "runtime/",
+    "scripts/ci/",
+    "scripts/governance/",
+    "Governance Architecture Review/"
   ],
   "ownedFiles": [
     ".gitignore",
     ".pr-body.md",
     "control-plane/governance-check.ts",
-    "package.json"
-  ],
-  "pod": "smartfunds"
+    "control-plane/governance-check.test.ts",
+    "package.json",
+    "package-lock.json",
+    "TEST_GOVERNANCE.md"
+  ]
 }

@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const CANONICAL_PROJECT_MODES = ['explore', 'structured', 'regulated'] as const;
+
+type CanonicalProjectMode = (typeof CANONICAL_PROJECT_MODES)[number];
+
 export type Project = {
   projectId: string;
   // NOTE: ownedPaths holds BOTH globs and exact file paths (we merge ownedFiles into ownedPaths).
@@ -8,6 +12,11 @@ export type Project = {
   description?: string;
   tags?: string[];
   podId?: string;
+  entityId?: string;
+  mode?: CanonicalProjectMode;
+  ownedPathPrefixes?: string[];
+  ownedFilePaths?: string[];
+  sourceFile?: string;
 };
 
 export type Team = {
@@ -27,6 +36,29 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
+function sortedUnique(values: string[]): string[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function assertKebabCase(value: string, label: string): void {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+    throw new Error(`${label} must be kebab-case.`);
+  }
+}
+
+function assertCanonicalMode(value: unknown, label: string): asserts value is CanonicalProjectMode {
+  if (!CANONICAL_PROJECT_MODES.includes(value as CanonicalProjectMode)) {
+    throw new Error(`${label} must be one of ${CANONICAL_PROJECT_MODES.join(', ')}.`);
+  }
+}
+
+function ensureStringArray(value: unknown, label: string): string[] {
+  if (!isStringArray(value)) {
+    throw new Error(`${label} must be a string array of non-empty strings.`);
+  }
+  return value;
+}
+
 // Allows [] (used for ownedFiles, and for entity ownedPaths if ownedFiles exist).
 function ensureStringArrayOrEmpty(value: unknown): string[] {
   if (value === undefined) return [];
@@ -38,7 +70,7 @@ function ensureStringArrayOrEmpty(value: unknown): string[] {
 
 // Requires at least one element.
 function ensureNonEmptyArray(value: unknown, label: string): string[] {
-  if (!isStringArray(value) || value.length == 0) {
+  if (!isStringArray(value) || value.length === 0) {
     throw new Error(`${label} must be a non-empty string array.`);
   }
   return value;
@@ -138,38 +170,170 @@ function toOwnershipGlobFromPrefix(prefix: string): string {
   return `${prefix}**`;
 }
 
-function loadEntityProjectsFromDir(dir: string): Project[] {
+function loadKnownEntityIds(registryPath: string): Set<string> {
+  if (!fs.existsSync(registryPath)) {
+    return new Set<string>();
+  }
+
+  const raw = JSON.parse(fs.readFileSync(registryPath, 'utf8')) as unknown;
+  if (!Array.isArray(raw)) {
+    throw new Error(`Entity registry ${registryPath} must be an array.`);
+  }
+
+  const ids = raw.map((entry, index) => {
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(`Entity registry ${registryPath} entry ${index} must be an object.`);
+    }
+    const entityId = (entry as Record<string, unknown>).entityId;
+    if (!isNonEmptyString(entityId)) {
+      throw new Error(`Entity registry ${registryPath} entry ${index} must include non-empty entityId.`);
+    }
+    return entityId;
+  });
+
+  return new Set(sortedUnique(ids));
+}
+
+function loadKnownPodIds(podsDir: string): Set<string> {
+  if (!fs.existsSync(podsDir)) {
+    return new Set<string>();
+  }
+
+  const pods = loadJsonFiles<Record<string, unknown>>(podsDir);
+  const podIds = pods.map(({ file, data }) => {
+    if (!isNonEmptyString(data.id)) {
+      throw new Error(`Pod ${file} must include non-empty id.`);
+    }
+    return data.id;
+  });
+
+  return new Set(sortedUnique(podIds));
+}
+
+function canonicalOwnershipEntries(project: Project): Array<{ kind: 'path' | 'file'; pattern: string }> {
+  const prefixes = sortedUnique(project.ownedPathPrefixes ?? []);
+  const files = sortedUnique(project.ownedFilePaths ?? []);
+
+  return [
+    ...prefixes.map((prefix) => ({ kind: 'path' as const, pattern: toOwnershipGlobFromPrefix(prefix) })),
+    ...files.map((file) => ({ kind: 'file' as const, pattern: file }))
+  ];
+}
+
+function ownershipEntriesOverlap(
+  left: { kind: 'path' | 'file'; pattern: string },
+  right: { kind: 'path' | 'file'; pattern: string }
+): boolean {
+  if (left.kind === 'file' && right.kind === 'file') {
+    return left.pattern === right.pattern;
+  }
+
+  if (left.kind === 'path' && right.kind === 'path') {
+    const leftPrefix = left.pattern.slice(0, -2);
+    const rightPrefix = right.pattern.slice(0, -2);
+    return leftPrefix.startsWith(rightPrefix) || rightPrefix.startsWith(leftPrefix);
+  }
+
+  const pathEntry = left.kind === 'path' ? left : right;
+  const fileEntry = left.kind === 'file' ? left : right;
+  const pathPrefix = pathEntry.pattern.slice(0, -2);
+  return fileEntry.pattern.startsWith(pathPrefix);
+}
+
+function assertNoCanonicalOwnershipOverlap(projects: Project[]): void {
+  const ordered = [...projects].sort((a, b) => a.projectId.localeCompare(b.projectId));
+
+  for (let i = 0; i < ordered.length; i += 1) {
+    for (let j = i + 1; j < ordered.length; j += 1) {
+      const projectA = ordered[i];
+      const projectB = ordered[j];
+      const ownershipA = canonicalOwnershipEntries(projectA);
+      const ownershipB = canonicalOwnershipEntries(projectB);
+
+      for (const entryA of ownershipA) {
+        for (const entryB of ownershipB) {
+          if (!ownershipEntriesOverlap(entryA, entryB)) {
+            continue;
+          }
+
+          throw new Error(
+            `Project ownership overlap detected between ${projectA.projectId} (${entryA.pattern}) and ${projectB.projectId} (${entryB.pattern}).`
+          );
+        }
+      }
+    }
+  }
+}
+
+function loadEntityProjectsFromDir(dir: string, options: {
+  entityRegistryPath?: string;
+  podsDir?: string;
+} = {}): Project[] {
+  const entityRegistryPath = options.entityRegistryPath ?? path.resolve('control-plane/entities/registry.json');
+  const podsDir = options.podsDir ?? path.resolve('entities/pods');
+
+  const knownEntityIds = loadKnownEntityIds(entityRegistryPath);
+  const knownPodIds = loadKnownPodIds(podsDir);
+
   const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
-    if (!isNonEmptyString((data as any).id)) {
+    if (!isNonEmptyString(data.id)) {
       throw new Error(`Entity project ${file} must include non-empty id.`);
     }
-    if (!isNonEmptyString((data as any).pod)) {
-      throw new Error(`Entity project ${(data as any).id} must include non-empty pod.`);
+    assertKebabCase(data.id, `Entity project ${data.id} id`);
+
+    if (!isNonEmptyString(data.name)) {
+      throw new Error(`Entity project ${data.id} must include non-empty name.`);
     }
 
-    const ownedPrefixes = ensureStringArrayOrEmpty((data as any).ownedPaths);
-    const ownedFiles = ensureStringArrayOrEmpty((data as any).ownedFiles);
+    if (!isNonEmptyString(data.entity)) {
+      throw new Error(`Entity project ${data.id} must include non-empty entity.`);
+    }
 
-    // Require: at least one of ownedPaths or ownedFiles.
+    if (!isNonEmptyString(data.pod)) {
+      throw new Error(`Entity project ${data.id} must include non-empty pod.`);
+    }
+
+    assertCanonicalMode(data.mode, `Entity project ${data.id} mode`);
+
+    const ownedPrefixes = ensureStringArray(data.ownedPaths, `Entity project ${data.id} ownedPaths`);
+    const ownedFiles = ensureStringArray(data.ownedFiles, `Entity project ${data.id} ownedFiles`);
+
     if (ownedPrefixes.length === 0 && ownedFiles.length === 0) {
-      throw new Error(`Entity project ${(data as any).id} must include non-empty ownedPaths or ownedFiles.`);
+      throw new Error(`Entity project ${data.id} must include at least one ownedPaths or ownedFiles entry.`);
     }
 
     for (const prefix of ownedPrefixes) {
       if (!prefix.endsWith('/')) {
-        throw new Error(`Entity project ${(data as any).id} ownedPath ${prefix} must end with '/'.`);
+        throw new Error(`Entity project ${data.id} ownedPath ${prefix} must end with '/'.`);
       }
     }
 
+    if (knownEntityIds.size > 0 && !knownEntityIds.has(data.entity)) {
+      throw new Error(
+        `Entity project ${data.id} references unknown entity ${data.entity}. Add it to control-plane/entities/registry.json.`
+      );
+    }
+
+    if (knownPodIds.size > 0 && !knownPodIds.has(data.pod)) {
+      throw new Error(`Entity project ${data.id} references unknown pod ${data.pod}. Add it under entities/pods/.`);
+    }
+
+    const normalizedPrefixes = sortedUnique(ownedPrefixes);
+    const normalizedFiles = sortedUnique(ownedFiles);
     const expandedOwnedPaths = [
-      ...ownedPrefixes.map(toOwnershipGlobFromPrefix),
-      ...ownedFiles
+      ...normalizedPrefixes.map(toOwnershipGlobFromPrefix),
+      ...normalizedFiles
     ];
 
     const project: Project = {
-      projectId: (data as any).id,
-      podId: (data as any).pod,
-      ownedPaths: expandedOwnedPaths
+      projectId: data.id,
+      podId: data.pod,
+      entityId: data.entity,
+      mode: data.mode,
+      ownedPathPrefixes: normalizedPrefixes,
+      ownedFilePaths: normalizedFiles,
+      ownedPaths: expandedOwnedPaths,
+      sourceFile: path.join(dir, file)
     };
 
     return project;
@@ -179,11 +343,11 @@ function loadEntityProjectsFromDir(dir: string): Project[] {
   const idSet = new Set(projectIds);
   if (idSet.size !== projectIds.length) {
     const duplicates = projectIds.filter((id, index) => projectIds.indexOf(id) !== index);
-    throw new Error(`Duplicate projectId detected: ${Array.from(new Set(duplicates)).join(', ')}.`);
+    throw new Error(`Duplicate projectId detected: ${Array.from(new Set(duplicates)).sort((a, b) => a.localeCompare(b)).join(', ')}.`);
   }
 
   const sorted = [...loaded].sort((a, b) => a.projectId.localeCompare(b.projectId));
-  assertNoProjectOverlap(sorted);
+  assertNoCanonicalOwnershipOverlap(sorted);
   return sorted;
 }
 
@@ -205,7 +369,10 @@ export function loadProjectsFromDir(dir: string): Project[] {
       projectId: (data as any).projectId,
       ownedPaths: expandedOwnedPaths,
       description: isNonEmptyString((data as any).description) ? (data as any).description : undefined,
-      tags: isStringArray((data as any).tags) ? (data as any).tags : undefined
+      tags: isStringArray((data as any).tags) ? (data as any).tags : undefined,
+      ownedPathPrefixes: undefined,
+      ownedFilePaths: undefined,
+      sourceFile: path.join(dir, file)
     };
 
     return project;
@@ -226,6 +393,9 @@ export function loadProjectsFromDir(dir: string): Project[] {
 export function loadOwnershipProjects(options: {
   entitiesProjectsDir?: string;
   fallbackProjectsDir?: string;
+  allowLegacyFallback?: boolean;
+  entityRegistryPath?: string;
+  podsDir?: string;
 } = {}): Project[] {
   const entitiesProjectsDir = options.entitiesProjectsDir ?? 'entities/projects';
   const fallbackProjectsDir = options.fallbackProjectsDir ?? 'control-plane/projects';
@@ -235,10 +405,19 @@ export function loadOwnershipProjects(options: {
     fs.readdirSync(entitiesProjectsDir).some((entry) => entry.endsWith('.json'));
 
   if (hasEntityProjectFiles) {
-    return loadEntityProjectsFromDir(entitiesProjectsDir);
+    return loadEntityProjectsFromDir(entitiesProjectsDir, {
+      entityRegistryPath: options.entityRegistryPath,
+      podsDir: options.podsDir
+    });
   }
 
-  return loadProjectsFromDir(fallbackProjectsDir);
+  // Legacy fallback is compatibility-only for non-governance consumers.
+  // Governance ownership must use canonical entities/projects/*.json.
+  if (options.allowLegacyFallback === true) {
+    return loadProjectsFromDir(fallbackProjectsDir);
+  }
+
+  throw new Error(`No canonical project specs found in ${entitiesProjectsDir}. Governance requires entities/projects/*.json.`);
 }
 
 export function loadTeamsFromDir(dir: string, projects: Project[]): Team[] {

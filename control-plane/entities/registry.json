@@ -4,7 +4,6 @@
     "legalName": "SmartFunds Core Entity",
     "projects": [
       "control-plane",
-      "core-app",
       "marketplace-core",
       "smartfunds-core",
       "smartfunds-docs"

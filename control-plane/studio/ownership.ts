@@ -1,6 +1,6 @@
 import type { Project, Team } from './registry';
 
-export const OWNERSHIP_ALLOWLIST = ['.github/**','docs/**','governance/**'];
+export const OWNERSHIP_ALLOWLIST = ['.github/**', 'docs/**', 'governance/**'];
 
 export type OwnershipStatus =
   | 'ok'
@@ -9,12 +9,26 @@ export type OwnershipStatus =
   | 'unowned_files'
   | 'no_project_detected';
 
+export type OwnershipConflictDetail = {
+  file: string;
+  matches: Array<{ projectId: string; patterns: string[] }>;
+};
+
+export type UnownedFileDetail = {
+  file: string;
+  candidateProjectId: string | null;
+  reason: string;
+  suggestedFix: string | null;
+};
+
 export type OwnershipResult = {
   projectsTouched: string[];
   teamsTouched: string[];
   unownedFiles: string[];
   ownershipStatus: OwnershipStatus;
   nextActions: string[];
+  ambiguousOwnership: OwnershipConflictDetail[];
+  unownedDetails: UnownedFileDetail[];
 };
 
 function escapeRegex(value: string): string {
@@ -39,6 +53,52 @@ function normalizePath(p: string): string {
   return p.replace(/^\.\//, '').replace(/^\/+/, '');
 }
 
+function inferCandidateProject(file: string, projects: Project[]): string | null {
+  const topLevel = file.split('/')[0] ?? file;
+  const direct = projects.find((project) => project.projectId === topLevel);
+  if (direct) {
+    return direct.projectId;
+  }
+
+  const byPrefix = projects.find((project) =>
+    (project.ownedPathPrefixes ?? []).some((prefix) => prefix === `${topLevel}/`)
+  );
+  if (byPrefix) {
+    return byPrefix.projectId;
+  }
+
+  return null;
+}
+
+function parentDirectoryPrefix(file: string): string {
+  const slash = file.lastIndexOf('/');
+  if (slash <= 0) {
+    return '';
+  }
+  return `${file.slice(0, slash + 1)}`;
+}
+
+function buildUnownedDetail(file: string, projects: Project[]): UnownedFileDetail {
+  const candidateProjectId = inferCandidateProject(file, projects);
+  const parentPrefix = parentDirectoryPrefix(file);
+
+  if (candidateProjectId && parentPrefix) {
+    return {
+      file,
+      candidateProjectId,
+      reason: `no ownedPaths entry covers "${parentPrefix}"`,
+      suggestedFix: `add "${parentPrefix}" to entities/projects/${candidateProjectId}.json`
+    };
+  }
+
+  return {
+    file,
+    candidateProjectId,
+    reason: 'no ownedPaths or ownedFiles entry matched this path',
+    suggestedFix: null
+  };
+}
+
 export function resolveOwnership(params: {
   changedFiles: string[];
   projects: Project[];
@@ -56,11 +116,15 @@ export function resolveOwnership(params: {
 
   const projectMatchers = orderedProjects.map((project) => ({
     project,
-    regexes: project.ownedPaths.map(globToRegExp),
+    rules: project.ownedPaths
+      .map((pattern) => ({ pattern, regex: globToRegExp(pattern) }))
+      .sort((a, b) => a.pattern.localeCompare(b.pattern))
   }));
 
   const projectsTouched = new Set<string>();
   const unownedFiles: string[] = [];
+  const ambiguousOwnership: OwnershipConflictDetail[] = [];
+  const unownedDetails: UnownedFileDetail[] = [];
   let hasAmbiguous = false;
   let hasNonAllowlistedFile = false;
 
@@ -71,22 +135,31 @@ export function resolveOwnership(params: {
     hasNonAllowlistedFile = true;
 
     const matchedProjects = projectMatchers
-      .filter((matcher) =>
-        matcher.regexes.some((regex) => regex.test(file))
-      )
-      .map((matcher) => matcher.project.projectId);
+      .map((matcher) => ({
+        projectId: matcher.project.projectId,
+        patterns: matcher.rules
+          .filter((rule) => rule.regex.test(file))
+          .map((rule) => rule.pattern)
+      }))
+      .filter((match) => match.patterns.length > 0)
+      .sort((a, b) => a.projectId.localeCompare(b.projectId));
 
     if (matchedProjects.length === 1) {
-      projectsTouched.add(matchedProjects[0]);
+      projectsTouched.add(matchedProjects[0].projectId);
       continue;
     }
 
     if (matchedProjects.length > 1) {
       hasAmbiguous = true;
+      ambiguousOwnership.push({
+        file,
+        matches: matchedProjects
+      });
       continue;
     }
 
     unownedFiles.push(file);
+    unownedDetails.push(buildUnownedDetail(file, orderedProjects));
   }
 
   let ownershipStatus: OwnershipStatus;
@@ -140,6 +213,23 @@ export function resolveOwnership(params: {
     unownedFiles: sortedUnique(unownedFiles),
     ownershipStatus,
     nextActions: [],
+    ambiguousOwnership: ambiguousOwnership
+      .map((detail) => ({
+        file: detail.file,
+        matches: detail.matches.map((match) => ({
+          projectId: match.projectId,
+          patterns: sortedUnique(match.patterns)
+        }))
+      }))
+      .sort((a, b) => a.file.localeCompare(b.file)),
+    unownedDetails: unownedDetails
+      .map((detail) => ({
+        file: detail.file,
+        candidateProjectId: detail.candidateProjectId,
+        reason: detail.reason,
+        suggestedFix: detail.suggestedFix
+      }))
+      .sort((a, b) => a.file.localeCompare(b.file))
   };
 }
 
@@ -154,15 +244,39 @@ export function buildOwnershipErrors(result: OwnershipResult): string[] {
 
   if (status === 'unowned_files') {
     const files = (result.unownedFiles ?? []).slice().sort();
-    return [
+    const details = (result.unownedDetails ?? []).slice().sort((a, b) => a.file.localeCompare(b.file));
+    const lines = [
       files.length
         ? `Ownership violation: unowned files detected: ${files.join(', ')}`
         : 'Ownership violation: unowned files detected.'
     ];
+
+    for (const detail of details) {
+      lines.push(`Unowned file: ${detail.file}`);
+      if (detail.candidateProjectId) {
+        lines.push(`Candidate project: ${detail.candidateProjectId}`);
+      }
+      lines.push(`Reason: ${detail.reason}`);
+      if (detail.suggestedFix) {
+        lines.push(`Suggested fix: ${detail.suggestedFix}`);
+      }
+    }
+
+    return lines;
   }
 
   if (status === 'ambiguous_project_ownership') {
-    return ['Ownership violation: ambiguous project ownership (multiple projects match changed files).'];
+    const details = (result.ambiguousOwnership ?? []).slice().sort((a, b) => a.file.localeCompare(b.file));
+    const lines = ['Ownership violation: ambiguous project ownership (multiple projects match changed files).'];
+
+    for (const detail of details) {
+      const matchText = detail.matches
+        .map((match) => `${match.projectId} [${match.patterns.join(', ')}]`)
+        .join('; ');
+      lines.push(`Conflicting ownership for ${detail.file}: ${matchText}`);
+    }
+
+    return lines;
   }
 
   if (status === 'multi_project') {

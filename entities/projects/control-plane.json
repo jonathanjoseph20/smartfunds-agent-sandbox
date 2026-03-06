@@ -1,6 +1,9 @@
 {
   "id": "control-plane",
+  "name": "Control Plane",
+  "entity": "core-entity",
   "pod": "smartfunds",
+  "mode": "structured",
   "ownedPaths": [
     "control-plane/cli/",
     "control-plane/entities/",
@@ -11,16 +14,17 @@
     "governance/",
     "runtime/",
     "scripts/ci/",
-    "scripts/governance/",
-    "Governance Architecture Review/"
+    "scripts/governance/"
   ],
   "ownedFiles": [
     ".gitignore",
     ".pr-body.md",
-    "control-plane/governance-check.ts",
+    "TEST_GOVERNANCE.md",
     "control-plane/governance-check.test.ts",
-    "package.json",
+    "control-plane/governance-check.ts",
     "package-lock.json",
-    "TEST_GOVERNANCE.md"
-  ]
+    "package.json"
+  ],
+  "complianceProfile": "internal",
+  "financeScope": null
 }

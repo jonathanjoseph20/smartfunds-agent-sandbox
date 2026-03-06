@@ -4,8 +4,10 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  buildEntityTelemetryFromProjects,
   buildEntityTelemetry,
   loadEntityRegistry,
+  resolveEntityTelemetryFromProjects,
   resolveEntityTelemetry
 } from './entity-registry';
 
@@ -211,5 +213,32 @@ describe('entity telemetry', () => {
     const result = resolveEntityTelemetry(['project-a', 'project-z'], { registryPath, projectsDir });
     expect(result.telemetry.entityOwnershipStatus).toBe('unknown_entity_mapping');
     expect(result.nextActions.join('\n')).toContain('Add missing projectId to control-plane/entities/registry.json.');
+  });
+
+  it('builds deterministic telemetry directly from canonical project metadata', () => {
+    const telemetry = buildEntityTelemetryFromProjects(
+      ['project-b', 'project-a'],
+      [
+        { projectId: 'project-a', ownedPaths: ['project-a/**'], entityId: 'alpha-entity' },
+        { projectId: 'project-b', ownedPaths: ['project-b/**'], entityId: 'beta-entity' }
+      ]
+    );
+
+    expect(telemetry.entitiesTouched).toEqual(['alpha-entity', 'beta-entity']);
+    expect(telemetry.entityOwnershipStatus).toBe('multi_entity');
+    expect(telemetry.entityByProject).toEqual({
+      'project-a': 'alpha-entity',
+      'project-b': 'beta-entity'
+    });
+  });
+
+  it('returns next action when canonical project entity mapping is missing', () => {
+    const result = resolveEntityTelemetryFromProjects(
+      ['project-a'],
+      [{ projectId: 'project-a', ownedPaths: ['project-a/**'] }]
+    );
+
+    expect(result.telemetry.entityOwnershipStatus).toBe('unknown_entity_mapping');
+    expect(result.nextActions.join('\n')).toContain('Add missing entity field to entities/projects/*.json');
   });
 });

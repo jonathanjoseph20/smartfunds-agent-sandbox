@@ -1,8 +1,14 @@
 {
   "id": "marketplace-core",
+  "name": "Marketplace Core",
+  "entity": "core-entity",
+  "pod": "agent-marketplace",
+  "mode": "structured",
   "ownedPaths": [
     "control-plane/swarm/",
     "control-plane/swarms/"
   ],
-  "pod": "agent-marketplace"
+  "ownedFiles": [],
+  "complianceProfile": "internal",
+  "financeScope": "agent-marketplace"
 }

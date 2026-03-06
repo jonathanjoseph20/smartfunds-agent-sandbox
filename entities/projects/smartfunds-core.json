@@ -1,8 +1,14 @@
 {
   "id": "smartfunds-core",
+  "name": "SmartFunds Core",
+  "entity": "core-entity",
+  "pod": "smartfunds",
+  "mode": "regulated",
   "ownedPaths": [
     "apps/api/",
     "packages/mission-engine/"
   ],
-  "pod": "smartfunds"
+  "ownedFiles": [],
+  "complianceProfile": "phase-1",
+  "financeScope": "smartfunds"
 }

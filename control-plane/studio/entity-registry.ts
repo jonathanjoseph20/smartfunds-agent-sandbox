@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { loadProjectsFromDir } from './registry.ts';
+import type { Project } from './registry.ts';
 
 const CUSTODY_MODES = ['non_custodial', 'managed', 'escrow_based'] as const;
 
@@ -117,9 +117,36 @@ function assertNoDuplicateEntityIds(entities: EntityRegistryEntry[]): void {
   }
 }
 
+function collectProjectIdsFromDir(projectsDir: string): Set<string> {
+  if (!fs.existsSync(projectsDir)) {
+    return new Set<string>();
+  }
+
+  const entries = fs.readdirSync(projectsDir)
+    .filter((entry) => entry.endsWith('.json'))
+    .sort((a, b) => a.localeCompare(b));
+
+  const ids: string[] = [];
+
+  for (const entry of entries) {
+    const filePath = path.join(projectsDir, entry);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+    if (isNonEmptyString(raw.id)) {
+      ids.push(raw.id);
+      continue;
+    }
+    if (isNonEmptyString(raw.projectId)) {
+      ids.push(raw.projectId);
+      continue;
+    }
+    throw new Error(`Project file ${filePath} must include non-empty id or projectId.`);
+  }
+
+  return new Set(sortedUnique(ids));
+}
+
 function assertReferencedProjectsExist(entities: EntityRegistryEntry[], projectsDir: string): void {
-  const projects = loadProjectsFromDir(projectsDir);
-  const projectIds = new Set(projects.map((project) => project.projectId));
+  const projectIds = collectProjectIdsFromDir(projectsDir);
 
   for (const entity of entities) {
     for (const projectId of entity.projects) {
@@ -247,6 +274,44 @@ export function buildEntityTelemetry(projectsTouched: string[], registry: Entity
   };
 }
 
+export function buildEntityTelemetryFromProjects(projectsTouched: string[], projects: Project[]): EntityTelemetry {
+  const orderedProjectsTouched = sortedUnique(projectsTouched);
+  const projectEntityMap = new Map(
+    projects
+      .filter((project) => isNonEmptyString(project.entityId))
+      .map((project) => [project.projectId, project.entityId as string])
+  );
+
+  const unmappedProjects: string[] = [];
+  const entitiesTouched: string[] = [];
+  const entityByProject: Record<string, string | null> = {};
+
+  for (const projectId of orderedProjectsTouched) {
+    const entityId = projectEntityMap.get(projectId) ?? null;
+    entityByProject[projectId] = entityId;
+    if (entityId === null) {
+      unmappedProjects.push(projectId);
+      continue;
+    }
+    entitiesTouched.push(entityId);
+  }
+
+  const orderedEntities = sortedUnique(entitiesTouched);
+  let entityOwnershipStatus: EntityOwnershipStatus = 'ok';
+  if (unmappedProjects.length > 0) {
+    entityOwnershipStatus = 'unknown_entity_mapping';
+  } else if (orderedEntities.length > 1) {
+    entityOwnershipStatus = 'multi_entity';
+  }
+
+  return {
+    entitiesTouched: orderedEntities,
+    entityOwnershipStatus,
+    unmappedProjects: sortedUnique(unmappedProjects),
+    entityByProject
+  };
+}
+
 export function buildFallbackEntityTelemetry(projectsTouched: string[]): EntityTelemetry {
   const orderedProjects = sortedUnique(projectsTouched);
   const entityByProject: Record<string, string | null> = {};
@@ -281,6 +346,23 @@ export function resolveEntityTelemetry(
 
   if (telemetry.entityOwnershipStatus === 'unknown_entity_mapping') {
     nextActions.push('Add missing projectId to control-plane/entities/registry.json.');
+  } else if (telemetry.entityOwnershipStatus === 'multi_entity') {
+    nextActions.push('Sprint 21 will enforce single-entity PRs; consider splitting changes by entity.');
+  }
+
+  return { telemetry, warnings, nextActions };
+}
+
+export function resolveEntityTelemetryFromProjects(
+  projectsTouched: string[],
+  projects: Project[]
+): { telemetry: EntityTelemetry; warnings: string[]; nextActions: string[] } {
+  const telemetry = buildEntityTelemetryFromProjects(projectsTouched, projects);
+  const warnings: string[] = [];
+  const nextActions: string[] = [];
+
+  if (telemetry.entityOwnershipStatus === 'unknown_entity_mapping') {
+    nextActions.push('Add missing entity field to entities/projects/*.json for each touched project.');
   } else if (telemetry.entityOwnershipStatus === 'multi_entity') {
     nextActions.push('Sprint 21 will enforce single-entity PRs; consider splitting changes by entity.');
   }

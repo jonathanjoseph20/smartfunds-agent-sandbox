@@ -421,7 +421,9 @@ describe.sequential('execution service integration', () => {
         teamsTouched: ['dev-team'],
         unownedFiles: [],
         ownershipStatus: 'ok',
-        nextActions: []
+        nextActions: [],
+        ambiguousOwnership: [],
+        unownedDetails: []
       })
     });
     const first = computeEnvelopeHash(envelope);
@@ -449,7 +451,9 @@ describe.sequential('execution service integration', () => {
         teamsTouched: [],
         unownedFiles: [],
         ownershipStatus: 'ambiguous_project_ownership',
-        nextActions: []
+        nextActions: [],
+        ambiguousOwnership: [],
+        unownedDetails: []
       })
     });
 
@@ -484,7 +488,9 @@ describe.sequential('execution service integration', () => {
         teamsTouched: ['dev-team'],
         unownedFiles: [],
         ownershipStatus: 'ok',
-        nextActions: []
+        nextActions: [],
+        ambiguousOwnership: [],
+        unownedDetails: []
       })
     });
     const { runId, envelopeHash } = runtimeService.createOrGetRun(envelopeIdentity);
@@ -581,7 +587,9 @@ describe.sequential('execution service integration', () => {
         teamsTouched: ['dev-team'],
         unownedFiles: [],
         ownershipStatus: 'ok',
-        nextActions: []
+        nextActions: [],
+        ambiguousOwnership: [],
+        unownedDetails: []
       })
     });
     const { runId, envelopeHash } = runtimeService.createOrGetRun(envelopeIdentity);

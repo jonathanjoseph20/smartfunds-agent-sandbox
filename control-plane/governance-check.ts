@@ -18,7 +18,7 @@ import { resolveLocalMetadata } from './governance/metadata-resolution.ts';
 import { evaluateModePolicy } from './governance/mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './governance/rail-binding.ts';
 import { REQUIRED_LABELS } from './bootstrap-labels.ts';
-import { resolveEntityTelemetry } from './studio/entity-registry.ts';
+import { resolveEntityTelemetryFromProjects } from './studio/entity-registry.ts';
 import { evaluateSwarmPolicy } from './swarm/validator.ts';
 import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from './studio/ownership.ts';
@@ -312,7 +312,10 @@ export async function runGovernanceCheck(options: GovernanceCheckOptions = {}): 
   }
 
   errors.push(...buildOwnershipErrors(ownershipResult));
-  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
+  const entityTelemetryResult = resolveEntityTelemetryFromProjects(
+    ownershipResult.projectsTouched,
+    ownershipProjects
+  );
 
   const { impliedTier } = inferImpliedTier(changedFiles, contract);
   let declaredTier: Tier | null = null;

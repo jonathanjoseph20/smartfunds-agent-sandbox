@@ -22,7 +22,9 @@ describe('execution envelope', () => {
         teamsTouched: ['dev-team'],
         unownedFiles: [],
         ownershipStatus: 'ok',
-        nextActions: []
+        nextActions: [],
+        ambiguousOwnership: [],
+        unownedDetails: []
       })
     });
 

@@ -5,7 +5,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 
 import { buildGovernanceReport, stringifyGovernanceReport } from '../governance/diagnostics';
 import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from './registry';
-import { resolveOwnership } from './ownership';
+import { buildOwnershipErrors, resolveOwnership } from './ownership';
 
 const tmpRoot = path.join('control-plane', '__tests__', 'tmp-ownership');
 const projectsDir = path.join(tmpRoot, 'projects');
@@ -100,6 +100,10 @@ describe('ownership resolution', () => {
     });
 
     expect(result.ownershipStatus).toBe('ambiguous_project_ownership');
+    const messages = buildOwnershipErrors(result).join('\n');
+    expect(messages).toContain('Conflicting ownership for packages/core/index.ts');
+    expect(messages).toContain('wide [packages/**]');
+    expect(messages).toContain('narrow [packages/core/**]');
   });
 
   it('detects multi-project changes', () => {
@@ -122,6 +126,29 @@ describe('ownership resolution', () => {
 
     expect(result.ownershipStatus).toBe('unowned_files');
     expect(result.unownedFiles).toEqual(['scripts/tool.ts']);
+    const messages = buildOwnershipErrors(result).join('\n');
+    expect(messages).toContain('Unowned file: scripts/tool.ts');
+    expect(messages).toContain('Reason: no ownedPaths or ownedFiles entry matched this path');
+  });
+
+  it('includes candidate project and suggested fix for unowned path under known project root', () => {
+    const result = resolveOwnership({
+      changedFiles: ['control-plane/projects/control-plane.json'],
+      projects: [
+        {
+          projectId: 'control-plane',
+          ownedPaths: ['control-plane/cli/**'],
+          ownedPathPrefixes: ['control-plane/cli/']
+        }
+      ],
+      teams: []
+    });
+
+    expect(result.ownershipStatus).toBe('unowned_files');
+    const messages = buildOwnershipErrors(result).join('\n');
+    expect(messages).toContain('Candidate project: control-plane');
+    expect(messages).toContain('Reason: no ownedPaths entry covers "control-plane/projects/"');
+    expect(messages).toContain('Suggested fix: add "control-plane/projects/" to entities/projects/control-plane.json');
   });
 
   it('respects allowlist paths', () => {

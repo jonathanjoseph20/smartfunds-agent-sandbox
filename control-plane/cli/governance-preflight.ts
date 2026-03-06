@@ -23,7 +23,7 @@ import { evaluateModePolicy } from '../governance/mode-policy.ts';
 import { renderGovernanceFailureSummary } from '../governance/failure-output.ts';
 import { resolveRailBindingDiagnostics } from '../governance/rail-binding.ts';
 import { runGovernanceValidation } from '../governance/validate.ts';
-import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
+import { resolveEntityTelemetryFromProjects } from '../studio/entity-registry.ts';
 import { enforceModeBoundary } from '../studio/mode-boundary.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
 import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
@@ -295,7 +295,10 @@ export function buildPreflightReport(
   );
   const ownershipResult = ownershipData.ownershipResult;
   const podOwnership = buildPodOwnership(ownershipResult.projectsTouched, ownershipData.projects);
-  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
+  const entityTelemetryResult = resolveEntityTelemetryFromProjects(
+    ownershipResult.projectsTouched,
+    ownershipData.projects
+  );
   let swarms: SwarmDefinition[] = [];
   try {
     const projects = loadProjectsFromDir('control-plane/projects');
@@ -548,6 +551,7 @@ async function main(): Promise<void> {
   if (changedFiles.length === 0) {
     console.log('GOVERNANCE STATUS: PASS');
     console.log('Reason: No changed files detected against main.');
+    console.log('Project registry source: entities/projects/*.json');
     console.log('Suggested Action: Continue with local development.');
     return;
   }
@@ -572,6 +576,7 @@ async function main(): Promise<void> {
   if (!result.ok) {
     console.error('GOVERNANCE STATUS: FAIL');
     console.error(`Reason: ${result.errors[0] ?? 'Governance validation failed.'}`);
+    console.error('Project registry source: entities/projects/*.json');
     console.error(`Suggested Action: ${result.primaryAction ?? 'Address governance violations and rerun preflight.'}`);
     console.error('');
     console.error(
@@ -591,6 +596,7 @@ async function main(): Promise<void> {
 
   console.log('GOVERNANCE STATUS: PASS');
   console.log('Reason: Full governance validation passed.');
+  console.log('Project registry source: entities/projects/*.json');
   console.log('Suggested Action: Proceed with commit/push.');
 }
 

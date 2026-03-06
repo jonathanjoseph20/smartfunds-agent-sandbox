@@ -1,7 +1,13 @@
 {
   "id": "smartfunds-docs",
+  "name": "SmartFunds Docs",
+  "entity": "core-entity",
+  "pod": "smartfunds",
+  "mode": "structured",
   "ownedPaths": [
     "docs/"
   ],
-  "pod": "smartfunds"
+  "ownedFiles": [],
+  "complianceProfile": "phase-1",
+  "financeScope": "smartfunds"
 }

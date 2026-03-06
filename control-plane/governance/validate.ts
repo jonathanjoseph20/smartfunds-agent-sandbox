@@ -18,7 +18,7 @@ import {
 import { readChangeDeclaration } from './change-declaration.ts';
 import { evaluateModePolicy } from './mode-policy.ts';
 import { resolveRailBindingDiagnostics } from './rail-binding.ts';
-import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
+import { resolveEntityTelemetryFromProjects } from '../studio/entity-registry.ts';
 import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
@@ -372,7 +372,9 @@ async function buildReport(
     teamsTouched: [],
     unownedFiles: [],
     ownershipStatus: 'ok',
-    nextActions: []
+    nextActions: [],
+    ambiguousOwnership: [],
+    unownedDetails: []
   };
 
   if (changeDeclaration.ok) {
@@ -436,7 +438,10 @@ async function buildReport(
     errors.push(...buildOwnershipErrors(ownershipResult));
   }
 
-  const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
+  const entityTelemetryResult = resolveEntityTelemetryFromProjects(
+    ownershipResult.projectsTouched,
+    ownershipProjects
+  );
 
   const teamResolution = resolveTeamsForChangedFiles(prData.changedFiles);
   const swarmMetadata = {

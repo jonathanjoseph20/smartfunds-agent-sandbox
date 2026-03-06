@@ -34,7 +34,9 @@ function envelope(changedPaths: string[]) {
       teamsTouched: ['dev-team'],
       unownedFiles: [],
       ownershipStatus: 'ok',
-      nextActions: []
+      nextActions: [],
+      ambiguousOwnership: [],
+      unownedDetails: []
     })
   });
 }

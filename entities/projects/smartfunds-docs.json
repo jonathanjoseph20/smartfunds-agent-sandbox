@@ -1,0 +1,7 @@
+{
+  "id": "smartfunds-docs",
+  "ownedPaths": [
+    "docs/"
+  ],
+  "pod": "smartfunds"
+}

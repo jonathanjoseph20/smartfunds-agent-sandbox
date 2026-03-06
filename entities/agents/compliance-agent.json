@@ -1,0 +1,10 @@
+{
+  "capabilities": [
+    "generate-checklists",
+    "review-documents",
+    "validate-compliance"
+  ],
+  "id": "compliance-agent",
+  "model": "gpt-5",
+  "team": "compliance"
+}

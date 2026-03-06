@@ -1,0 +1,8 @@
+{
+  "id": "marketplace-core",
+  "ownedPaths": [
+    "control-plane/swarm/",
+    "control-plane/swarms/"
+  ],
+  "pod": "agent-marketplace"
+}

@@ -1,0 +1,12 @@
+{
+  "financeScope": "agent-marketplace",
+  "id": "agent-marketplace",
+  "mode": "build",
+  "name": "Agent Marketplace",
+  "projects": [
+    "marketplace-core"
+  ],
+  "teams": [
+    "engineering"
+  ]
+}

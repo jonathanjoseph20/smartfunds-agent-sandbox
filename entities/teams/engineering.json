@@ -1,0 +1,9 @@
+{
+  "id": "engineering",
+  "permissions": [
+    "implement-features",
+    "maintain-systems"
+  ],
+  "pod": "agent-marketplace",
+  "responsibility": "Build and maintain product systems"
+}

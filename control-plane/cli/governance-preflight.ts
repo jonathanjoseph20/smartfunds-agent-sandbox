@@ -14,10 +14,9 @@ import {
   type Tier
 } from '../governance/diagnostics.ts';
 import {
-  readEvidenceContract,
-  resolveImpliedExecutionMode,
-  validateEvidenceAgainstComputedState
-} from '../governance/evidence-contract.ts';
+  generateEvidenceFromPullRequestMetadata,
+  type EvidenceMode
+} from '../governance/evidence-generation.ts';
 import { defaultGitExec, getChangedFilesFromMain } from '../governance/changed-files.ts';
 import { resolveLocalMetadata } from '../governance/metadata-resolution.ts';
 import { evaluateModePolicy } from '../governance/mode-policy.ts';
@@ -27,7 +26,7 @@ import { runGovernanceValidation } from '../governance/validate.ts';
 import { resolveEntityTelemetry } from '../studio/entity-registry.ts';
 import { enforceModeBoundary } from '../studio/mode-boundary.ts';
 import { evaluateSwarmPolicy } from '../swarm/validator.ts';
-import { loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
+import { loadOwnershipProjects, loadProjectsFromDir, loadTeamsFromDir, type Project, type Team } from '../studio/registry.ts';
 import { buildOwnershipErrors, resolveOwnership, type OwnershipResult } from '../studio/ownership.ts';
 import { loadSwarmsFromDir } from '../swarms/registry.ts';
 import { resolveSwarmsForProjects } from '../swarms/resolution.ts';
@@ -75,6 +74,24 @@ type ParsedArgs = {
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function buildPodOwnership(projectsTouched: string[], projects: Project[]): {
+  podsTouched: string[];
+  podByProject: Record<string, string | null>;
+} {
+  const podByProject: Record<string, string | null> = {};
+  const podByProjectId = new Map(projects.map((project) => [project.projectId, project.podId ?? null]));
+
+  for (const projectId of sortedUnique(projectsTouched)) {
+    podByProject[projectId] = podByProjectId.get(projectId) ?? null;
+  }
+
+  const podsTouched = sortedUnique(
+    Object.values(podByProject).filter((value): value is string => value !== null)
+  );
+
+  return { podsTouched, podByProject };
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -161,18 +178,27 @@ function resolveOwnershipResult(
   changedFiles: string[],
   deps: Required<Pick<PreflightDependencies, 'loadProjects' | 'loadTeams' | 'resolveOwnership'>>,
   errors: string[]
-): OwnershipResult {
+): { ownershipResult: OwnershipResult; projects: Project[] } {
   let ownershipResult: OwnershipResult;
+  let projects: Project[] = [];
+  let teams: Team[] = [];
+
   try {
-    const projects = deps.loadProjects();
-    const teams = deps.loadTeams(projects);
-    ownershipResult = deps.resolveOwnership({ changedFiles, projects, teams });
+    projects = deps.loadProjects();
   } catch (error) {
     errors.push((error as Error).message);
-    ownershipResult = resolveOwnership({ changedFiles, projects: [], teams: [] });
+    projects = [];
   }
+
+  try {
+    teams = deps.loadTeams(projects);
+  } catch (error) {
+    teams = [];
+  }
+
+  ownershipResult = deps.resolveOwnership({ changedFiles, projects, teams });
   errors.push(...buildOwnershipErrors(ownershipResult));
-  return ownershipResult;
+  return { ownershipResult, projects };
 }
 
 function buildNextActions(params: {
@@ -258,19 +284,21 @@ export function buildPreflightReport(
   const requiredChecks = labelTier !== null ? getRequiredChecksForTier(labelTier, contract) : [];
 
   const ownershipResolver = deps.resolveOwnership ?? resolveOwnership;
-  const ownershipResult = resolveOwnershipResult(
+  const ownershipData = resolveOwnershipResult(
     changedFiles,
     {
-      loadProjects: deps.loadProjects ?? (() => loadProjectsFromDir('control-plane/projects')),
+      loadProjects: deps.loadProjects ?? (() => loadOwnershipProjects()),
       loadTeams: deps.loadTeams ?? ((projects) => loadTeamsFromDir('control-plane/teams', projects)),
       resolveOwnership: ownershipResolver
     },
     errors
   );
+  const ownershipResult = ownershipData.ownershipResult;
+  const podOwnership = buildPodOwnership(ownershipResult.projectsTouched, ownershipData.projects);
   const entityTelemetryResult = resolveEntityTelemetry(ownershipResult.projectsTouched);
   let swarms: SwarmDefinition[] = [];
   try {
-    const projects = (deps.loadProjects ?? (() => loadProjectsFromDir('control-plane/projects')))();
+    const projects = loadProjectsFromDir('control-plane/projects');
     if (projects.length > 0) {
       swarms = loadSwarmsFromDir('control-plane/swarms', projects);
     }
@@ -373,6 +401,8 @@ export function buildPreflightReport(
     missingEvidenceFields,
     requiredChecks,
     projectsTouched: ownershipResult.projectsTouched,
+    podsTouched: podOwnership.podsTouched,
+    podByProject: podOwnership.podByProject,
     teamsTouched: teamResolution.teamsTouched,
     unownedFiles: ownershipResult.unownedFiles,
     ownershipStatus: ownershipResult.ownershipStatus,

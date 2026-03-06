@@ -49,11 +49,11 @@ describe('swarm-runner', () => {
     expect(summary.mode).toBe('structured');
   });
 
-  it('executes full phase lifecycle and emits ordered completion events', () => {
+  it('executes full phase lifecycle and emits ordered completion events', async () => {
     const runner = createSwarmRunner({ rootDir: tmpRoot });
     const created = runner.createSwarmRun({ projectId: 'control-plane' });
 
-    const finalSummary = runner.executeSwarmRun({ runId: created.runId });
+    const finalSummary = await runner.executeSwarmRun({ runId: created.runId });
     const journal = createExecutionJournal({ rootDir: tmpRoot });
     const inspected = journal.inspectRun(created.runId);
 
@@ -90,7 +90,7 @@ describe('swarm-runner', () => {
     ]);
   });
 
-  it('emits TASK_FAILED and RUN_FAILED and stops later phases on task failure', () => {
+  it('emits TASK_FAILED and RUN_FAILED and stops later phases on task failure', async () => {
     const runner = createSwarmRunner({
       rootDir: tmpRoot,
       taskExecutors: {
@@ -101,7 +101,7 @@ describe('swarm-runner', () => {
     });
 
     const created = runner.createSwarmRun({ projectId: 'control-plane' });
-    const finalSummary = runner.executeSwarmRun({ runId: created.runId });
+    const finalSummary = await runner.executeSwarmRun({ runId: created.runId });
 
     const journal = createExecutionJournal({ rootDir: tmpRoot });
     const inspected = journal.inspectRun(created.runId);
@@ -123,11 +123,11 @@ describe('swarm-runner', () => {
     expect(startedPhases.includes('release')).toBe(false);
   });
 
-  it('derives status from journal replay deterministically', () => {
+  it('derives status from journal replay deterministically', async () => {
     const runner = createSwarmRunner({ rootDir: tmpRoot });
     const created = runner.createSwarmRun({ projectId: 'control-plane' });
 
-    runner.executeSwarmRun({ runId: created.runId });
+    await runner.executeSwarmRun({ runId: created.runId });
 
     const first = runner.getSwarmRunStatus({ runId: created.runId });
     const second = runner.getSwarmRunStatus({ runId: created.runId });
@@ -135,15 +135,15 @@ describe('swarm-runner', () => {
     expect(first).toEqual(second);
   });
 
-  it('produces stable ordering and summary shape across repeated deterministic runs', () => {
+  it('produces stable ordering and summary shape across repeated deterministic runs', async () => {
     const runner = createSwarmRunner({ rootDir: tmpRoot });
     const journal = createExecutionJournal({ rootDir: tmpRoot });
 
     const firstCreated = runner.createSwarmRun({ projectId: 'control-plane' });
     const secondCreated = runner.createSwarmRun({ projectId: 'control-plane' });
 
-    const firstFinal = runner.executeSwarmRun({ runId: firstCreated.runId });
-    const secondFinal = runner.executeSwarmRun({ runId: secondCreated.runId });
+    const firstFinal = await runner.executeSwarmRun({ runId: firstCreated.runId });
+    const secondFinal = await runner.executeSwarmRun({ runId: secondCreated.runId });
 
     const firstEvents = journal.inspectRun(firstCreated.runId).events;
     const secondEvents = journal.inspectRun(secondCreated.runId).events;

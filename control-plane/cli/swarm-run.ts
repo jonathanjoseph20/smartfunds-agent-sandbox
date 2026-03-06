@@ -36,7 +36,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     const args = parseArgs(argv);
     const runner = createSwarmRunner();
-    const summary = runner.executeSwarmRun({ runId: args.runId });
+    const summary = await runner.executeSwarmRun({ runId: args.runId });
     printJson(summary);
     return 0;
   } catch (error) {

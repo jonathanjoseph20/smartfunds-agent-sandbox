@@ -1,4 +1,5 @@
 import type { ExecutionPhase, ExecutionRun, ExecutionEvent } from '../journal/types.ts';
+import type { TaskType } from '../tasks/task-types.ts';
 
 export const SWARM_PHASES = [
   'plan',
@@ -23,8 +24,11 @@ export type SwarmTaskDefinition = {
   taskId: string;
   phase: SwarmPhase;
   description: string;
-  executor: SwarmTaskExecutor;
   order: number;
+  type: TaskType;
+  inputs: Record<string, unknown>;
+  executionContext?: Record<string, unknown>;
+  executor?: SwarmTaskExecutor;
 };
 
 export type SwarmEntrypoint = {

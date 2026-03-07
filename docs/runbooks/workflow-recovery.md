@@ -14,6 +14,8 @@
 2. Confirm output includes:
    - `resumedNodeIds`
    - `skippedCompletedNodeIds`
+3. Resume now re-enters hardened runtime execution (`runWorkflowWithHardening`) using journal-reconstructed state.
+4. Completed nodes are not re-executed; only failed/remaining nodes continue in deterministic order.
 
 ## Cancel Workflow
 1. `npm run workflow:cancel -- --run <runId>`
@@ -29,3 +31,8 @@
    - `NODE_RETRY_STARTED`
    - `NODE_TIMEOUT` / `ADAPTER_TIMEOUT`
    - `WORKFLOW_CANCELLED`
+
+## Operational Checks During Recovery
+1. Confirm `WORKFLOW_RECOVERY_STARTED` and `WORKFLOW_RECOVERY_RESUMED` are appended before resumed node execution.
+2. Verify resumed trace does not include `NODE_STARTED` for already completed nodes.
+3. Verify retry/timeout/safety events are present if enforcement is triggered after resume.

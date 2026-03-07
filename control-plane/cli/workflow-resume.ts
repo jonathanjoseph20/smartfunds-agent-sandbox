@@ -2,8 +2,13 @@ import { canonicalStringify } from '../finance/determinism.ts';
 import { createExecutionJournal } from '../journal/journal.ts';
 import { buildWorkflowRunRecord } from '../observability/run-record.ts';
 import { loadWorkflowDefinitionById } from '../workflows/workflow-loader.ts';
+import { createSwarmRunner } from '../swarm/swarm-runner.ts';
+import { createSwarmWorkflowExecutor } from '../workflows/workflow-runner.ts';
 import {
-  reconstructWorkflowStateFromJournal,
+  deriveResumeStateFromJournal,
+  executeWorkflowRunWithHardening
+} from '../runtime/hardened-workflow-runtime.ts';
+import {
   resumeWorkflowRun
 } from '../runtime/recovery-engine.ts';
 
@@ -57,7 +62,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     const runRecord = buildWorkflowRunRecord(inspected);
     const workflow = loadWorkflowDefinitionById(runRecord.workflowId);
 
-    const state = reconstructWorkflowStateFromJournal({
+    const derived = deriveResumeStateFromJournal({
       runId: runRecord.runId,
       workflowId: runRecord.workflowId,
       events: inspected.events
@@ -65,7 +70,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
     const decision = resumeWorkflowRun({
       workflow,
-      state
+      state: derived.state
     });
 
     if (!decision.accepted) {
@@ -92,6 +97,24 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         workflowId: runRecord.workflowId,
         runId: runRecord.runId,
         resumeNodeIds: decision.plan.resumeNodeIds
+      }
+    });
+
+    const missionId = runRecord.missionId ?? `recovery:${runRecord.runId}`;
+    const swarmRunner = createSwarmRunner({ journal });
+    const executor = createSwarmWorkflowExecutor({
+      swarmRunner,
+      projectId: inspected.run.projectId
+    });
+
+    await executeWorkflowRunWithHardening({
+      journal,
+      runId: runRecord.runId,
+      missionId,
+      workflow,
+      executor,
+      hardening: {
+        initialState: derived.initialState
       }
     });
 

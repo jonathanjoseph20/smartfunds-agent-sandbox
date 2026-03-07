@@ -28,6 +28,7 @@ export type SwarmTaskDefinition = {
   order: number;
   type: TaskType;
   inputs: Record<string, unknown>;
+  agent?: string;
   executionContext?: ExecutionContext;
   executor?: SwarmTaskExecutor;
 };

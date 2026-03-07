@@ -141,4 +141,86 @@ describe('task-executor', () => {
 
     expect(first.map(eventKey)).toEqual(second.map(eventKey));
   });
+
+  it('injects deterministic agent context for agent-bound tasks', async () => {
+    const events: TaskExecutionEvent[] = [];
+
+    const result = await executePhaseTasks({
+      runId: 'run_control-plane_0001',
+      phase: 'implement',
+      tasks: [{
+        taskId: 'agent-llm-task',
+        phase: 'implement',
+        description: 'Agent bound llm task',
+        order: 1,
+        type: 'llm',
+        agent: 'macro-signal-analyst',
+        inputs: {
+          prompt: 'deterministic prompt'
+        }
+      }],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
+      emitEvent: (event) => {
+        events.push(event);
+      }
+    });
+
+    expect(result.status).toBe('completed');
+    expect(events.map(eventKey)).toEqual([
+      'TASK_STARTED:agent-llm-task',
+      'TASK_COMPLETED:agent-llm-task'
+    ]);
+    expect(events[0].payload).toMatchObject({
+      adapterId: 'llm',
+      agentId: 'macro-signal-analyst',
+      context_snapshot: {
+        activeAgent: 'macro-signal-analyst',
+        agentEnvelope: {
+          agentId: 'macro-signal-analyst'
+        },
+        agentRoster: [{ agentId: 'macro-signal-analyst' }]
+      }
+    });
+  });
+
+  it('fails deterministically when task agent attempts forbidden adapter', async () => {
+    const events: TaskExecutionEvent[] = [];
+
+    const result = await executePhaseTasks({
+      runId: 'run_control-plane_0001',
+      phase: 'implement',
+      tasks: [{
+        taskId: 'agent-shell-task',
+        phase: 'implement',
+        description: 'Agent bound shell task',
+        order: 1,
+        type: 'shell',
+        agent: 'lead-thesis-architect',
+        inputs: {
+          command: 'printf',
+          args: ['blocked']
+        }
+      }],
+      executionContext: createEmptyExecutionContext('run_control-plane_0001'),
+      emitEvent: (event) => {
+        events.push(event);
+      }
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.failedTaskId).toBe('agent-shell-task');
+    expect(events.map(eventKey)).toEqual([
+      'TASK_STARTED:agent-shell-task',
+      'TASK_FAILED:agent-shell-task'
+    ]);
+    expect(events[1].payload).toMatchObject({
+      adapterId: 'shell',
+      agentId: 'lead-thesis-architect',
+      result: {
+        status: 'failed',
+        errorCode: 'ERR_AGENT_TOOL_FORBIDDEN',
+        errorMessage: 'Agent lead-thesis-architect cannot use adapter shell. Allowed adapters: llm, repo'
+      }
+    });
+  });
 });

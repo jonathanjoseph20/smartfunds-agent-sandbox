@@ -1,14 +1,19 @@
 import { canonicalStringify } from '../finance/determinism.ts';
 import type { ExecutionContext } from './context-types.ts';
+import type { AgentExecutionEnvelope } from '../agents/runtime/agent-envelope.ts';
 
 type CreateExecutionContextInput = {
   runId: string;
   missionId?: string;
+  teamId?: string;
   phase: string;
   taskId: string;
   memory?: Record<string, unknown>;
   artifacts?: string[];
   metadata?: Record<string, unknown>;
+  activeAgent?: string;
+  agentEnvelope?: AgentExecutionEnvelope;
+  agentRoster?: AgentExecutionEnvelope[];
 };
 
 function sortRecord<T>(record: Record<string, T>): Record<string, T> {
@@ -46,15 +51,27 @@ function canonicalizeArtifacts(artifacts: string[]): string[] {
   return [...artifacts].sort((left, right) => left.localeCompare(right));
 }
 
+function canonicalizeAgentRoster(roster?: AgentExecutionEnvelope[]): AgentExecutionEnvelope[] | undefined {
+  if (!roster) {
+    return undefined;
+  }
+
+  return [...stableCloneValue(roster)].sort((left, right) => left.agentId.localeCompare(right.agentId));
+}
+
 export function createExecutionContext(input: CreateExecutionContextInput): ExecutionContext {
   return {
     runId: input.runId,
     ...(input.missionId ? { missionId: input.missionId } : {}),
+    ...(input.teamId ? { teamId: input.teamId } : {}),
     phase: input.phase,
     taskId: input.taskId,
     memory: sortRecord(stableCloneValue(input.memory ?? {})),
     artifacts: canonicalizeArtifacts(input.artifacts ?? []),
-    metadata: sortRecord(stableCloneValue(input.metadata ?? {}))
+    metadata: sortRecord(stableCloneValue(input.metadata ?? {})),
+    ...(input.activeAgent ? { activeAgent: input.activeAgent } : {}),
+    ...(input.agentEnvelope ? { agentEnvelope: stableCloneValue(input.agentEnvelope) } : {}),
+    ...(input.agentRoster ? { agentRoster: canonicalizeAgentRoster(input.agentRoster) } : {})
   };
 }
 
@@ -73,11 +90,15 @@ export function cloneExecutionContext(context: ExecutionContext): ExecutionConte
   return createExecutionContext({
     runId: context.runId,
     ...(context.missionId ? { missionId: context.missionId } : {}),
+    ...(context.teamId ? { teamId: context.teamId } : {}),
     phase: context.phase,
     taskId: context.taskId,
     memory: context.memory,
     artifacts: context.artifacts,
-    metadata: context.metadata
+    metadata: context.metadata,
+    ...(context.activeAgent ? { activeAgent: context.activeAgent } : {}),
+    ...(context.agentEnvelope ? { agentEnvelope: context.agentEnvelope } : {}),
+    ...(context.agentRoster ? { agentRoster: context.agentRoster } : {})
   });
 }
 
@@ -88,11 +109,15 @@ export function withExecutionIdentity(
   return createExecutionContext({
     runId: context.runId,
     ...(context.missionId ? { missionId: context.missionId } : {}),
+    ...(context.teamId ? { teamId: context.teamId } : {}),
     phase: identity.phase,
     taskId: identity.taskId,
     memory: context.memory,
     artifacts: context.artifacts,
-    metadata: context.metadata
+    metadata: context.metadata,
+    ...(context.activeAgent ? { activeAgent: context.activeAgent } : {}),
+    ...(context.agentEnvelope ? { agentEnvelope: context.agentEnvelope } : {}),
+    ...(context.agentRoster ? { agentRoster: context.agentRoster } : {})
   });
 }
 

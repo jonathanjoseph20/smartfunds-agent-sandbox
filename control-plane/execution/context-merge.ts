@@ -18,11 +18,15 @@ export function mergeContextUpdates(context: ExecutionContext, updates?: Context
     return createExecutionContext({
       runId: context.runId,
       ...(context.missionId ? { missionId: context.missionId } : {}),
+      ...(context.teamId ? { teamId: context.teamId } : {}),
       phase: context.phase,
       taskId: context.taskId,
       memory: context.memory,
       artifacts: context.artifacts,
-      metadata: context.metadata
+      metadata: context.metadata,
+      ...(context.activeAgent ? { activeAgent: context.activeAgent } : {}),
+      ...(context.agentEnvelope ? { agentEnvelope: context.agentEnvelope } : {}),
+      ...(context.agentRoster ? { agentRoster: context.agentRoster } : {})
     });
   }
 
@@ -38,11 +42,15 @@ export function mergeContextUpdates(context: ExecutionContext, updates?: Context
   return createExecutionContext({
     runId: context.runId,
     ...(context.missionId ? { missionId: context.missionId } : {}),
+    ...(context.teamId ? { teamId: context.teamId } : {}),
     phase: context.phase,
     taskId: context.taskId,
     memory: mergedMemory,
     artifacts: context.artifacts,
-    metadata: context.metadata
+    metadata: context.metadata,
+    ...(context.activeAgent ? { activeAgent: context.activeAgent } : {}),
+    ...(context.agentEnvelope ? { agentEnvelope: context.agentEnvelope } : {}),
+    ...(context.agentRoster ? { agentRoster: context.agentRoster } : {})
   });
 }
 
@@ -56,10 +64,14 @@ export function applyTaskResultToContext(context: ExecutionContext, taskResult: 
   return createExecutionContext({
     runId: mergedContext.runId,
     ...(mergedContext.missionId ? { missionId: mergedContext.missionId } : {}),
+    ...(mergedContext.teamId ? { teamId: mergedContext.teamId } : {}),
     phase: mergedContext.phase,
     taskId: mergedContext.taskId,
     memory: mergedContext.memory,
     artifacts: sortedUnique([...mergedContext.artifacts, ...artifactPaths]),
-    metadata: mergedContext.metadata
+    metadata: mergedContext.metadata,
+    ...(mergedContext.activeAgent ? { activeAgent: mergedContext.activeAgent } : {}),
+    ...(mergedContext.agentEnvelope ? { agentEnvelope: mergedContext.agentEnvelope } : {}),
+    ...(mergedContext.agentRoster ? { agentRoster: mergedContext.agentRoster } : {})
   });
 }

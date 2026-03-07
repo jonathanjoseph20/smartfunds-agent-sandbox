@@ -3,6 +3,17 @@
 ## Why Sprint 70 Exists
 Sprint 70 hardens workflow runtime behavior so node/workflow execution can fail, retry, timeout, recover, and cancel in deterministic and replayable ways.
 
+## Sprint 71 Canonical Integration
+Sprint 71 makes hardened execution the default workflow path.
+
+Canonical path:
+- Swarm Runtime / Workflow CLI
+- `runWorkflowWithHardening(...)`
+- Retry Scheduler
+- Timeout Policy
+- Safety Limits
+- Journal + Observability Projections
+
 ## Architectural Placement
 Governance -> Project Registry -> Mission Contracts -> Team Definitions -> Agent Profiles -> Agent Runtime -> Workflow DAG Engine -> Runtime Hardening -> Observability -> Swarm Runtime -> Execution Memory Bus -> Task Adapters.
 
@@ -57,6 +68,8 @@ Runtime hardening extends the existing append-only journal event stream with:
 
 No event mutation/rewrite is introduced.
 
+Execution and enforcement are now emitted through the same journal path used by existing projections (`run-record`, `node-record`, `trace-builder`). No side-channel event stream exists.
+
 ## Observability Integration
 Run/node summaries and traces now project:
 - timeout node counts
@@ -65,8 +78,16 @@ Run/node summaries and traces now project:
 - timeout/retry events in chronological trace order
 - safety violation indicators
 
+Retry/timeout/safety enforcement events are visible in:
+- run summaries
+- node inspection
+- execution traces
+- failure diagnostics
+
 ## Determinism Guarantees
 - Stable sorting for all queue/event/ID selection operations.
 - Sequence/tick-driven decisions.
 - Canonical JSON output for CLI contracts.
 - Recovery derived only from journal history.
+- No random backoff and no timestamp-based retry scheduling.
+- Resume skips completed nodes by journal reconstruction and re-enters hardened execution.

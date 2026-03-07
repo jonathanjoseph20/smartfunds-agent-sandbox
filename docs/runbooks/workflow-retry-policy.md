@@ -15,9 +15,12 @@
 
 The scheduler is tick-based and deterministic.
 
+Retries are enforced in live execution through the hardened canonical workflow runner path.
+
 ## Exhaustion Behavior
 - Per-node retries stop after `maxRetriesPerNode`.
 - Runtime emits `NODE_RETRY_EXHAUSTED` when no retries remain.
+- Exhausted retries transition deterministically to terminal workflow failure.
 
 ## Total Retry Guardrail
 - Workflow-wide retries are constrained by `maxTotalRetriesPerWorkflow`.
@@ -26,3 +29,4 @@ The scheduler is tick-based and deterministic.
 ## Timeout Interaction
 - Timeouts map to retryable failure classes (`NODE_TIMEOUT`, `ADAPTER_TIMEOUT`, `WORKFLOW_TIMEOUT`) and are evaluated by policy.
 - Timeout and retry are both journaled for replay and diagnostics.
+- Timeout-triggered retries follow the same deterministic scheduler and projection path (`NODE_TIMEOUT`/`ADAPTER_TIMEOUT` -> `NODE_RETRY_SCHEDULED` -> `NODE_RETRY_STARTED`).

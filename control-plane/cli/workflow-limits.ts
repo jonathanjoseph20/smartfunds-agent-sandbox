@@ -1,5 +1,7 @@
 import { canonicalStringify } from '../finance/determinism.ts';
+import { DEFAULT_RETRY_POLICY } from '../runtime/retry-policy.ts';
 import { DEFAULT_RUNTIME_SAFETY_LIMITS } from '../runtime/safety-limits.ts';
+import { DEFAULT_TIMEOUT_POLICY } from '../runtime/timeout-policy.ts';
 
 function parseArgs(argv: string[]): void {
   for (const arg of argv) {
@@ -18,7 +20,15 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     parseArgs(argv);
     const limits = {
-      ...DEFAULT_RUNTIME_SAFETY_LIMITS
+      safetyLimits: {
+        ...DEFAULT_RUNTIME_SAFETY_LIMITS
+      },
+      retryPolicy: {
+        ...DEFAULT_RETRY_POLICY
+      },
+      timeoutPolicy: {
+        ...DEFAULT_TIMEOUT_POLICY
+      }
     };
 
     printJson(limits);

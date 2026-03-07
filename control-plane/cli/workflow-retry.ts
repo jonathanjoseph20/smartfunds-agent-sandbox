@@ -2,6 +2,13 @@ import { canonicalStringify } from '../finance/determinism.ts';
 import { createExecutionJournal } from '../journal/journal.ts';
 import { buildWorkflowNodeRecords } from '../observability/node-record.ts';
 import { buildWorkflowRunRecord } from '../observability/run-record.ts';
+import { createSwarmRunner } from '../swarm/swarm-runner.ts';
+import { createSwarmWorkflowExecutor } from '../workflows/workflow-runner.ts';
+import { loadWorkflowDefinitionById } from '../workflows/workflow-loader.ts';
+import {
+  deriveResumeStateFromJournal,
+  executeWorkflowRunWithHardening
+} from '../runtime/hardened-workflow-runtime.ts';
 import { deriveRetryEligibilityFromEvents } from '../runtime/recovery-engine.ts';
 
 type ParsedArgs = {
@@ -101,6 +108,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       throw new Error(`RETRY_INELIGIBLE: ${decision.reason}`);
     }
 
+    const workflow = loadWorkflowDefinitionById(runRecord.workflowId);
     journal.appendEvent({
       runId: runRecord.runId,
       type: 'NODE_RETRY_SCHEDULED',
@@ -114,19 +122,37 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       }
     });
 
-    if ((decision.tickDelay ?? 0) === 0) {
-      journal.appendEvent({
-        runId: runRecord.runId,
-        type: 'NODE_RETRY_STARTED',
-        phase: 'implement',
-        taskId: args.nodeId,
-        payload: {
-          retryAttempt: decision.retryAttempt,
-          workflowId: runRecord.workflowId,
-          runId: runRecord.runId
+    const refreshed = journal.inspectRun(runRecord.runId);
+    const derived = deriveResumeStateFromJournal({
+      runId: runRecord.runId,
+      workflowId: runRecord.workflowId,
+      events: refreshed.events
+    });
+    const scheduledTick = (derived.initialState.currentTick ?? 0) + (decision.tickDelay ?? 0);
+    const missionId = runRecord.missionId ?? `recovery:${runRecord.runId}`;
+    const swarmRunner = createSwarmRunner({ journal });
+    const executor = createSwarmWorkflowExecutor({
+      swarmRunner,
+      projectId: refreshed.run.projectId
+    });
+
+    await executeWorkflowRunWithHardening({
+      journal,
+      runId: runRecord.runId,
+      missionId,
+      workflow,
+      executor,
+      hardening: {
+        initialState: {
+          ...derived.initialState,
+          retryQueue: [{
+            nodeId: args.nodeId,
+            retryAttempt: decision.retryAttempt ?? 1,
+            scheduledTick
+          }]
         }
-      });
-    }
+      }
+    });
 
     printJson({
       runId: runRecord.runId,

@@ -237,4 +237,106 @@ describe('workflow-runner', () => {
       'NODE_RETRY_STARTED'
     ]);
   });
+
+  it('T-WR9 enforces timeout policy with deterministic elapsed resolver', async () => {
+    const workflow = loadWorkflowDefinition({
+      workflowId: 'wf-timeout',
+      nodes: [{ id: 'node-a', task: 'task-a' }]
+    });
+
+    const runtimeEvents: string[] = [];
+    await expect(runWorkflowWithHardening({
+      missionId: 'mission-timeout',
+      workflow,
+      executor: {
+        execute() {
+          throw new Error('timeout-simulated');
+        }
+      },
+      hardening: {
+        timeoutPolicy: {
+          nodeTimeoutSeconds: 1,
+          adapterTimeoutSeconds: 5,
+          workflowTimeoutSeconds: 10
+        },
+        resolveElapsedSeconds(input) {
+          if (input.kind === 'node') {
+            return 2;
+          }
+          return input.tick;
+        },
+        onRuntimeEvent(event) {
+          runtimeEvents.push(event.type);
+        }
+      }
+    })).rejects.toThrow('workflow.execution_failed: workflowId=wf-timeout workflowNodeId=node-a');
+
+    expect(runtimeEvents[0]).toBe('NODE_TIMEOUT');
+  });
+
+  it('T-WR10 emits deterministic safety limit violation and stops execution', async () => {
+    const workflow = loadWorkflowDefinition({
+      workflowId: 'wf-safety',
+      nodes: [{ id: 'node-a', task: 'task-a' }]
+    });
+    const runtimeEvents: string[] = [];
+
+    await expect(runWorkflowWithHardening({
+      missionId: 'mission-safety',
+      workflow,
+      executor: {
+        execute() {
+          return { ok: true };
+        }
+      },
+      hardening: {
+        safetyLimits: {
+          maxNodesPerWorkflow: 50,
+          maxWorkflowRuntimeSeconds: 0,
+          maxRetriesPerNode: 3,
+          maxTotalRetriesPerWorkflow: 25,
+          maxContextSize: 100000
+        },
+        onRuntimeEvent(event) {
+          runtimeEvents.push(event.type);
+        }
+      }
+    })).rejects.toThrow('workflow.safety_limit_violation: workflowId=wf-safety');
+
+    expect(runtimeEvents).toContain('SAFETY_LIMIT_VIOLATION');
+  });
+
+  it('T-WR11 resume state skips completed nodes deterministically', async () => {
+    const workflow = loadWorkflowDefinition({
+      workflowId: 'wf-resume',
+      nodes: [
+        { id: 'node1', task: 'task-1' },
+        { id: 'node2', task: 'task-2', dependsOn: ['node1'] },
+        { id: 'node3', task: 'task-3', dependsOn: ['node2'] }
+      ]
+    });
+    const seen: string[] = [];
+
+    const result = await runWorkflowWithHardening({
+      missionId: 'mission-resume',
+      workflow,
+      executor: {
+        execute(input) {
+          seen.push(input.workflowNodeId);
+          return { ok: input.workflowNodeId };
+        }
+      },
+      hardening: {
+        initialState: {
+          completedNodeIds: ['node1'],
+          outputsByNodeId: { node1: { ok: 'node1' } },
+          retriesByNodeId: {},
+          currentTick: 4
+        }
+      }
+    });
+
+    expect(seen).toEqual(['node2', 'node3']);
+    expect(result.executionOrder).toEqual(['node2', 'node3']);
+  });
 });

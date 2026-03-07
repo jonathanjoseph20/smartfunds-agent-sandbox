@@ -2,9 +2,22 @@ import { WorkflowDag } from './workflow-dag.ts';
 import type { ValidatedWorkflowDefinition, WorkflowNodeExecutionResult, WorkflowRunResult } from './workflow-types.ts';
 import type { SwarmRunner } from '../swarm/swarm-runner.ts';
 import { DEFAULT_RETRY_POLICY, evaluateRetryPolicy, type RetryFailureCode, type RetryPolicy } from '../runtime/retry-policy.ts';
-import { DEFAULT_TIMEOUT_POLICY, evaluateWorkflowTimeout, type TimeoutPolicy } from '../runtime/timeout-policy.ts';
+import {
+  DEFAULT_TIMEOUT_POLICY,
+  evaluateAdapterTimeout,
+  evaluateNodeTimeout,
+  evaluateWorkflowTimeout,
+  type TimeoutPolicy
+} from '../runtime/timeout-policy.ts';
+import {
+  DEFAULT_RUNTIME_SAFETY_LIMITS,
+  evaluateRuntimeSafetyLimits,
+  type RuntimeSafetyLimits
+} from '../runtime/safety-limits.ts';
+import { canonicalStringify } from '../finance/determinism.ts';
 import {
   collectReadyRetries,
+  sortRetryQueue,
   scheduleRetry,
   type RetryQueueItem
 } from '../runtime/retry-scheduler.ts';
@@ -23,6 +36,36 @@ export interface WorkflowTaskExecutor {
 export interface WorkflowRuntimeHardeningOptions {
   retryPolicy?: RetryPolicy;
   timeoutPolicy?: TimeoutPolicy;
+  safetyLimits?: RuntimeSafetyLimits;
+  initialState?: {
+    completedNodeIds?: string[];
+    outputsByNodeId?: Record<string, unknown>;
+    retriesByNodeId?: Record<string, number>;
+    retryQueue?: Array<{
+      nodeId: string;
+      retryAttempt: number;
+      scheduledTick: number;
+    }>;
+    currentTick?: number;
+  };
+  resolveElapsedSeconds?: (input: {
+    kind: 'workflow' | 'node' | 'adapter';
+    tick: number;
+    nodeId?: string;
+    reason?: string;
+    retryAttempt?: number;
+  }) => number;
+  onNodeEvent?: (event: {
+    type: 'TASK_STARTED' | 'TASK_COMPLETED' | 'TASK_FAILED';
+    nodeId: string;
+    task: string;
+    agentId: string | null;
+    previousOutputs: Record<string, unknown>;
+    output?: unknown;
+    reason?: string;
+    failureCode?: RetryFailureCode;
+    retryAttempt: number;
+  }) => void;
   onRuntimeEvent?: (event: {
     type:
       | 'NODE_RETRY_SCHEDULED'
@@ -30,11 +73,16 @@ export interface WorkflowRuntimeHardeningOptions {
       | 'NODE_RETRY_EXHAUSTED'
       | 'NODE_TIMEOUT'
       | 'ADAPTER_TIMEOUT'
-      | 'WORKFLOW_TIMEOUT';
+      | 'WORKFLOW_TIMEOUT'
+      | 'SAFETY_LIMIT_VIOLATION';
     nodeId?: string;
     retryAttempt?: number;
     tickDelay?: number;
     failureCode?: RetryFailureCode;
+    safetyCode?: string;
+    safetyMessage?: string;
+    safetyActual?: number;
+    safetyLimit?: number;
   }) => void;
 }
 
@@ -59,57 +107,7 @@ export async function runWorkflow(input: {
   workflow: ValidatedWorkflowDefinition;
   executor: WorkflowTaskExecutor;
 }): Promise<WorkflowRunResult> {
-  const dag = new WorkflowDag(input.workflow);
-  const completedNodeIds: string[] = [];
-  const outputsByNodeId: Record<string, unknown> = {};
-  const nodeResults: WorkflowNodeExecutionResult[] = [];
-
-  while (!dag.isComplete(completedNodeIds)) {
-    const runnableNodes = dag.getRunnableNodes(completedNodeIds);
-
-    if (runnableNodes.length === 0) {
-      throw new Error(`workflow.execution_stalled: workflowId=${input.workflow.workflowId}`);
-    }
-
-    const nextNode = runnableNodes[0];
-    const previousOutputs = buildPreviousOutputs(outputsByNodeId, nextNode.dependsOn);
-
-    try {
-      const output = await input.executor.execute({
-        missionId: input.missionId,
-        workflowId: input.workflow.workflowId,
-        workflowNodeId: nextNode.id,
-        task: nextNode.task,
-        ...(nextNode.agent ? { agent: nextNode.agent } : {}),
-        previousOutputs
-      });
-
-      outputsByNodeId[nextNode.id] = output;
-      completedNodeIds.push(nextNode.id);
-      completedNodeIds.sort((left, right) => left.localeCompare(right));
-
-      nodeResults.push({
-        workflowNodeId: nextNode.id,
-        task: nextNode.task,
-        ...(nextNode.agent ? { agentId: nextNode.agent } : {}),
-        output
-      });
-    } catch (error) {
-      const reason = error instanceof Error && error.message.trim().length > 0
-        ? error.message
-        : 'workflow_node_execution_failed';
-      throw new Error(
-        `workflow.execution_failed: workflowId=${input.workflow.workflowId} workflowNodeId=${nextNode.id} reason=${reason}`
-      );
-    }
-  }
-
-  return {
-    missionId: input.missionId,
-    workflowId: input.workflow.workflowId,
-    executionOrder: nodeResults.map((result) => result.workflowNodeId),
-    nodeResults
-  };
+  return runWorkflowWithHardening(input);
 }
 
 function classifyRetryFailureCode(reason: string): RetryFailureCode {
@@ -131,6 +129,20 @@ function classifyRetryFailureCode(reason: string): RetryFailureCode {
   return 'ADAPTER_EXECUTION_FAILED';
 }
 
+function parseElapsedSeconds(reason: string): number | null {
+  const matched = reason.match(/elapsed(?:Seconds)?=([0-9]+)/i);
+  if (!matched) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(matched[1], 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
 export async function runWorkflowWithHardening(input: {
   missionId: string;
   workflow: ValidatedWorkflowDefinition;
@@ -140,17 +152,67 @@ export async function runWorkflowWithHardening(input: {
   const hardening = input.hardening ?? {};
   const retryPolicy = hardening.retryPolicy ?? DEFAULT_RETRY_POLICY;
   const timeoutPolicy = hardening.timeoutPolicy ?? DEFAULT_TIMEOUT_POLICY;
+  const safetyLimits = hardening.safetyLimits ?? DEFAULT_RUNTIME_SAFETY_LIMITS;
+  const resolveElapsedSeconds = hardening.resolveElapsedSeconds ?? ((params: { tick: number }) => params.tick);
   const dag = new WorkflowDag(input.workflow);
-  const completedNodeIds: string[] = [];
-  const outputsByNodeId: Record<string, unknown> = {};
+  const completedNodeIds = sortedUnique(hardening.initialState?.completedNodeIds ?? []);
+  const outputsByNodeId: Record<string, unknown> = { ...(hardening.initialState?.outputsByNodeId ?? {}) };
   const nodeResults: WorkflowNodeExecutionResult[] = [];
-  const retriesByNodeId: Record<string, number> = {};
-  let retryQueue: RetryQueueItem[] = [];
-  let tick = 0;
+  const retriesByNodeId: Record<string, number> = { ...(hardening.initialState?.retriesByNodeId ?? {}) };
+  let retryQueue: RetryQueueItem[] = sortRetryQueue((hardening.initialState?.retryQueue ?? []).map((item) => ({
+    runId: 'workflow-runtime',
+    workflowId: input.workflow.workflowId,
+    nodeId: item.nodeId,
+    retryAttempt: item.retryAttempt,
+    scheduledTick: item.scheduledTick
+  })));
+  let tick = Number.isInteger(hardening.initialState?.currentTick) && (hardening.initialState?.currentTick ?? 0) >= 0
+    ? (hardening.initialState?.currentTick ?? 0)
+    : 0;
+
+  function assertSafetyLimits(currentTick: number): void {
+    const totalRetries = Object.values(retriesByNodeId).reduce((sum, count) => sum + count, 0);
+    const contextSize = canonicalStringify({
+      completedNodeIds,
+      outputsByNodeId,
+      retriesByNodeId,
+      retryQueue
+    }).length;
+
+    const violations = evaluateRuntimeSafetyLimits({
+      nodeCount: input.workflow.nodes.length,
+      runtimeSeconds: currentTick,
+      retriesByNode: retriesByNodeId,
+      totalRetries,
+      contextSize,
+      limits: safetyLimits
+    });
+
+    if (violations.length === 0) {
+      return;
+    }
+
+    const violation = violations[0];
+    hardening.onRuntimeEvent?.({
+      type: 'SAFETY_LIMIT_VIOLATION',
+      failureCode: 'ADAPTER_EXECUTION_FAILED',
+      safetyCode: violation.code,
+      safetyMessage: violation.message,
+      safetyActual: violation.actual,
+      safetyLimit: violation.limit
+    });
+    throw new Error(`workflow.safety_limit_violation: workflowId=${input.workflow.workflowId} code=${violation.code}`);
+  }
 
   while (!dag.isComplete(completedNodeIds)) {
     tick += 1;
-    const workflowTimeout = evaluateWorkflowTimeout(tick, timeoutPolicy);
+    assertSafetyLimits(tick);
+
+    const workflowElapsed = resolveElapsedSeconds({
+      kind: 'workflow',
+      tick
+    });
+    const workflowTimeout = evaluateWorkflowTimeout(workflowElapsed, timeoutPolicy);
     if (workflowTimeout.timedOut) {
       hardening.onRuntimeEvent?.({
         type: 'WORKFLOW_TIMEOUT',
@@ -189,6 +251,16 @@ export async function runWorkflowWithHardening(input: {
 
     const previousOutputs = buildPreviousOutputs(outputsByNodeId, nextNode.dependsOn);
 
+    const retryAttempt = retryNode?.retryAttempt ?? 0;
+    hardening.onNodeEvent?.({
+      type: 'TASK_STARTED',
+      nodeId: nextNode.id,
+      task: nextNode.task,
+      agentId: nextNode.agent ?? null,
+      previousOutputs,
+      retryAttempt
+    });
+
     try {
       const output = await input.executor.execute({
         missionId: input.missionId,
@@ -211,16 +283,59 @@ export async function runWorkflowWithHardening(input: {
         ...(nextNode.agent ? { agentId: nextNode.agent } : {}),
         output
       });
+      hardening.onNodeEvent?.({
+        type: 'TASK_COMPLETED',
+        nodeId: nextNode.id,
+        task: nextNode.task,
+        agentId: nextNode.agent ?? null,
+        previousOutputs,
+        output,
+        retryAttempt
+      });
     } catch (error) {
       const reason = error instanceof Error && error.message.trim().length > 0
         ? error.message
         : 'workflow_node_execution_failed';
-      const failureCode = classifyRetryFailureCode(reason);
+      const inferred = classifyRetryFailureCode(reason);
+      const parsedElapsed = parseElapsedSeconds(reason);
+      const nextRetryAttempt = (retriesByNodeId[nextNode.id] ?? 0) + 1;
+      const nodeElapsed = resolveElapsedSeconds({
+        kind: 'node',
+        tick,
+        nodeId: nextNode.id,
+        reason,
+        retryAttempt: nextRetryAttempt
+      });
+      const adapterElapsed = resolveElapsedSeconds({
+        kind: 'adapter',
+        tick,
+        nodeId: nextNode.id,
+        reason,
+        retryAttempt: nextRetryAttempt
+      });
+      const nodeTimeout = evaluateNodeTimeout(parsedElapsed ?? nodeElapsed, timeoutPolicy);
+      const adapterTimeout = evaluateAdapterTimeout(parsedElapsed ?? adapterElapsed, timeoutPolicy);
+
+      const failureCode: RetryFailureCode = inferred === 'NODE_TIMEOUT' || nodeTimeout.timedOut
+        ? 'NODE_TIMEOUT'
+        : inferred === 'ADAPTER_TIMEOUT' || adapterTimeout.timedOut
+          ? 'ADAPTER_TIMEOUT'
+          : inferred;
       if (failureCode === 'NODE_TIMEOUT') {
         hardening.onRuntimeEvent?.({ type: 'NODE_TIMEOUT', nodeId: nextNode.id, failureCode });
       } else if (failureCode === 'ADAPTER_TIMEOUT') {
         hardening.onRuntimeEvent?.({ type: 'ADAPTER_TIMEOUT', nodeId: nextNode.id, failureCode });
       }
+      hardening.onNodeEvent?.({
+        type: 'TASK_FAILED',
+        nodeId: nextNode.id,
+        task: nextNode.task,
+        agentId: nextNode.agent ?? null,
+        previousOutputs,
+        reason,
+        failureCode,
+        retryAttempt
+      });
 
       const previousRetryCount = retriesByNodeId[nextNode.id] ?? 0;
       const retryDecision = evaluateRetryPolicy({
@@ -247,6 +362,7 @@ export async function runWorkflowWithHardening(input: {
           tickDelay: retryDecision.tickDelay,
           failureCode
         });
+        assertSafetyLimits(tick);
         continue;
       }
 

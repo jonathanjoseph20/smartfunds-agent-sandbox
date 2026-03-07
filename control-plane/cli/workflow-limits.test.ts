@@ -11,11 +11,31 @@ describe('workflow-limits CLI', () => {
 
     expect(code).toBe(0);
     expect(stdout).toHaveBeenCalledWith(`${canonicalStringify({
-      maxContextSize: 100000,
-      maxNodesPerWorkflow: 50,
-      maxRetriesPerNode: 3,
-      maxTotalRetriesPerWorkflow: 25,
-      maxWorkflowRuntimeSeconds: 3600
+      retryPolicy: {
+        backoffStrategy: 'tick_linear',
+        immediateFirstRetry: true,
+        maxRetries: 3,
+        retryOn: [
+          'ADAPTER_EXECUTION_FAILED',
+          'TOOL_TIMEOUT',
+          'TASK_RESULT_INVALID',
+          'NODE_TIMEOUT',
+          'ADAPTER_TIMEOUT',
+          'WORKFLOW_TIMEOUT'
+        ]
+      },
+      safetyLimits: {
+        maxContextSize: 100000,
+        maxNodesPerWorkflow: 50,
+        maxRetriesPerNode: 3,
+        maxTotalRetriesPerWorkflow: 25,
+        maxWorkflowRuntimeSeconds: 3600
+      },
+      timeoutPolicy: {
+        adapterTimeoutSeconds: 300,
+        nodeTimeoutSeconds: 900,
+        workflowTimeoutSeconds: 3600
+      }
     })}\n`);
     stdout.mockRestore();
   });

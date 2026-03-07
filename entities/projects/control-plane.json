@@ -7,6 +7,7 @@
   "ownedPaths": [
     "control-plane/cli/",
     "control-plane/agents/",
+    "control-plane/cockpit/",
     "control-plane/agents/runtime/",
     "control-plane/execution/",
     "control-plane/entities/",

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "routes": {
+    "utility": {
+      "enabled": true,
+      "allowFallback": true,
+      "maxCostTier": 0
+    },
+    "default": {
+      "enabled": true,
+      "allowFallback": true,
+      "maxCostTier": 1
+    },
+    "analysis": {
+      "enabled": true,
+      "allowFallback": true,
+      "maxCostTier": 1,
+      "allowedCallerClasses": ["operator", "internal_service", "agent_runtime", "workflow_node", "operator_tool"]
+    },
+    "coding": {
+      "enabled": true,
+      "allowFallback": true,
+      "maxCostTier": 1,
+      "allowedCallerClasses": ["operator", "internal_service", "operator_tool"]
+    },
+    "review": {
+      "enabled": false,
+      "allowFallback": false,
+      "allowedCallerClasses": ["operator", "operator_tool"]
+    },
+    "fallback": {
+      "enabled": true,
+      "allowFallback": false
+    },
+    "mock": {
+      "enabled": true,
+      "allowFallback": false
+    }
+  }
+}

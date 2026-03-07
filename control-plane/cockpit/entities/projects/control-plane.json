@@ -1,0 +1,16 @@
+{
+  "projectId": "control-plane",
+  "subtrees": {
+    "control-plane/operator/": {
+      "owner": "platform-team",
+      "description": "Operator layer: command router, services, CLI, Slack adapter"
+    },
+    "control-plane/cockpit/": {
+      "owner": "platform-team",
+      "description": "Operator Web UI: read-only visualization cockpit (Sprint 73)",
+      "sprintAdded": 73,
+      "readOnly": true,
+      "notes": "Visualization-first. CLI remains canonical. No runtime mutation from UI."
+    }
+  }
+}

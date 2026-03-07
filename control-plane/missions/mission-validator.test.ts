@@ -36,4 +36,24 @@ describe('mission-validator', () => {
       /workflowId must be a non-empty string/
     );
   });
+
+  it('T-M10 validates optional parameter schema with deterministic ordering', () => {
+    const mission = validateMissionDefinition(validMission({
+      parameterSchema: {
+        allowed: ['risk-level', 'market'],
+        required: ['market'],
+        defaults: {
+          'risk-level': 'medium'
+        }
+      }
+    }));
+
+    expect(mission.parameterSchema).toEqual({
+      allowed: ['market', 'risk-level'],
+      required: ['market'],
+      defaults: {
+        'risk-level': 'medium'
+      }
+    });
+  });
 });

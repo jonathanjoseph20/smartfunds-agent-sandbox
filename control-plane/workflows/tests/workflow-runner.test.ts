@@ -86,6 +86,35 @@ describe('workflow-runner', () => {
     });
   });
 
+  it('T-WR3A propagates mission context memory to executor calls', async () => {
+    const workflow = loadWorkflowDefinition({
+      workflowId: 'wf-mission-context',
+      nodes: [
+        { id: 'a', task: 'task-a' }
+      ]
+    });
+
+    const execute = vi.fn(() => ({ ok: true }));
+    await runWorkflow({
+      missionId: 'mission-ctx',
+      workflow,
+      missionContextMemory: {
+        missionParameters: {
+          market: 'ethereum'
+        }
+      },
+      executor: { execute }
+    });
+
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      missionContextMemory: {
+        missionParameters: {
+          market: 'ethereum'
+        }
+      }
+    }));
+  });
+
   it('T-WR4 supports fan-in dependencies with both upstream outputs', async () => {
     const workflow = loadWorkflowDefinition({
       workflowId: 'wf-fanin',

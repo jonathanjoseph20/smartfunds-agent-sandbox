@@ -1,0 +1,36 @@
+{
+  "workflowId": "research-analysis-workflow",
+  "nodes": [
+    {
+      "id": "market-research",
+      "agent": "macro-signal-analyst",
+      "task": "research",
+      "phase": "research"
+    },
+    {
+      "id": "regulatory-scan",
+      "agent": "compliance-risk-reviewer",
+      "task": "regulatory-scan",
+      "phase": "analysis"
+    },
+    {
+      "id": "thesis-synthesis",
+      "agent": "lead-thesis-architect",
+      "task": "synthesis",
+      "phase": "synthesis",
+      "dependsOn": [
+        "market-research",
+        "regulatory-scan"
+      ]
+    },
+    {
+      "id": "final-review",
+      "agent": "compliance-risk-reviewer",
+      "task": "review",
+      "phase": "review",
+      "dependsOn": [
+        "thesis-synthesis"
+      ]
+    }
+  ]
+}

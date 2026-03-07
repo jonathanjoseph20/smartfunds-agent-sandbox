@@ -29,6 +29,7 @@
     "runtime/",
     "scripts/ci/",
     "scripts/governance/",
+    "control-plane/operator/",
     "control-plane/observability/",
     "control-plane/runtime/"
   ],

@@ -12,6 +12,7 @@
     "control-plane/entities/",
     "control-plane/governance/",
     "control-plane/missions/",
+    "control-plane/workflows/",
     "control-plane/projects/",
     "control-plane/teams/",
     "control-plane/tasks/",

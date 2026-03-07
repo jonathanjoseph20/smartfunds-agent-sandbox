@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadWorkflowDefinition } from '../workflow-loader.ts';
-import { runWorkflow, type WorkflowTaskExecutor } from '../workflow-runner.ts';
+import { runWorkflow, runWorkflowWithHardening, type WorkflowTaskExecutor } from '../workflow-runner.ts';
 
 describe('workflow-runner', () => {
   it('T-WR1 executes nodes in deterministic order', async () => {
@@ -192,5 +192,49 @@ describe('workflow-runner', () => {
 
     expect(result.executionOrder).toEqual(['one', 'two', 'three']);
     expect(result.nodeResults.map((entry) => entry.workflowNodeId)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('T-WR8 retries failed node deterministically in hardened path', async () => {
+    const workflow = loadWorkflowDefinition({
+      workflowId: 'wf-hardening',
+      nodes: [
+        { id: 'node1', task: 'task-1' },
+        { id: 'node2', task: 'task-2', dependsOn: ['node1'] }
+      ]
+    });
+
+    const calls = new Map<string, number>();
+    const runtimeEvents: string[] = [];
+    const executor: WorkflowTaskExecutor = {
+      execute(input) {
+        const count = (calls.get(input.workflowNodeId) ?? 0) + 1;
+        calls.set(input.workflowNodeId, count);
+
+        if (input.workflowNodeId === 'node2' && count === 1) {
+          throw new Error('ADAPTER_TIMEOUT');
+        }
+
+        return { ok: input.workflowNodeId };
+      }
+    };
+
+    const result = await runWorkflowWithHardening({
+      missionId: 'mission-hardening',
+      workflow,
+      executor,
+      hardening: {
+        onRuntimeEvent(event) {
+          runtimeEvents.push(event.type);
+        }
+      }
+    });
+
+    expect(result.executionOrder).toEqual(['node1', 'node2']);
+    expect(calls.get('node2')).toBe(2);
+    expect(runtimeEvents).toEqual([
+      'ADAPTER_TIMEOUT',
+      'NODE_RETRY_SCHEDULED',
+      'NODE_RETRY_STARTED'
+    ]);
   });
 });

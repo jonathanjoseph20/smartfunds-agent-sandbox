@@ -41,6 +41,7 @@ export type WorkflowRunDiagnostic = {
   status: string;
   completedNodeIds: string[];
   failedNodeIds: string[];
+  timedOutNodeIds: string[];
   activeNodeId: string | null;
   outputsByNode: Record<string, Record<string, JsonValue>>;
   finalContextKeys: string[];
@@ -48,6 +49,10 @@ export type WorkflowRunDiagnostic = {
   lastSuccessfulNodeId: string | null;
   replayable: boolean;
   hasFailure: boolean;
+  recoverable: boolean;
+  resumed: boolean;
+  cancelled: boolean;
+  safetyViolationNodeIds: string[];
   firstInspectTarget: FirstInspectTarget;
 };
 
@@ -178,7 +183,7 @@ export function firstInspectTarget(input: {
   activeNodeId: string | null;
 }): FirstInspectTarget {
   const firstFailed = input.nodes
-    .filter((node) => node.status === 'failed')
+    .filter((node) => node.status === 'failed' || node.status === 'timeout')
     .sort((left, right) => {
       const seqCmp = left.sequenceStarted - right.sequenceStarted;
       if (seqCmp !== 0) {
@@ -231,7 +236,11 @@ export function getRunDiagnosticReport(input: {
     .map((node) => node.nodeId)
     .sort((left, right) => left.localeCompare(right));
   const failedNodes = nodes
-    .filter((node) => node.status === 'failed')
+    .filter((node) => node.status === 'failed' || node.status === 'timeout')
+    .map((node) => node.nodeId)
+    .sort((left, right) => left.localeCompare(right));
+  const timedOutNodes = nodes
+    .filter((node) => node.status === 'timeout')
     .map((node) => node.nodeId)
     .sort((left, right) => left.localeCompare(right));
 
@@ -251,12 +260,18 @@ export function getRunDiagnosticReport(input: {
     })
     .at(-1);
 
+  const safetyViolationNodeIds = nodes
+    .filter((node) => node.failure?.code === 'SAFETY_LIMIT_VIOLATION')
+    .map((node) => node.nodeId)
+    .sort((left, right) => left.localeCompare(right));
+
   return {
     runId: input.run.runId,
     workflowId: input.run.workflowId,
     status: input.run.status,
     completedNodeIds: completedNodes,
     failedNodeIds: failedNodes,
+    timedOutNodeIds: timedOutNodes,
     activeNodeId: input.run.activeNodeId,
     outputsByNode: Object.fromEntries(nodes.map((node) => [node.nodeId, node.taskOutputs])),
     finalContextKeys: Object.keys(memory).sort((left, right) => left.localeCompare(right)),
@@ -264,6 +279,10 @@ export function getRunDiagnosticReport(input: {
     lastSuccessfulNodeId: lastSuccessfulNode?.nodeId ?? null,
     replayable: input.run.summary.replayable,
     hasFailure: input.run.summary.hasFailure,
+    recoverable: input.run.summary.recoverable,
+    resumed: input.run.summary.resumed,
+    cancelled: input.run.summary.cancelled,
+    safetyViolationNodeIds,
     firstInspectTarget: firstInspectTarget({
       runId: input.run.runId,
       status: input.run.status,

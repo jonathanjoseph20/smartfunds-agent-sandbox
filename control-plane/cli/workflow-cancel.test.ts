@@ -1,0 +1,61 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { canonicalStringify } from '../finance/determinism.ts';
+import { main } from './workflow-cancel.ts';
+
+const mocks = vi.hoisted(() => ({
+  inspectRun: vi.fn(),
+  appendEvent: vi.fn(),
+  buildWorkflowRunRecord: vi.fn(),
+  reconstructWorkflowStateFromJournal: vi.fn(),
+  cancelWorkflowRun: vi.fn()
+}));
+
+vi.mock('../journal/journal.ts', () => ({
+  createExecutionJournal: vi.fn(() => ({
+    inspectRun: mocks.inspectRun,
+    appendEvent: mocks.appendEvent
+  }))
+}));
+
+vi.mock('../observability/run-record.ts', () => ({ buildWorkflowRunRecord: mocks.buildWorkflowRunRecord }));
+vi.mock('../runtime/recovery-engine.ts', () => ({
+  reconstructWorkflowStateFromJournal: mocks.reconstructWorkflowStateFromJournal,
+  cancelWorkflowRun: mocks.cancelWorkflowRun
+}));
+
+describe('workflow-cancel CLI', () => {
+  it('cancels run and appends event', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    mocks.inspectRun.mockReturnValueOnce({ run: { runId: 'run_1' }, events: [] });
+    mocks.buildWorkflowRunRecord.mockReturnValueOnce({ runId: 'run_1', workflowId: 'wf-1' });
+    mocks.reconstructWorkflowStateFromJournal.mockReturnValueOnce({ workflowState: 'running' });
+    mocks.cancelWorkflowRun.mockReturnValueOnce({ accepted: true, reason: 'CANCELLED' });
+
+    const code = await main(['--run=run_1']);
+
+    expect(code).toBe(0);
+    expect(mocks.appendEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'WORKFLOW_CANCELLED',
+      runId: 'run_1'
+    }));
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify({ runId: 'run_1', workflowId: 'wf-1', status: 'cancelled' })}\n`);
+    stdout.mockRestore();
+  });
+
+  it('returns error for terminal run', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    mocks.inspectRun.mockReturnValueOnce({ run: { runId: 'run_1' }, events: [] });
+    mocks.buildWorkflowRunRecord.mockReturnValueOnce({ runId: 'run_1', workflowId: 'wf-1' });
+    mocks.reconstructWorkflowStateFromJournal.mockReturnValueOnce({ workflowState: 'completed' });
+    mocks.cancelWorkflowRun.mockReturnValueOnce({ accepted: false, reason: 'ALREADY_TERMINAL' });
+
+    const code = await main(['--run=run_1']);
+
+    expect(code).toBe(1);
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify({ error: 'WORKFLOW_ALREADY_TERMINAL' })}\n`);
+    stdout.mockRestore();
+  });
+});

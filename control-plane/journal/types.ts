@@ -5,6 +5,16 @@ export const EVENT_TYPES = [
   'TASK_STARTED',
   'TASK_COMPLETED',
   'TASK_FAILED',
+  'NODE_RETRY_SCHEDULED',
+  'NODE_RETRY_STARTED',
+  'NODE_RETRY_EXHAUSTED',
+  'NODE_TIMEOUT',
+  'ADAPTER_TIMEOUT',
+  'WORKFLOW_TIMEOUT',
+  'WORKFLOW_RECOVERY_STARTED',
+  'WORKFLOW_RECOVERY_RESUMED',
+  'WORKFLOW_CANCELLED',
+  'SAFETY_LIMIT_VIOLATION',
   'ARTIFACT_RECORDED',
   'RUN_COMPLETED',
   'RUN_FAILED'
@@ -26,7 +36,7 @@ export type ExecutionPhase = (typeof EXECUTION_PHASES)[number];
 export const RUN_KINDS = ['swarm', 'mission', 'maintenance', 'governance'] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
-export const RUN_STATUSES = ['pending', 'running', 'completed', 'failed', 'cancelled'] as const;
+export const RUN_STATUSES = ['pending', 'running', 'completed', 'failed', 'cancelled', 'timeout'] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export type ExecutionRun = {

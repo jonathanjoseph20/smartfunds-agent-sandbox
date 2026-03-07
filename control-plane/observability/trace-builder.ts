@@ -9,6 +9,16 @@ export type WorkflowTraceType =
   | 'NODE_STARTED'
   | 'NODE_COMPLETED'
   | 'NODE_FAILED'
+  | 'NODE_RETRY_SCHEDULED'
+  | 'NODE_RETRY_STARTED'
+  | 'NODE_RETRY_EXHAUSTED'
+  | 'NODE_TIMEOUT'
+  | 'ADAPTER_TIMEOUT'
+  | 'WORKFLOW_RECOVERY_STARTED'
+  | 'WORKFLOW_RECOVERY_RESUMED'
+  | 'WORKFLOW_CANCELLED'
+  | 'WORKFLOW_TIMEOUT'
+  | 'SAFETY_LIMIT_VIOLATION'
   | 'RUN_COMPLETED'
   | 'RUN_FAILED';
 
@@ -169,6 +179,85 @@ export function buildWorkflowTrace(input: {
         agentId: sanitizeNullableString(payload.agentId),
         adapterId: sanitizeNullableString(payload.adapterId),
         status: 'failed',
+        details: toPlainObject(payload)
+      }));
+      continue;
+    }
+
+    if (event.type === 'NODE_RETRY_SCHEDULED') {
+      entries.push(toEntry({
+        sequence: event.sequence,
+        type: 'NODE_RETRY_SCHEDULED',
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeId: sanitizeNullableString(event.taskId),
+        agentId: sanitizeNullableString(payload.agentId),
+        adapterId: sanitizeNullableString(payload.adapterId),
+        status: 'retrying',
+        details: toPlainObject(payload)
+      }));
+      continue;
+    }
+
+    if (event.type === 'NODE_RETRY_STARTED') {
+      entries.push(toEntry({
+        sequence: event.sequence,
+        type: 'NODE_RETRY_STARTED',
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeId: sanitizeNullableString(event.taskId),
+        agentId: sanitizeNullableString(payload.agentId),
+        adapterId: sanitizeNullableString(payload.adapterId),
+        status: 'running',
+        details: toPlainObject(payload)
+      }));
+      continue;
+    }
+
+    if (event.type === 'NODE_RETRY_EXHAUSTED') {
+      entries.push(toEntry({
+        sequence: event.sequence,
+        type: 'NODE_RETRY_EXHAUSTED',
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeId: sanitizeNullableString(event.taskId),
+        agentId: sanitizeNullableString(payload.agentId),
+        adapterId: sanitizeNullableString(payload.adapterId),
+        status: 'failed',
+        details: toPlainObject(payload)
+      }));
+      continue;
+    }
+
+    if (event.type === 'NODE_TIMEOUT' || event.type === 'ADAPTER_TIMEOUT') {
+      entries.push(toEntry({
+        sequence: event.sequence,
+        type: event.type,
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeId: sanitizeNullableString(event.taskId),
+        agentId: sanitizeNullableString(payload.agentId),
+        adapterId: sanitizeNullableString(payload.adapterId),
+        status: 'timeout',
+        details: toPlainObject(payload)
+      }));
+      continue;
+    }
+
+    if (event.type === 'WORKFLOW_RECOVERY_STARTED' || event.type === 'WORKFLOW_RECOVERY_RESUMED' || event.type === 'WORKFLOW_CANCELLED' || event.type === 'WORKFLOW_TIMEOUT' || event.type === 'SAFETY_LIMIT_VIOLATION') {
+      entries.push(toEntry({
+        sequence: event.sequence,
+        type: event.type,
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeId: sanitizeNullableString(event.taskId),
+        agentId: null,
+        adapterId: null,
+        status: event.type === 'WORKFLOW_CANCELLED'
+          ? 'cancelled'
+          : event.type === 'WORKFLOW_TIMEOUT'
+            ? 'timeout'
+            : 'running',
         details: toPlainObject(payload)
       }));
       continue;

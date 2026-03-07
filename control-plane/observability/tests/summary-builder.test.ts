@@ -18,7 +18,9 @@ function node(input: Partial<WorkflowNodeRecord> & { nodeId: string; status: Wor
     taskOutputs: input.taskOutputs ?? {},
     previousOutputs: input.previousOutputs ?? {},
     contextSnapshot: input.contextSnapshot ?? {},
-    failure: input.failure ?? null
+    failure: input.failure ?? null,
+    retryCount: input.retryCount ?? 0,
+    timeoutType: input.timeoutType ?? null
   };
 }
 
@@ -45,5 +47,7 @@ describe('workflow summary builder', () => {
     expect(summary.hasFailure).toBe(true);
     expect(summary.replayable).toBe(true);
     expect(summary.lastAgentUsed).toBe('lead-thesis-architect');
+    expect(summary.timeoutNodeCount).toBe(0);
+    expect(summary.totalRetriesConsumed).toBe(0);
   });
 });

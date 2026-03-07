@@ -62,4 +62,27 @@ describe('workflow trace builder', () => {
     expect(trace.at(-1)?.type).toBe('RUN_FAILED');
     expect(trace.some((entry) => entry.nodeId === 'ignored')).toBe(false);
   });
+
+  it('T-OT3 emits retry/timeout/recovery events in deterministic order', () => {
+    const trace = buildWorkflowTrace({
+      runId: 'run_smartfunds-core_0001',
+      workflowId: 'rwa-market-analysis',
+      events: [
+        event({ sequence: 1, type: 'RUN_CREATED' }),
+        event({ sequence: 2, type: 'TASK_STARTED', taskId: 'market-research' }),
+        event({ sequence: 3, type: 'NODE_TIMEOUT', taskId: 'market-research', payload: { failureCode: 'NODE_TIMEOUT' } }),
+        event({ sequence: 4, type: 'NODE_RETRY_SCHEDULED', taskId: 'market-research', payload: { retryAttempt: 1 } }),
+        event({ sequence: 5, type: 'NODE_RETRY_STARTED', taskId: 'market-research', payload: { retryAttempt: 1 } }),
+        event({ sequence: 6, type: 'TASK_COMPLETED', taskId: 'market-research' }),
+        event({ sequence: 7, type: 'WORKFLOW_RECOVERY_STARTED', payload: {} }),
+        event({ sequence: 8, type: 'WORKFLOW_RECOVERY_RESUMED', payload: {} })
+      ]
+    });
+
+    expect(trace.map((entry) => entry.type)).toContain('NODE_TIMEOUT');
+    expect(trace.map((entry) => entry.type)).toContain('NODE_RETRY_SCHEDULED');
+    expect(trace.map((entry) => entry.type)).toContain('NODE_RETRY_STARTED');
+    expect(trace.map((entry) => entry.type)).toContain('WORKFLOW_RECOVERY_STARTED');
+    expect(trace.map((entry) => entry.type)).toContain('WORKFLOW_RECOVERY_RESUMED');
+  });
 });

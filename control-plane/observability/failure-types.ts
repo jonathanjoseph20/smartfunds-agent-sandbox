@@ -5,7 +5,12 @@ export const WORKFLOW_FAILURE_CODES = [
   'AGENT_RESOLUTION_FAILED',
   'TOOL_PERMISSION_DENIED',
   'ADAPTER_EXECUTION_FAILED',
+  'TOOL_TIMEOUT',
   'TASK_RESULT_INVALID',
+  'NODE_TIMEOUT',
+  'ADAPTER_TIMEOUT',
+  'WORKFLOW_TIMEOUT',
+  'SAFETY_LIMIT_VIOLATION',
   'CONTEXT_MERGE_FAILED',
   'WORKFLOW_VALIDATION_FAILED',
   'UNKNOWN_RUNTIME_FAILURE'
@@ -36,8 +41,23 @@ function mapMessageToFailureCode(message: string): WorkflowFailureCode {
   if (message.includes('ERR_TASK_ADAPTER_EXECUTION') || message.includes('ERR_TASK_EXECUTOR_FAILED')) {
     return 'ADAPTER_EXECUTION_FAILED';
   }
+  if (message.includes('ERR_TOOL_TIMEOUT') || message.includes('TOOL_TIMEOUT')) {
+    return 'TOOL_TIMEOUT';
+  }
   if (message.includes('ERR_TASK_RESULT_INVALID')) {
     return 'TASK_RESULT_INVALID';
+  }
+  if (message.includes('NODE_TIMEOUT')) {
+    return 'NODE_TIMEOUT';
+  }
+  if (message.includes('ADAPTER_TIMEOUT')) {
+    return 'ADAPTER_TIMEOUT';
+  }
+  if (message.includes('WORKFLOW_TIMEOUT')) {
+    return 'WORKFLOW_TIMEOUT';
+  }
+  if (message.includes('SAFETY_LIMIT_VIOLATION')) {
+    return 'SAFETY_LIMIT_VIOLATION';
   }
   if (message.includes('ERR_CONTEXT_MERGE_FAILED')) {
     return 'CONTEXT_MERGE_FAILED';
@@ -63,6 +83,15 @@ function remediationHintForCode(code: WorkflowFailureCode): string | undefined {
   }
   if (code === 'TASK_RESULT_INVALID') {
     return 'Inspect adapter output contract for deterministic schema compliance.';
+  }
+  if (code === 'NODE_TIMEOUT' || code === 'ADAPTER_TIMEOUT' || code === 'TOOL_TIMEOUT') {
+    return 'Inspect timeout policy and node/adapter execution duration telemetry.';
+  }
+  if (code === 'WORKFLOW_TIMEOUT') {
+    return 'Inspect workflow timeout policy and recovery eligibility.';
+  }
+  if (code === 'SAFETY_LIMIT_VIOLATION') {
+    return 'Inspect runtime safety limits and execution context growth.';
   }
   if (code === 'CONTEXT_MERGE_FAILED') {
     return 'Inspect context updates and merge compatibility.';

@@ -1,10 +1,17 @@
 import { canonicalStringify } from '../finance/determinism.ts';
 import { createExecutionJournal } from '../journal/journal.ts';
-import { getRunDiagnosticReport } from '../observability/diagnostics.ts';
-import { buildWorkflowNodeRecords } from '../observability/node-record.ts';
 import { buildWorkflowRunRecord } from '../observability/run-record.ts';
+import { loadWorkflowDefinitionById } from '../workflows/workflow-loader.ts';
+import {
+  reconstructWorkflowStateFromJournal,
+  resumeWorkflowRun
+} from '../runtime/recovery-engine.ts';
 
-function parseArgs(argv: string[]): { runId: string } {
+type ParsedArgs = {
+  runId: string;
+};
+
+function parseArgs(argv: string[]): ParsedArgs {
   let runId: string | null = null;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -48,46 +55,51 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     const journal = createExecutionJournal();
     const inspected = journal.inspectRun(args.runId);
     const runRecord = buildWorkflowRunRecord(inspected);
-    const nodeRecords = buildWorkflowNodeRecords({
+    const workflow = loadWorkflowDefinitionById(runRecord.workflowId);
+
+    const state = reconstructWorkflowStateFromJournal({
       runId: runRecord.runId,
       workflowId: runRecord.workflowId,
       events: inspected.events
     });
-    const diagnostics = getRunDiagnosticReport({
-      run: runRecord,
-      events: inspected.events,
-      nodes: nodeRecords
+
+    const decision = resumeWorkflowRun({
+      workflow,
+      state
+    });
+
+    if (!decision.accepted) {
+      throw new Error(`WORKFLOW_NOT_RESUMABLE: ${decision.reason}`);
+    }
+
+    journal.appendEvent({
+      runId: runRecord.runId,
+      type: 'WORKFLOW_RECOVERY_STARTED',
+      phase: 'implement',
+      payload: {
+        workflowId: runRecord.workflowId,
+        runId: runRecord.runId,
+        resumeNodeIds: decision.plan.resumeNodeIds,
+        skippedCompletedNodeIds: decision.plan.skippedCompletedNodeIds
+      }
+    });
+
+    journal.appendEvent({
+      runId: runRecord.runId,
+      type: 'WORKFLOW_RECOVERY_RESUMED',
+      phase: 'implement',
+      payload: {
+        workflowId: runRecord.workflowId,
+        runId: runRecord.runId,
+        resumeNodeIds: decision.plan.resumeNodeIds
+      }
     });
 
     printJson({
-      summary: runRecord.summary,
-      workflow: {
-        workflowId: runRecord.workflowId,
-        runId: runRecord.runId,
-        missionId: runRecord.missionId,
-        teamId: runRecord.teamId,
-        projectId: runRecord.projectId,
-        status: runRecord.status
-      },
-      nodes: nodeRecords.map((node) => ({
-        nodeId: node.nodeId,
-        status: node.status,
-        sequenceStarted: node.sequenceStarted,
-        sequenceCompleted: node.sequenceCompleted,
-        agentId: node.agentId,
-        adapterId: node.adapterId,
-        retryCount: node.retryCount,
-        timeoutType: node.timeoutType
-      })),
-      activeNodeId: runRecord.activeNodeId,
-      failedNodeIds: diagnostics.failedNodeIds,
-      timedOutNodeIds: diagnostics.timedOutNodeIds,
-      recoverable: diagnostics.recoverable,
-      resumed: diagnostics.resumed,
-      cancelled: diagnostics.cancelled,
-      safetyViolationNodeIds: diagnostics.safetyViolationNodeIds,
-      finalContextKeys: diagnostics.finalContextKeys,
-      firstInspectTarget: diagnostics.firstInspectTarget
+      runId: runRecord.runId,
+      workflowId: runRecord.workflowId,
+      resumedNodeIds: decision.plan.resumeNodeIds,
+      skippedCompletedNodeIds: decision.plan.skippedCompletedNodeIds
     });
     return 0;
   } catch (error) {

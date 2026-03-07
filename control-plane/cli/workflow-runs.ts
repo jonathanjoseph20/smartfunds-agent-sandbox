@@ -65,7 +65,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       missionId: run.missionId,
       status: run.status,
       completedNodeCount: run.completedNodeCount,
-      failedNodeCount: run.failedNodeCount
+      failedNodeCount: run.failedNodeCount,
+      timeoutNodeCount: run.timeoutNodeCount,
+      retryCount: run.retryCount
     }));
 
     const list = args.limit === null ? projected : projected.slice(0, args.limit);

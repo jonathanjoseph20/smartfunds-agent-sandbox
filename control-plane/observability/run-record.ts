@@ -14,6 +14,8 @@ export type WorkflowRunRecord = {
   nodeCount: number;
   completedNodeCount: number;
   failedNodeCount: number;
+  timeoutNodeCount: number;
+  retryCount: number;
   startSequence: number;
   endSequence: number | null;
   activeNodeId: string | null;
@@ -73,6 +75,12 @@ function deriveStatus(run: ExecutionRun, events: ExecutionEvent[]): string {
   if (last.type === 'RUN_FAILED') {
     return 'failed';
   }
+  if (last.type === 'WORKFLOW_TIMEOUT') {
+    return 'timeout';
+  }
+  if (last.type === 'WORKFLOW_CANCELLED') {
+    return 'cancelled';
+  }
   if (ordered.length > 0) {
     return 'running';
   }
@@ -109,6 +117,8 @@ export function buildWorkflowRunRecord(input: {
   const activeNodeId = deriveActiveNodeId(nodes);
   const startSequence = orderedEvents.length > 0 ? orderedEvents[0].sequence : 0;
   const endSequence = status === 'completed' || status === 'failed'
+    || status === 'timeout'
+    || status === 'cancelled'
     ? (orderedEvents.length > 0 ? orderedEvents[orderedEvents.length - 1].sequence : null)
     : null;
 
@@ -138,6 +148,8 @@ export function buildWorkflowRunRecord(input: {
     nodeCount: nodes.length,
     completedNodeCount: nodes.filter((node) => node.status === 'completed').length,
     failedNodeCount: nodes.filter((node) => node.status === 'failed').length,
+    timeoutNodeCount: nodes.filter((node) => node.status === 'timeout').length,
+    retryCount: nodes.reduce((sum, node) => sum + (node.retryCount ?? 0), 0),
     startSequence,
     endSequence,
     activeNodeId,

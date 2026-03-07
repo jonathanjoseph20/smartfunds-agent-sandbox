@@ -11,7 +11,7 @@ import {
   type JsonValue
 } from './serialization.ts';
 
-export type WorkflowNodeStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type WorkflowNodeStatus = 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'timeout' | 'retrying' | 'skipped';
 
 export type WorkflowNodeRecord = {
   runId: string;
@@ -28,6 +28,8 @@ export type WorkflowNodeRecord = {
   previousOutputs: Record<string, JsonValue>;
   contextSnapshot: Record<string, JsonValue>;
   failure: WorkflowFailureRecord | null;
+  retryCount: number;
+  timeoutType: 'node' | 'adapter' | null;
 };
 
 type NodeAccumulator = {
@@ -40,6 +42,8 @@ type NodeAccumulator = {
   agentId: string | null;
   adapterId: string | null;
   failure: WorkflowFailureRecord | null;
+  retryCount: number;
+  timeoutType: 'node' | 'adapter' | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,7 +156,16 @@ export function buildWorkflowNodeRecords(input: {
   const recordsByNodeId = new Map<string, NodeAccumulator>();
 
   for (const event of orderedEvents) {
-    if (event.type !== 'TASK_STARTED' && event.type !== 'TASK_COMPLETED' && event.type !== 'TASK_FAILED') {
+    if (
+      event.type !== 'TASK_STARTED'
+      && event.type !== 'TASK_COMPLETED'
+      && event.type !== 'TASK_FAILED'
+      && event.type !== 'NODE_RETRY_SCHEDULED'
+      && event.type !== 'NODE_RETRY_STARTED'
+      && event.type !== 'NODE_RETRY_EXHAUSTED'
+      && event.type !== 'NODE_TIMEOUT'
+      && event.type !== 'ADAPTER_TIMEOUT'
+    ) {
       continue;
     }
 
@@ -171,7 +184,9 @@ export function buildWorkflowNodeRecords(input: {
       status: 'pending' as WorkflowNodeStatus,
       agentId: null,
       adapterId: null,
-      failure: null
+      failure: null,
+      retryCount: 0,
+      timeoutType: null
     };
 
     if (event.type === 'TASK_STARTED') {
@@ -182,6 +197,19 @@ export function buildWorkflowNodeRecords(input: {
       current.adapterId = sanitizeNullableString(payload.adapterId);
     }
 
+    if (event.type === 'NODE_RETRY_SCHEDULED') {
+      current.status = 'retrying';
+      const retryAttempt = typeof payload.retryAttempt === 'number' ? payload.retryAttempt : 1;
+      current.retryCount = Math.max(current.retryCount, retryAttempt);
+      current.failure = null;
+    }
+
+    if (event.type === 'NODE_RETRY_STARTED') {
+      current.status = 'running';
+      const retryAttempt = typeof payload.retryAttempt === 'number' ? payload.retryAttempt : 1;
+      current.retryCount = Math.max(current.retryCount, retryAttempt);
+    }
+
     if (event.type === 'TASK_COMPLETED') {
       current.status = 'completed';
       current.sequenceCompleted = event.sequence;
@@ -189,6 +217,7 @@ export function buildWorkflowNodeRecords(input: {
       current.agentId = sanitizeNullableString(payload.agentId) ?? current.agentId;
       current.adapterId = sanitizeNullableString(payload.adapterId) ?? current.adapterId;
       current.failure = null;
+      current.timeoutType = null;
     }
 
     if (event.type === 'TASK_FAILED') {
@@ -199,6 +228,42 @@ export function buildWorkflowNodeRecords(input: {
       current.adapterId = sanitizeNullableString(payload.adapterId) ?? current.adapterId;
       current.failure = createWorkflowFailureRecord({
         message: payload.error,
+        nodeId,
+        agentId: current.agentId,
+        adapterId: current.adapterId,
+        details: {
+          eventType: event.type,
+          sequence: event.sequence,
+          payload
+        }
+      });
+    }
+
+    if (event.type === 'NODE_TIMEOUT' || event.type === 'ADAPTER_TIMEOUT') {
+      current.status = 'timeout';
+      current.sequenceCompleted = event.sequence;
+      current.completionPayload = payload;
+      current.failure = createWorkflowFailureRecord({
+        code: event.type === 'NODE_TIMEOUT' ? 'NODE_TIMEOUT' : 'ADAPTER_TIMEOUT',
+        message: event.type,
+        nodeId,
+        agentId: current.agentId,
+        adapterId: current.adapterId,
+        details: {
+          eventType: event.type,
+          sequence: event.sequence,
+          payload
+        }
+      });
+      current.timeoutType = event.type === 'NODE_TIMEOUT' ? 'node' : 'adapter';
+    }
+
+    if (event.type === 'NODE_RETRY_EXHAUSTED') {
+      current.status = 'failed';
+      current.sequenceCompleted = event.sequence;
+      current.completionPayload = payload;
+      current.failure = createWorkflowFailureRecord({
+        message: 'ADAPTER_EXECUTION_FAILED',
         nodeId,
         agentId: current.agentId,
         adapterId: current.adapterId,
@@ -242,7 +307,9 @@ export function buildWorkflowNodeRecords(input: {
         taskOutputs: normalizedOutputs,
         previousOutputs: payloadPreviousOutputs(startedSnapshot),
         contextSnapshot: snapshot,
-        failure: record.failure
+        failure: record.failure,
+        retryCount: record.retryCount,
+        timeoutType: record.timeoutType
       };
     })
     .map((entry) => JSON.parse(canonicalJson(entry)) as WorkflowNodeRecord);

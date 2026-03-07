@@ -11,11 +11,17 @@ export type WorkflowRunSummary = {
   nodeCount: number;
   completedNodeCount: number;
   failedNodeCount: number;
+  timeoutNodeCount: number;
   activeNodeId: string | null;
   lastAgentUsed: string | null;
   totalOutputsGenerated: number;
+  totalRetriesConsumed: number;
   replayable: boolean;
   hasFailure: boolean;
+  recoverable: boolean;
+  resumed: boolean;
+  cancelled: boolean;
+  safetyViolationCount: number;
   summaryLine: string;
 };
 
@@ -39,6 +45,7 @@ export function buildWorkflowRunSummary(input: {
 }): WorkflowRunSummary {
   const completedNodeCount = input.nodes.filter((node) => node.status === 'completed').length;
   const failedNodeCount = input.nodes.filter((node) => node.status === 'failed').length;
+  const timeoutNodeCount = input.nodes.filter((node) => node.status === 'timeout').length;
   const nodeCount = input.nodes.length;
   const lastNode = [...input.nodes].sort((left, right) => {
     const leftSeq = left.sequenceCompleted ?? left.sequenceStarted;
@@ -50,8 +57,15 @@ export function buildWorkflowRunSummary(input: {
     return left.nodeId.localeCompare(right.nodeId);
   }).at(-1);
 
-  const replayable = input.status === 'completed' || input.status === 'failed';
-  const hasFailure = failedNodeCount > 0;
+  const replayable = input.status === 'completed' || input.status === 'failed' || input.status === 'timeout' || input.status === 'cancelled';
+  const hasFailure = failedNodeCount > 0 || timeoutNodeCount > 0;
+  const recoverable = input.status === 'failed' || input.status === 'timeout';
+  const resumed = input.status === 'running' && input.nodes.some((node) => node.retryCount > 0);
+  const cancelled = input.status === 'cancelled';
+  const totalRetriesConsumed = input.nodes.reduce((sum, node) => sum + (node.retryCount ?? 0), 0);
+  const safetyViolationCount = input.nodes
+    .filter((node) => node.failure?.code === 'SAFETY_LIMIT_VIOLATION')
+    .length;
   const agentIds = stableUniqueStrings(input.nodes
     .map((node) => node.agentId)
     .filter((value): value is string => typeof value === 'string' && value.length > 0));
@@ -68,11 +82,17 @@ export function buildWorkflowRunSummary(input: {
     nodeCount,
     completedNodeCount,
     failedNodeCount,
+    timeoutNodeCount,
     activeNodeId: input.activeNodeId,
     lastAgentUsed,
     totalOutputsGenerated,
+    totalRetriesConsumed,
     replayable,
     hasFailure,
-    summaryLine: `run=${input.runId} status=${input.status} completed=${completedNodeCount}/${nodeCount} failed=${failedNodeCount}`
+    recoverable,
+    resumed,
+    cancelled,
+    safetyViolationCount,
+    summaryLine: `run=${input.runId} status=${input.status} completed=${completedNodeCount}/${nodeCount} failed=${failedNodeCount} timeout=${timeoutNodeCount} retries=${totalRetriesConsumed}`
   };
 }

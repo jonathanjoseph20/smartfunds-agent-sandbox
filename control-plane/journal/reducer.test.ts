@@ -70,6 +70,20 @@ describe('journal reducer', () => {
     expect(summary.tasksFailed).toBe(1);
   });
 
+  it('derives timeout and cancelled states from hardening events', () => {
+    const timeout = reduceRunSummary(baseRun, [
+      event({ sequence: 1, type: 'RUN_CREATED', phase: 'plan' }),
+      event({ sequence: 2, type: 'WORKFLOW_TIMEOUT', phase: 'implement' })
+    ]);
+    const cancelled = reduceRunSummary(baseRun, [
+      event({ sequence: 1, type: 'RUN_CREATED', phase: 'plan' }),
+      event({ sequence: 2, type: 'WORKFLOW_CANCELLED', phase: 'implement' })
+    ]);
+
+    expect(timeout.status).toBe('timeout');
+    expect(cancelled.status).toBe('cancelled');
+  });
+
   it('rejects out-of-order events', () => {
     expect(() => reduceRunSummary(baseRun, [
       event({ sequence: 2, type: 'RUN_CREATED', phase: 'plan' })

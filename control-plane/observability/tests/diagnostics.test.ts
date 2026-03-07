@@ -18,7 +18,9 @@ function node(input: Partial<WorkflowNodeRecord> & { nodeId: string; status: Wor
     taskOutputs: input.taskOutputs ?? {},
     previousOutputs: input.previousOutputs ?? {},
     contextSnapshot: input.contextSnapshot ?? {},
-    failure: input.failure ?? null
+    failure: input.failure ?? null,
+    retryCount: input.retryCount ?? 0,
+    timeoutType: input.timeoutType ?? null
   };
 }
 

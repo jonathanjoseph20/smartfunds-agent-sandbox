@@ -6,8 +6,7 @@
   "mode": "regulated",
   "ownedPaths": [
     "apps/api/",
-    "packages/mission-engine/",
-    "packages/llm-gateway/"
+    "packages/mission-engine/"
   ],
   "ownedFiles": [],
   "complianceProfile": "phase-1",

@@ -1,5 +1,4 @@
-import { createMissionService } from './mission-service.ts';
-import { createRuntimeService } from './runtime-service.ts';
+import { createOperatorApiClient } from '../cli/api-client.ts';
 import { parseOperatorCommand } from './schema.ts';
 import type {
   OperatorCommandResult,
@@ -7,7 +6,6 @@ import type {
   OperatorServices,
   ParsedOperatorCommand
 } from './types.ts';
-import { createWorkflowService } from './workflow-service.ts';
 
 type CommandRouterOptions = {
   services?: OperatorServices;
@@ -53,37 +51,24 @@ function errorResult(input: {
 }
 
 function createDefaultServices(options: CommandRouterOptions): OperatorServices {
-  const mission = createMissionService({
-    rootDir: options.rootDir,
-    missionsDir: options.missionsDir,
-    teamsDir: options.teamsDir,
-    agentsDir: options.agentsDir,
-    workflowsDir: options.workflowsDir
-  });
-  const workflow = createWorkflowService({
-    rootDir: options.rootDir
-  });
-  const runtime = createRuntimeService({
-    rootDir: options.rootDir,
-    workflowsDir: options.workflowsDir
-  });
+  const api = createOperatorApiClient();
 
   return {
     mission: {
-      startMission: mission.startMission,
-      listMissions: mission.listMissions,
-      inspectMission: mission.inspectMission,
-      cancelMission: mission.cancelMission
+      startMission: async (input) => api.startMission(input.missionId, input.params),
+      listMissions: () => api.listMissions(),
+      inspectMission: (input) => api.inspectMission(input.missionId),
+      cancelMission: (input) => api.cancelMission(input.missionId)
     },
     workflow: {
-      listWorkflows: workflow.listWorkflows,
-      inspectWorkflow: workflow.inspectWorkflow,
-      traceWorkflow: workflow.traceWorkflow
+      listWorkflows: () => api.listWorkflows(),
+      inspectWorkflow: (input) => api.inspectWorkflowRun(input.runId),
+      traceWorkflow: (input) => api.traceWorkflowRun(input.runId)
     },
     runtime: {
-      retryWorkflowNode: runtime.retryWorkflowNode,
-      resumeWorkflow: runtime.resumeWorkflow,
-      cancelWorkflow: runtime.cancelWorkflow
+      retryWorkflowNode: (input) => api.retryWorkflowNode(input.runId, input.nodeId),
+      resumeWorkflow: (input) => api.resumeWorkflow(input.runId),
+      cancelWorkflow: (input) => api.cancelWorkflow(input.runId)
     }
   };
 }

@@ -1,4 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { getMissionDetail } from '@/cockpit/lib/view-models';
 import { StatusBadge } from '@/cockpit/components/status-badge';
 import { ParameterTable } from '@/cockpit/components/parameter-table';
@@ -8,7 +9,15 @@ import { EmptyState } from '@/cockpit/components/empty-state';
 
 export default function MissionDetailPage() {
   const { missionId } = useParams<{ missionId: string }>();
-  const mission = missionId ? getMissionDetail(missionId) : null;
+  const [mission, setMission] = useState<Awaited<ReturnType<typeof getMissionDetail>>>(null);
+
+  useEffect(() => {
+    if (!missionId) {
+      setMission(null);
+      return;
+    }
+    void getMissionDetail(missionId).then(setMission);
+  }, [missionId]);
 
   if (!mission) return <EmptyState title="Mission not found" description={`No mission with ID "${missionId}".`} />;
 

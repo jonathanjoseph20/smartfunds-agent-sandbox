@@ -32,7 +32,14 @@
     "scripts/governance/",
     "control-plane/operator/",
     "control-plane/observability/",
-    "control-plane/runtime/"
+    "control-plane/runtime/",
+    "control-plane/service/",
+    "deploy/",
+    "scripts/start-runtime.sh",
+    "scripts/start-cockpit.sh",
+    "scripts/start-slack.sh",
+    "scripts/dev-up.sh",
+    "scripts/prod-up.sh"
   ],
   "ownedFiles": [
     ".gitignore",

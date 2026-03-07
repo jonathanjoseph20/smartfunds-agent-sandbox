@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getRunDetail } from '@/cockpit/lib/view-models';
 import { StatusBadge } from '@/cockpit/components/status-badge';
 import { NodeDetail } from '@/cockpit/components/node-detail';
@@ -10,8 +10,16 @@ import { EmptyState } from '@/cockpit/components/empty-state';
 
 export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
-  const run = runId ? getRunDetail(runId) : null;
+  const [run, setRun] = useState<Awaited<ReturnType<typeof getRunDetail>>>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!runId) {
+      setRun(null);
+      return;
+    }
+    void getRunDetail(runId).then(setRun);
+  }, [runId]);
 
   if (!run) return <EmptyState title="Run not found" description={`No run with ID "${runId}".`} />;
 

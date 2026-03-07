@@ -28,7 +28,8 @@
     "governance/",
     "runtime/",
     "scripts/ci/",
-    "scripts/governance/"
+    "scripts/governance/",
+    "control-plane/observability/"
   ],
   "ownedFiles": [
     ".gitignore",

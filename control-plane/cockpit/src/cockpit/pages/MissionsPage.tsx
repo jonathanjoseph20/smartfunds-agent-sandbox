@@ -1,10 +1,15 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { getMissionList } from '@/cockpit/lib/view-models';
 import { StatusBadge } from '@/cockpit/components/status-badge';
 import { EmptyState } from '@/cockpit/components/empty-state';
 
 export default function MissionsPage() {
-  const missions = getMissionList();
+  const [missions, setMissions] = useState<Awaited<ReturnType<typeof getMissionList>>>([]);
+
+  useEffect(() => {
+    void getMissionList().then(setMissions);
+  }, []);
 
   if (missions.length === 0) return <EmptyState title="No missions" description="No missions have been created yet." />;
 

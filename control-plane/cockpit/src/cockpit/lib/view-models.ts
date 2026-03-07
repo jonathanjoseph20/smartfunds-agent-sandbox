@@ -174,9 +174,9 @@ function mapFailure(node: WorkflowNode): FailurePanelViewModel | null {
   };
 }
 
-export function getMissionList(): MissionListItemViewModel[] {
-  const allMissions = adapters.fetchMissions();
-  const allRuns = adapters.fetchRuns();
+export async function getMissionList(): Promise<MissionListItemViewModel[]> {
+  const allMissions = await adapters.fetchMissions();
+  const allRuns = await adapters.fetchRuns();
   const sorted = sortMissions(allMissions);
 
   return sorted.map(m => {
@@ -197,11 +197,11 @@ export function getMissionList(): MissionListItemViewModel[] {
   });
 }
 
-export function getMissionDetail(missionId: string): MissionDetailViewModel | null {
-  const mission = adapters.fetchMission(missionId);
+export async function getMissionDetail(missionId: string): Promise<MissionDetailViewModel | null> {
+  const mission = await adapters.fetchMission(missionId);
   if (!mission) return null;
-  const roster = adapters.fetchTeamRoster(mission.teamId);
-  const missionRuns = adapters.fetchRunsForMission(missionId);
+  const roster = await adapters.fetchTeamRoster(mission.teamId);
+  const missionRuns = await adapters.fetchRunsForMission(missionId);
 
   return {
     missionId: mission.missionId,
@@ -239,17 +239,17 @@ function mapRunToListItem(r: WorkflowRun): RunListItemViewModel {
   };
 }
 
-export function getRunList(): RunListItemViewModel[] {
-  const allRuns = adapters.fetchRuns();
+export async function getRunList(): Promise<RunListItemViewModel[]> {
+  const allRuns = await adapters.fetchRuns();
   return sortRuns(allRuns).map(mapRunToListItem);
 }
 
-export function getRunDetail(runId: string): RunDetailViewModel | null {
-  const run = adapters.fetchRun(runId);
+export async function getRunDetail(runId: string): Promise<RunDetailViewModel | null> {
+  const run = await adapters.fetchRun(runId);
   if (!run) return null;
-  const roster = adapters.fetchTeamRoster(run.teamId);
+  const roster = await adapters.fetchTeamRoster(run.teamId);
   const agents = roster?.agents ?? [];
-  const traces = adapters.fetchTraceEvents(runId);
+  const traces = await adapters.fetchTraceEvents(runId);
   const failedNode = run.nodes.find(n => n.failureDetails);
 
   return {
@@ -285,21 +285,21 @@ export function getRunDetail(runId: string): RunDetailViewModel | null {
   };
 }
 
-export function getWorkflowDag(workflowId: string, runId?: string): WorkflowDagViewModel | null {
+export async function getWorkflowDag(workflowId: string, runId?: string): Promise<WorkflowDagViewModel | null> {
   // If a runId is provided, use run nodes (with execution state). Otherwise use definition.
   if (runId) {
-    const run = adapters.fetchRun(runId);
+    const run = await adapters.fetchRun(runId);
     if (!run || run.workflowId !== workflowId) return null;
-    const roster = adapters.fetchTeamRoster(run.teamId);
+    const roster = await adapters.fetchTeamRoster(run.teamId);
     const agents = roster?.agents ?? [];
-    const def = adapters.fetchWorkflowDefinition(workflowId);
+    const def = await adapters.fetchWorkflowDefinition(workflowId);
     return {
       workflowId,
       label: def?.label ?? workflowId,
       nodes: run.nodes.map(n => mapNodeToViewModel(n, agents)),
     };
   }
-  const def = adapters.fetchWorkflowDefinition(workflowId);
+  const def = await adapters.fetchWorkflowDefinition(workflowId);
   if (!def) return null;
   return {
     workflowId,
@@ -308,9 +308,9 @@ export function getWorkflowDag(workflowId: string, runId?: string): WorkflowDagV
   };
 }
 
-export function getOverview(): OverviewViewModel {
-  const allMissions = adapters.fetchMissions();
-  const allRuns = adapters.fetchRuns();
+export async function getOverview(): Promise<OverviewViewModel> {
+  const allMissions = await adapters.fetchMissions();
+  const allRuns = await adapters.fetchRuns();
   const failedRuns = allRuns.filter(r => r.status === 'failed');
 
   return {

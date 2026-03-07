@@ -1,10 +1,15 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { getRunList } from '@/cockpit/lib/view-models';
 import { StatusBadge } from '@/cockpit/components/status-badge';
 import { EmptyState } from '@/cockpit/components/empty-state';
 
 export default function RunsPage() {
-  const runs = getRunList();
+  const [runs, setRuns] = useState<Awaited<ReturnType<typeof getRunList>>>([]);
+
+  useEffect(() => {
+    void getRunList().then(setRuns);
+  }, []);
 
   if (runs.length === 0) return <EmptyState title="No runs" description="No workflow runs recorded." />;
 

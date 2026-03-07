@@ -32,7 +32,10 @@
     "scripts/governance/",
     "control-plane/operator/",
     "control-plane/observability/",
-    "control-plane/runtime/"
+    "control-plane/runtime/",
+    "control-plane/service/",
+    "deploy/",
+    "scripts/"
   ],
   "ownedFiles": [
     ".gitignore",
@@ -40,6 +43,7 @@
     "TEST_GOVERNANCE.md",
     "control-plane/governance-check.test.ts",
     "control-plane/governance-check.ts",
+    "agent-cockpit-main.zip",
     "package-lock.json",
     "package.json"
   ],

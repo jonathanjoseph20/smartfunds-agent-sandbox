@@ -1,10 +1,19 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { getOverview } from '@/cockpit/lib/view-models';
 import { ControlNotice } from '@/cockpit/components/command-hint';
 import { StatusBadge } from '@/cockpit/components/status-badge';
 
 export default function CockpitOverview() {
-  const overview = getOverview();
+  const [overview, setOverview] = useState<Awaited<ReturnType<typeof getOverview>> | null>(null);
+
+  useEffect(() => {
+    void getOverview().then(setOverview);
+  }, []);
+
+  if (!overview) {
+    return null;
+  }
 
   return (
     <div className="space-y-6 max-w-5xl">

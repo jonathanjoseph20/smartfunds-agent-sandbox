@@ -1,0 +1,30 @@
+services:
+  runtime:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.runtime
+    env_file:
+      - ./env.example
+    ports:
+      - "3100:3100"
+
+  cockpit:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.cockpit
+    env_file:
+      - ./env.example
+    ports:
+      - "5173:5173"
+    depends_on:
+      - runtime
+
+  slack:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.runtime
+    env_file:
+      - ./env.example
+    command: ["npm", "run", "slack:start"]
+    depends_on:
+      - runtime

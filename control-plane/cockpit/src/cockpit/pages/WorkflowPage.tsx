@@ -1,5 +1,5 @@
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getWorkflowDag } from '@/cockpit/lib/view-models';
 import { DagView } from '@/cockpit/components/dag-view';
 import { NodeDetail } from '@/cockpit/components/node-detail';
@@ -9,8 +9,16 @@ export default function WorkflowPage() {
   const { workflowId } = useParams<{ workflowId: string }>();
   const [searchParams] = useSearchParams();
   const runId = searchParams.get('run') ?? undefined;
-  const dag = workflowId ? getWorkflowDag(workflowId, runId) : null;
+  const [dag, setDag] = useState<Awaited<ReturnType<typeof getWorkflowDag>>>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workflowId) {
+      setDag(null);
+      return;
+    }
+    void getWorkflowDag(workflowId, runId).then(setDag);
+  }, [workflowId, runId]);
 
   if (!dag) return <EmptyState title="Workflow not found" description={`No workflow with ID "${workflowId}".`} />;
 

@@ -87,6 +87,7 @@ export async function executeWorkflowRunWithHardening(input: {
   missionId: string;
   workflow: ValidatedWorkflowDefinition;
   executor: WorkflowTaskExecutor;
+  missionContextMemory?: Record<string, unknown>;
   hardening?: WorkflowRuntimeHardeningOptions;
 }): Promise<WorkflowRunResult> {
   const runtimeHooks = input.hardening ?? {};
@@ -96,6 +97,7 @@ export async function executeWorkflowRunWithHardening(input: {
       missionId: input.missionId,
       workflow: input.workflow,
       executor: input.executor,
+      missionContextMemory: input.missionContextMemory,
       hardening: {
         ...runtimeHooks,
         onNodeEvent(event) {
@@ -123,6 +125,7 @@ export async function executeWorkflowRunWithHardening(input: {
                   missionId: input.missionId
                 },
                 memory: {
+                  ...(input.missionContextMemory ?? {}),
                   previousOutputs: event.previousOutputs
                 }
               }
@@ -168,6 +171,9 @@ export async function executeWorkflowRunWithHardening(input: {
             runId: input.runId,
             workflowId: input.workflow.workflowId,
             missionId: input.missionId
+          },
+          memory: {
+            ...(input.missionContextMemory ?? {})
           }
         }
       }

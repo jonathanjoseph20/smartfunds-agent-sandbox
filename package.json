@@ -16,6 +16,7 @@
     "swarm:task": "node --experimental-strip-types control-plane/orchestrator/cli/swarm-task.ts",
     "swarms:execute": "node --experimental-strip-types control-plane/cli/swarms-execute.ts",
     "mission:run": "node --experimental-strip-types control-plane/cli/mission-run.ts",
+    "operator": "node --experimental-strip-types control-plane/operator/cli.ts",
     "mission:inspect": "node --experimental-strip-types control-plane/cli/mission-inspect.ts",
     "mission:agents": "node --experimental-strip-types control-plane/cli/mission-agents.ts",
     "workflow:inspect": "node --experimental-strip-types control-plane/cli/workflow-inspect.ts",

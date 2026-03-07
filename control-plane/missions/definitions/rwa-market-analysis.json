@@ -17,6 +17,27 @@
     "opportunity-list",
     "regulatory-notes"
   ],
+  "parameterSchema": {
+    "allowed": [
+      "asset",
+      "horizon",
+      "market",
+      "risk-level"
+    ],
+    "required": [
+      "market"
+    ],
+    "defaults": {
+      "horizon": "30d",
+      "risk-level": "medium"
+    },
+    "descriptions": {
+      "asset": "Focus asset class for mission analysis.",
+      "horizon": "Time horizon for thesis framing.",
+      "market": "Primary market under review.",
+      "risk-level": "Operator-declared risk appetite."
+    }
+  },
   "initialContext": {
     "sector": "RWA",
     "targetAssets": [

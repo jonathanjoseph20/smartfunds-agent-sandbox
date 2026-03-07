@@ -49,6 +49,55 @@ function parseInitialContext(value: unknown, missionId: string): Record<string, 
   return Object.fromEntries(entries);
 }
 
+function parseStringRecord(value: unknown, label: string): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object of string values.`);
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [, entryValue] of entries) {
+    if (!isNonEmptyString(entryValue)) {
+      throw new Error(`${label} must be an object of string values.`);
+    }
+  }
+
+  return Object.fromEntries(
+    entries
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, entryValue as string])
+  );
+}
+
+function parseParameterSchema(value: unknown, missionId: string): MissionDefinition['parameterSchema'] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Mission ${missionId} parameterSchema must be an object.`);
+  }
+
+  const record = value as Record<string, unknown>;
+  const allowed = record.allowed === undefined
+    ? undefined
+    : sortedUnique(ensureStringArray(record.allowed, `Mission ${missionId} parameterSchema.allowed`));
+  const required = record.required === undefined
+    ? undefined
+    : sortedUnique(ensureStringArray(record.required, `Mission ${missionId} parameterSchema.required`));
+  const defaults = record.defaults === undefined
+    ? undefined
+    : parseStringRecord(record.defaults, `Mission ${missionId} parameterSchema.defaults`);
+  const descriptions = record.descriptions === undefined
+    ? undefined
+    : parseStringRecord(record.descriptions, `Mission ${missionId} parameterSchema.descriptions`);
+
+  return {
+    ...(allowed ? { allowed } : {}),
+    ...(required ? { required } : {}),
+    ...(defaults ? { defaults } : {}),
+    ...(descriptions ? { descriptions } : {})
+  };
+}
+
 export function validateMissionDefinition(value: unknown): MissionDefinition {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Mission definition must be an object.');
@@ -71,6 +120,7 @@ export function validateMissionDefinition(value: unknown): MissionDefinition {
     : ensureStringArray(record.deliverables, `Mission ${record.missionId} deliverables`);
 
   const priority = parsePriority(record.priority, record.missionId);
+  const parameterSchema = parseParameterSchema(record.parameterSchema, record.missionId);
 
   return {
     missionId: record.missionId,
@@ -82,6 +132,7 @@ export function validateMissionDefinition(value: unknown): MissionDefinition {
     successCriteria: sortedUnique(successCriteria),
     deliverables: sortedUnique(deliverables),
     initialContext: parseInitialContext(record.initialContext, record.missionId),
+    ...(parameterSchema ? { parameterSchema } : {}),
     ...(isNonEmptyString(record.description) ? { description: record.description } : {}),
     ...(priority ? { priority } : {}),
     ...(record.constraints !== undefined

@@ -30,6 +30,7 @@ export interface WorkflowTaskExecutor {
     task: string;
     agent?: string;
     previousOutputs: Record<string, unknown>;
+    missionContextMemory?: Record<string, unknown>;
   }): Promise<unknown> | unknown;
 }
 
@@ -106,6 +107,7 @@ export async function runWorkflow(input: {
   missionId: string;
   workflow: ValidatedWorkflowDefinition;
   executor: WorkflowTaskExecutor;
+  missionContextMemory?: Record<string, unknown>;
 }): Promise<WorkflowRunResult> {
   return runWorkflowWithHardening(input);
 }
@@ -147,6 +149,7 @@ export async function runWorkflowWithHardening(input: {
   missionId: string;
   workflow: ValidatedWorkflowDefinition;
   executor: WorkflowTaskExecutor;
+  missionContextMemory?: Record<string, unknown>;
   hardening?: WorkflowRuntimeHardeningOptions;
 }): Promise<WorkflowRunResult> {
   const hardening = input.hardening ?? {};
@@ -268,7 +271,8 @@ export async function runWorkflowWithHardening(input: {
         workflowNodeId: nextNode.id,
         task: nextNode.task,
         ...(nextNode.agent ? { agent: nextNode.agent } : {}),
-        previousOutputs
+        previousOutputs,
+        missionContextMemory: input.missionContextMemory
       });
 
       outputsByNodeId[nextNode.id] = output;
@@ -392,6 +396,7 @@ export async function runWorkflowWithHardening(input: {
 export function createSwarmWorkflowExecutor(input: {
   swarmRunner: SwarmRunner;
   projectId: string;
+  missionMemory?: Record<string, unknown>;
 }): WorkflowTaskExecutor {
   return {
     async execute(params) {
@@ -401,9 +406,11 @@ export function createSwarmWorkflowExecutor(input: {
         entrypoint: `workflow:${params.workflowId}:${params.workflowNodeId}`,
         missionId: params.missionId,
         initialMemory: {
+          ...(input.missionMemory ?? {}),
           workflowNodeId: params.workflowNodeId,
           task: params.task,
-          previousOutputs: params.previousOutputs
+          previousOutputs: params.previousOutputs,
+          ...(params.missionContextMemory ? { missionContextMemory: params.missionContextMemory } : {})
         },
         metadata: {
           missionId: params.missionId,

@@ -1,5 +1,12 @@
 export type MissionPriority = 'low' | 'medium' | 'high' | 'critical';
 
+export type MissionParameterSchema = {
+  allowed?: string[];
+  required?: string[];
+  defaults?: Record<string, string>;
+  descriptions?: Record<string, string>;
+};
+
 export type MissionDefinition = {
   missionId: string;
   name?: string;
@@ -10,6 +17,7 @@ export type MissionDefinition = {
   successCriteria: string[];
   deliverables: string[];
   initialContext: Record<string, unknown>;
+  parameterSchema?: MissionParameterSchema;
   description?: string;
   priority?: MissionPriority;
   constraints?: string[];

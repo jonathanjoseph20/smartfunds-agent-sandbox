@@ -81,6 +81,7 @@ export function createMissionRunner(options: MissionRunnerOptions = {}) {
       kind: 'mission',
       entrypoint: `mission:${loaded.mission.missionId}`,
       missionId: loaded.mission.missionId,
+      teamId: loaded.executionSeed.teamId,
       initialMemory: loaded.mission.initialContext,
       metadata: {
         missionId: loaded.executionSeed.missionId,

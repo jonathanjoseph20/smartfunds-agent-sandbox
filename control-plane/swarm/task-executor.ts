@@ -1,3 +1,7 @@
+import { withAgentContext } from '../agents/runtime/agent-context.ts';
+import type { AgentExecutionEnvelope } from '../agents/runtime/agent-envelope.ts';
+import { resolveTaskAgent } from '../agents/runtime/agent-runtime.ts';
+import { assertAgentCanUseAdapter } from '../agents/runtime/agent-tools.ts';
 import { applyTaskResultToContext } from '../execution/context-merge.ts';
 import { serializeExecutionContext } from '../execution/context-serializer.ts';
 import { toReadonlyExecutionContext, withExecutionIdentity } from '../execution/execution-context.ts';
@@ -47,23 +51,43 @@ function toErrorMessage(error: unknown): string {
   return 'TASK_EXECUTION_FAILED';
 }
 
-function failedResult(errorCode: string, errorMessage: string): TaskResult {
+function splitErrorCode(message: string): { code: string; detail: string } {
+  const match = message.match(/^(ERR_[A-Z0-9_]+):\s*(.*)$/);
+  if (!match) {
+    return {
+      code: 'ERR_TASK_ADAPTER_EXECUTION',
+      detail: message
+    };
+  }
+
+  return {
+    code: match[1],
+    detail: match[2] || match[1]
+  };
+}
+
+function failedResult(errorCode: string, errorMessage: string, logCode: string = 'TASK_ADAPTER_EXECUTION_FAILED'): TaskResult {
   return {
     status: 'failed',
     outputs: {},
     artifacts: [],
-    logs: ['TASK_ADAPTER_EXECUTION_FAILED'],
+    logs: [logCode],
     errorCode,
     errorMessage
   };
 }
 
-async function executeByAdapter(context: TaskContext): Promise<TaskResult> {
+async function executeByAdapter(context: TaskContext, agentEnvelope?: AgentExecutionEnvelope): Promise<TaskResult> {
   try {
+    if (agentEnvelope) {
+      assertAgentCanUseAdapter(agentEnvelope, context.taskType);
+    }
+
     const adapter = getAdapter(context.taskType);
     return await adapter.execute(context);
   } catch (error) {
-    return failedResult('ERR_TASK_ADAPTER_EXECUTION', toErrorMessage(error));
+    const parsed = splitErrorCode(toErrorMessage(error));
+    return failedResult(parsed.code, parsed.detail);
   }
 }
 
@@ -101,6 +125,11 @@ function parseSerializedContext(serialized: string): Record<string, unknown> {
   return JSON.parse(serialized) as Record<string, unknown>;
 }
 
+function toAgentResolutionFailure(error: unknown): TaskResult {
+  const parsed = splitErrorCode(toErrorMessage(error));
+  return failedResult(parsed.code, parsed.detail, 'TASK_AGENT_RESOLUTION_FAILED');
+}
+
 export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<PhaseTaskExecutionResult> {
   const orderedTasks = sortTasks(input.tasks);
   const executedTaskIds: string[] = [];
@@ -111,10 +140,68 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       throw new Error(`TASK_PHASE_MISMATCH: ${task.taskId}`);
     }
 
-    const taskExecutionContext = withExecutionIdentity(phaseContext, {
+    let taskExecutionContext = withExecutionIdentity(phaseContext, {
       phase: input.phase,
       taskId: task.taskId
     });
+
+    let activeAgent: string | null = null;
+    let agentEnvelope: AgentExecutionEnvelope | undefined;
+
+    if (task.agent) {
+      try {
+        const runtime = resolveTaskAgent({
+          taskAgent: task.agent,
+          executionContext: taskExecutionContext
+        });
+
+        taskExecutionContext = withAgentContext(taskExecutionContext, runtime);
+        activeAgent = runtime.activeAgent;
+        agentEnvelope = runtime.agentEnvelope;
+      } catch (error) {
+        const result = toAgentResolutionFailure(error);
+        const nextContext = applyTaskResultToContext(taskExecutionContext, result);
+
+        input.emitEvent({
+          type: 'TASK_STARTED',
+          phase: input.phase,
+          taskId: task.taskId,
+          payload: {
+            runId: input.runId,
+            taskType: task.type,
+            adapterId: task.type,
+            agentId: null,
+            inputs: task.inputs,
+            task_inputs: task.inputs,
+            context_snapshot: parseSerializedContext(serializeExecutionContext(taskExecutionContext))
+          }
+        });
+
+        input.emitEvent({
+          type: 'TASK_FAILED',
+          phase: input.phase,
+          taskId: task.taskId,
+          payload: {
+            runId: input.runId,
+            taskType: task.type,
+            adapterId: task.type,
+            agentId: null,
+            result,
+            task_outputs: result.outputs,
+            context_snapshot: parseSerializedContext(serializeExecutionContext(nextContext)),
+            error: result.errorMessage ?? 'TASK_EXECUTION_FAILED'
+          }
+        });
+
+        return {
+          phase: input.phase,
+          status: 'failed',
+          executedTaskIds,
+          failedTaskId: task.taskId,
+          executionContext: nextContext
+        };
+      }
+    }
 
     const taskContext = buildTaskContext(input.runId, input.phase, task, taskExecutionContext);
 
@@ -125,6 +212,8 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       payload: {
         runId: input.runId,
         taskType: task.type,
+        adapterId: task.type,
+        agentId: activeAgent,
         inputs: task.inputs,
         task_inputs: task.inputs,
         context_snapshot: parseSerializedContext(serializeExecutionContext(taskExecutionContext))
@@ -133,7 +222,7 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
 
     const result = task.executor
       ? runLegacyExecutor(task)
-      : await executeByAdapter(taskContext);
+      : await executeByAdapter(taskContext, agentEnvelope);
 
     const nextContext = applyTaskResultToContext(taskExecutionContext, result);
 
@@ -147,6 +236,8 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
         payload: {
           runId: input.runId,
           taskType: task.type,
+          adapterId: task.type,
+          agentId: activeAgent,
           result,
           task_outputs: result.outputs,
           context_snapshot: parseSerializedContext(serializeExecutionContext(nextContext))
@@ -163,6 +254,8 @@ export async function executePhaseTasks(input: ExecutePhaseTasksInput): Promise<
       payload: {
         runId: input.runId,
         taskType: task.type,
+        adapterId: task.type,
+        agentId: activeAgent,
         result,
         task_outputs: result.outputs,
         context_snapshot: parseSerializedContext(serializeExecutionContext(nextContext)),

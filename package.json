@@ -17,6 +17,8 @@
     "swarms:execute": "node --experimental-strip-types control-plane/cli/swarms-execute.ts",
     "mission:run": "node --experimental-strip-types control-plane/cli/mission-run.ts",
     "mission:inspect": "node --experimental-strip-types control-plane/cli/mission-inspect.ts",
+    "mission:agents": "node --experimental-strip-types control-plane/cli/mission-agents.ts",
+    "agent:inspect": "node --experimental-strip-types control-plane/cli/agent-inspect.ts",
     "team:inspect": "node --experimental-strip-types control-plane/cli/team-inspect.ts",
     "governance:generate": "node --experimental-strip-types control-plane/cli/governance-generate.ts",
     "governance:normalize": "node --experimental-strip-types control-plane/cli/governance-normalize.ts",

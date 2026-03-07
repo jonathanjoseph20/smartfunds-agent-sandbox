@@ -117,4 +117,55 @@ describe('execution context', () => {
       ((readonlyContext.memory.nested as { count: number }).count) = 2;
     }).toThrow();
   });
+
+  it('supports additive agent metadata without changing base deterministic behavior', () => {
+    const context = createExecutionContext({
+      runId: 'run_control-plane_0001',
+      missionId: 'rwa-market-analysis',
+      teamId: 'smartfunds-research-team',
+      phase: 'implement',
+      taskId: 'agent-task',
+      activeAgent: 'macro-signal-analyst',
+      agentEnvelope: {
+        agentId: 'macro-signal-analyst',
+        role: 'macro-analyst',
+        personality: {
+          tone: 'analytical',
+          reasoningStyle: 'evidence-first'
+        },
+        skills: ['macro analysis'],
+        background: {},
+        outputStyle: {},
+        constraints: {},
+        allowedTools: ['llm', 'repo']
+      },
+      agentRoster: [
+        {
+          agentId: 'macro-signal-analyst',
+          personality: {},
+          skills: [],
+          background: {},
+          outputStyle: {},
+          constraints: {},
+          allowedTools: ['llm']
+        },
+        {
+          agentId: 'lead-thesis-architect',
+          personality: {},
+          skills: [],
+          background: {},
+          outputStyle: {},
+          constraints: {},
+          allowedTools: ['llm']
+        }
+      ]
+    });
+
+    expect(context.teamId).toBe('smartfunds-research-team');
+    expect(context.activeAgent).toBe('macro-signal-analyst');
+    expect(context.agentRoster?.map((entry) => entry.agentId)).toEqual([
+      'lead-thesis-architect',
+      'macro-signal-analyst'
+    ]);
+  });
 });

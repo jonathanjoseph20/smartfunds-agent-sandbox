@@ -19,6 +19,7 @@ type CreateSwarmRunInput = {
   kind?: RunKind;
   entrypoint?: string;
   missionId?: string;
+  teamId?: string;
   initialMemory?: Record<string, unknown>;
   initialArtifacts?: string[];
   metadata?: Record<string, unknown>;
@@ -45,6 +46,7 @@ type TaskTemplate = {
   order: number;
   type: 'llm' | 'shell' | 'repo';
   inputs: Record<string, unknown>;
+  agent?: string;
   executorKey?: string;
 };
 
@@ -141,6 +143,7 @@ function buildTaskDefinitions(
       description: task.description,
       type: task.type,
       inputs: task.inputs,
+      ...(task.agent ? { agent: task.agent } : {}),
       ...(executor ? { executor } : {}),
       order: task.order
     });
@@ -303,6 +306,10 @@ function toExecutionContextFromPayload(payload: unknown): ExecutionContext | nul
   const artifacts = snapshot.artifacts;
   const metadata = snapshot.metadata;
   const missionId = snapshot.missionId;
+  const teamId = snapshot.teamId;
+  const activeAgent = snapshot.activeAgent;
+  const agentEnvelope = snapshot.agentEnvelope;
+  const agentRoster = snapshot.agentRoster;
 
   if (typeof runId !== 'string' || typeof phase !== 'string' || typeof taskId !== 'string') {
     return null;
@@ -316,15 +323,34 @@ function toExecutionContextFromPayload(payload: unknown): ExecutionContext | nul
   if (missionId !== undefined && typeof missionId !== 'string') {
     return null;
   }
+  if (teamId !== undefined && typeof teamId !== 'string') {
+    return null;
+  }
+  if (activeAgent !== undefined && typeof activeAgent !== 'string') {
+    return null;
+  }
+  if (agentEnvelope !== undefined && !isRecord(agentEnvelope)) {
+    return null;
+  }
+  if (agentRoster !== undefined && !Array.isArray(agentRoster)) {
+    return null;
+  }
+  if (Array.isArray(agentRoster) && !agentRoster.every((entry) => isRecord(entry))) {
+    return null;
+  }
 
   return createExecutionContext({
     runId,
     ...(missionId ? { missionId } : {}),
+    ...(teamId ? { teamId } : {}),
     phase,
     taskId,
     memory,
     artifacts,
-    metadata
+    metadata,
+    ...(activeAgent ? { activeAgent } : {}),
+    ...(agentEnvelope ? { agentEnvelope } : {}),
+    ...(agentRoster ? { agentRoster } : {})
   });
 }
 
@@ -375,6 +401,7 @@ export function createSwarmRunner(options: SwarmRunnerOptions = {}) {
     const initialContext = createExecutionContext({
       runId: run.runId,
       ...(input.missionId ? { missionId: input.missionId } : {}),
+      ...(input.teamId ? { teamId: input.teamId } : {}),
       phase: 'plan',
       taskId: '__run_start__',
       memory: input.initialMemory ?? {},

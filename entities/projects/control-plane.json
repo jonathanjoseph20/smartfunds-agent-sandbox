@@ -35,11 +35,7 @@
     "control-plane/runtime/",
     "control-plane/service/",
     "deploy/",
-    "scripts/start-runtime.sh",
-    "scripts/start-cockpit.sh",
-    "scripts/start-slack.sh",
-    "scripts/dev-up.sh",
-    "scripts/prod-up.sh"
+    "scripts/"
   ],
   "ownedFiles": [
     ".gitignore",
@@ -47,6 +43,7 @@
     "TEST_GOVERNANCE.md",
     "control-plane/governance-check.test.ts",
     "control-plane/governance-check.ts",
+    "agent-cockpit-main.zip",
     "package-lock.json",
     "package.json"
   ],

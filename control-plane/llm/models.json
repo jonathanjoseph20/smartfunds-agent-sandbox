@@ -1,0 +1,10 @@
+{
+  "defaultModelByProvider": {
+    "ollama": "llama3.1:8b",
+    "groq": "llama-3.1-8b-instant",
+    "openrouter": "meta-llama/llama-3.1-8b-instruct",
+    "google": "gemini-2.5-flash",
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-haiku-latest"
+  }
+}

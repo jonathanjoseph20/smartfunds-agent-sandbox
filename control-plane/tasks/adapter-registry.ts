@@ -1,8 +1,8 @@
 import type { AgentTaskAdapter } from './adapter-interface.ts';
-import { llmTaskAdapter, repoTaskAdapter, shellTaskAdapter } from './adapters/index.ts';
+import { llmTaskAdapter, repoTaskAdapter, runtimeTaskAdapters, shellTaskAdapter } from './adapters/index.ts';
 import type { TaskType } from './task-types.ts';
 
-const ADAPTERS: readonly AgentTaskAdapter[] = [llmTaskAdapter, shellTaskAdapter, repoTaskAdapter] as const;
+const ADAPTERS: readonly AgentTaskAdapter[] = [llmTaskAdapter, shellTaskAdapter, repoTaskAdapter, ...runtimeTaskAdapters] as const;
 
 const adapterRegistry = new Map<TaskType, AgentTaskAdapter>(
   ADAPTERS.map((adapter) => [adapter.type, adapter])

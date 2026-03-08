@@ -19,6 +19,11 @@ async function main(): Promise<void> {
     process.stdout.write(`${prefix}unchanged: ${formatList(summary.unchanged)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('GitHub API error 403') || message.includes('Resource not accessible by integration')) {
+      process.stderr.write(
+        'Permission error: GitHub Actions token lacks label mutation access. Ensure workflow permissions include contents: read, issues: write, pull-requests: write.\n'
+      );
+    }
     process.stderr.write(`${message}\n`);
     process.exitCode = message.includes('Missing GITHUB_TOKEN or GH_TOKEN') ? 2 : 1;
   }

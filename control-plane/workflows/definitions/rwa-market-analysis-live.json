@@ -1,0 +1,39 @@
+{
+  "workflowId": "rwa-market-analysis-live",
+  "nodes": [
+    {
+      "id": "web-search",
+      "task": "web_search",
+      "agent": "macro-signal-analyst",
+      "phase": "research"
+    },
+    {
+      "id": "web-fetch",
+      "task": "web_fetch",
+      "agent": "macro-signal-analyst",
+      "phase": "research",
+      "dependsOn": [
+        "web-search"
+      ]
+    },
+    {
+      "id": "twitter-search",
+      "task": "twitter_search",
+      "agent": "macro-signal-analyst",
+      "phase": "analysis",
+      "dependsOn": [
+        "web-search"
+      ]
+    },
+    {
+      "id": "synthesis",
+      "task": "llm_synthesis",
+      "agent": "lead-thesis-architect",
+      "phase": "synthesis",
+      "dependsOn": [
+        "web-fetch",
+        "twitter-search"
+      ]
+    }
+  ]
+}

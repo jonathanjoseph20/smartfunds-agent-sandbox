@@ -1,4 +1,4 @@
-export const TASK_TYPES = ['llm', 'shell', 'repo'] as const;
+export const TASK_TYPES = ['llm', 'shell', 'repo', 'web_search', 'web_fetch', 'twitter_search'] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];
 

@@ -7,7 +7,8 @@
   "ownedPaths": [
     "apps/api/",
     "packages/mission-engine/",
-    "packages/llm-gateway/"
+    "packages/llm-gateway/",
+    "packages/tool-adapters/"
   ],
   "ownedFiles": [],
   "complianceProfile": "phase-1",

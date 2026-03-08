@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "registry": {
+    "web_search": {
+      "toolId": "web_search",
+      "enabled": true
+    },
+    "web_fetch": {
+      "toolId": "web_fetch",
+      "enabled": true
+    },
+    "twitter_search": {
+      "toolId": "twitter_search",
+      "enabled": true
+    }
+  }
+}

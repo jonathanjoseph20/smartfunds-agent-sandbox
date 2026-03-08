@@ -1,3 +1,5 @@
+import { createLlmGateway } from '../../../packages/llm-gateway/dist/index.js';
+
 import type { AgentTaskAdapter } from '../adapter-interface.ts';
 import type { TaskResult } from '../task-result.ts';
 
@@ -27,6 +29,7 @@ function failedResult(errorCode: string, errorMessage: string): TaskResult {
 export const llmTaskAdapter: AgentTaskAdapter = {
   type: 'llm',
   async execute(context) {
+    const gatewayEnabled = context.inputs.gateway === true;
     const prompt = context.inputs.prompt;
     const mockResponse = context.inputs.mockResponse;
     const responseKeyInput = context.inputs.responseKey;
@@ -36,6 +39,54 @@ export const llmTaskAdapter: AgentTaskAdapter = {
 
     if (typeof mockResponse === 'string') {
       return successResult(responseKey, mockResponse, 'mock');
+    }
+
+    if (gatewayEnabled) {
+      if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+        return failedResult('ERR_LLM_PROMPT_REQUIRED', 'LLM prompt is required when gateway mode is enabled.');
+      }
+
+      const gateway = createLlmGateway({
+        auditStore: {
+          write: () => {
+            // Intentionally no-op for task adapter execution path.
+          },
+          getSpendSnapshot: () => ({
+            globalDailySpentUsd: 0,
+            globalMonthlySpentUsd: 0,
+            routeDailySpentUsd: 0
+          })
+        }
+      });
+      const result = await gateway.generateStructured<Record<string, unknown>>({
+        callerClass: 'workflow_node',
+        routeClass: 'analysis',
+        promptId: context.taskId,
+        promptVersion: 'v1',
+        userPrompt: prompt.trim(),
+        schema: {
+          type: 'object',
+          additionalProperties: true
+        },
+        parseMode: 'extract_json',
+        repairOnFailure: true
+      });
+
+      if (!result.ok) {
+        return failedResult(result.code, result.message);
+      }
+
+      return {
+        status: 'success',
+        outputs: {
+          [responseKey]: result.value,
+          mode: 'gateway',
+          provider: result.provider,
+          modelAlias: result.modelAlias
+        },
+        artifacts: [],
+        logs: ['LLM_TASK_EXECUTED_GATEWAY_MODE']
+      };
     }
 
     if (typeof prompt !== 'string' || prompt.trim().length === 0) {

@@ -1,6 +1,8 @@
 import { WorkflowDag } from './workflow-dag.ts';
 import type { ValidatedWorkflowDefinition, WorkflowNodeExecutionResult, WorkflowRunResult } from './workflow-types.ts';
 import type { SwarmRunner } from '../swarm/swarm-runner.ts';
+import { fetchPage, searchTwitter, searchWeb } from '../../packages/tool-adapters/dist/index.js';
+import { createLlmGateway } from '../../packages/llm-gateway/dist/index.js';
 import { DEFAULT_RETRY_POLICY, evaluateRetryPolicy, type RetryFailureCode, type RetryPolicy } from '../runtime/retry-policy.ts';
 import {
   DEFAULT_TIMEOUT_POLICY,
@@ -101,6 +103,155 @@ function buildPreviousOutputs(
     .map((dependency) => [dependency, allOutputs[dependency]] as const);
 
   return Object.fromEntries(entries);
+}
+
+function resolveLiveFlag(missionContextMemory: Record<string, unknown> | undefined): boolean {
+  const parameters = missionContextMemory?.missionParameters;
+  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
+    return false;
+  }
+  const live = (parameters as Record<string, unknown>).live;
+  return live === '1' || live === 'true';
+}
+
+async function executeToolOrLlmTask(params: {
+  task: string;
+  previousOutputs: Record<string, unknown>;
+  missionContextMemory?: Record<string, unknown>;
+  workflowNodeId: string;
+}): Promise<unknown> {
+  const live = resolveLiveFlag(params.missionContextMemory);
+
+  if (params.task === 'web_search') {
+    const query = typeof params.previousOutputs.query === 'string'
+      ? params.previousOutputs.query
+      : 'rwa tokenization market';
+    const endpoint = 'https://duckduckgo.com/html/';
+    const result = live
+      ? await searchWeb({
+        query,
+        limit: 5,
+        sourceClass: 'market-research'
+      }).catch((error) => ({
+        query,
+        results: [],
+        error: {
+          task: 'web_search',
+          endpoint,
+          message: error instanceof Error ? error.message : 'fetch failed'
+        }
+      }))
+      : {
+        query,
+        results: []
+      };
+    return {
+      tool: 'web_search',
+      ...result
+    };
+  }
+
+  if (params.task === 'web_fetch') {
+    const url = typeof params.previousOutputs.url === 'string'
+      ? params.previousOutputs.url
+      : 'https://example.com';
+    const result = live
+      ? await fetchPage({ url }).catch((error) => ({
+        url,
+        text: '',
+        statusCode: 0,
+        error: {
+          task: 'web_fetch',
+          endpoint: url,
+          message: error instanceof Error ? error.message : 'fetch failed'
+        }
+      }))
+      : {
+        url,
+        text: '',
+        statusCode: 200
+      };
+    return {
+      tool: 'web_fetch',
+      ...result
+    };
+  }
+
+  if (params.task === 'twitter_search') {
+    const query = typeof params.previousOutputs.query === 'string'
+      ? params.previousOutputs.query
+      : 'rwa tokenization';
+    const endpoint = 'https://duckduckgo.com/html/';
+    const result = live
+      ? await searchTwitter({
+        query,
+        limit: 5
+      }).catch((error) => ({
+        query,
+        results: [],
+        error: {
+          task: 'twitter_search',
+          endpoint,
+          message: error instanceof Error ? error.message : 'fetch failed'
+        }
+      }))
+      : {
+        query,
+        results: []
+      };
+    return {
+      tool: 'twitter_search',
+      ...result
+    };
+  }
+
+  if (params.task === 'llm_synthesis') {
+    if (!live) {
+      return {
+        mode: 'stub',
+        summary: `stub:llm_synthesis:${params.workflowNodeId}`
+      };
+    }
+
+    const gateway = createLlmGateway({
+      auditStore: {
+        write: () => {
+          // Intentionally no-op for workflow node synthesis path.
+        },
+        getSpendSnapshot: () => ({
+          globalDailySpentUsd: 0,
+          globalMonthlySpentUsd: 0,
+          routeDailySpentUsd: 0
+        })
+      }
+    });
+    const result = await gateway.generateStructured<Record<string, unknown>>({
+      callerClass: 'workflow_node',
+      routeClass: 'analysis',
+      promptId: params.workflowNodeId,
+      promptVersion: 'v1',
+      userPrompt: JSON.stringify(params.previousOutputs),
+      schema: {
+        type: 'object',
+        additionalProperties: true
+      },
+      parseMode: 'extract_json',
+      repairOnFailure: true
+    });
+
+    if (!result.ok) {
+      throw new Error(`LLM_SYNTHESIS_FAILED: ${result.code}`);
+    }
+
+    return {
+      mode: 'gateway',
+      provider: result.provider,
+      modelAlias: result.modelAlias,
+      value: result.value
+    };
+  }
+
+  return null;
 }
 
 export async function runWorkflow(input: {
@@ -400,6 +551,17 @@ export function createSwarmWorkflowExecutor(input: {
 }): WorkflowTaskExecutor {
   return {
     async execute(params) {
+      const direct = await executeToolOrLlmTask({
+        task: params.task,
+        previousOutputs: params.previousOutputs,
+        missionContextMemory: params.missionContextMemory,
+        workflowNodeId: params.workflowNodeId
+      });
+
+      if (direct !== null) {
+        return direct;
+      }
+
       const created = input.swarmRunner.createSwarmRun({
         projectId: input.projectId,
         kind: 'mission',

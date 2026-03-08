@@ -28,6 +28,7 @@
     "policies/**": 3,
     "packages/shared/**": 3,
     "packages/mission-engine/**": 2,
+    "packages/tool-adapters/**": 2,
     "packages/doc-factory/**": 2,
     "packages/compliance/**": 2,
     "packages/exports/**": 2,

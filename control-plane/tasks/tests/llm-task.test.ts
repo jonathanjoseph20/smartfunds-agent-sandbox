@@ -66,4 +66,16 @@ describe('llm task adapter', () => {
       errorMessage: 'LLM prompt is required when mockResponse is not provided.'
     });
   });
+
+  it('routes gateway mode through llm gateway structured generation', async () => {
+    const result = await llmTaskAdapter.execute(context({
+      gateway: true,
+      prompt: 'Return any valid object'
+    }));
+
+    expect(result.status).toBe('success');
+    expect(result.logs).toEqual(['LLM_TASK_EXECUTED_GATEWAY_MODE']);
+    expect(result.outputs.mode).toBe('gateway');
+    expect(result.outputs.response).toEqual({ ok: true });
+  });
 });

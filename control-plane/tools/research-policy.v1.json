@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "tools": {
+    "web_search": {
+      "enabled": true,
+      "maxResults": 10
+    },
+    "web_fetch": {
+      "enabled": true,
+      "maxPagesPerRun": 10
+    },
+    "twitter_search": {
+      "enabled": true,
+      "maxResults": 10
+    }
+  }
+}

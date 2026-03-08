@@ -1,0 +1,39 @@
+{
+  "workflowId": "market-signal-brief-live",
+  "nodes": [
+    {
+      "id": "market-web-search",
+      "task": "web_search",
+      "agent": "macro-signal-analyst",
+      "phase": "research"
+    },
+    {
+      "id": "market-twitter-search",
+      "task": "twitter_search",
+      "agent": "macro-signal-analyst",
+      "phase": "analysis",
+      "dependsOn": [
+        "market-web-search"
+      ]
+    },
+    {
+      "id": "market-web-fetch",
+      "task": "web_fetch",
+      "agent": "macro-signal-analyst",
+      "phase": "analysis",
+      "dependsOn": [
+        "market-web-search"
+      ]
+    },
+    {
+      "id": "brief-synthesis",
+      "task": "llm_synthesis",
+      "agent": "lead-thesis-architect",
+      "phase": "synthesis",
+      "dependsOn": [
+        "market-twitter-search",
+        "market-web-fetch"
+      ]
+    }
+  ]
+}

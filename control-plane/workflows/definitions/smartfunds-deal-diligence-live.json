@@ -1,0 +1,38 @@
+{
+  "workflowId": "smartfunds-deal-diligence-live",
+  "nodes": [
+    {
+      "id": "target-fetch",
+      "task": "web_fetch",
+      "agent": "macro-signal-analyst",
+      "phase": "research"
+    },
+    {
+      "id": "reference-search",
+      "task": "web_search",
+      "agent": "macro-signal-analyst",
+      "phase": "research",
+      "dependsOn": [
+        "target-fetch"
+      ]
+    },
+    {
+      "id": "social-signal",
+      "task": "twitter_search",
+      "agent": "macro-signal-analyst",
+      "phase": "analysis",
+      "dependsOn": [
+        "reference-search"
+      ]
+    },
+    {
+      "id": "diligence-synthesis",
+      "task": "llm_synthesis",
+      "agent": "compliance-risk-reviewer",
+      "phase": "synthesis",
+      "dependsOn": [
+        "social-signal"
+      ]
+    }
+  ]
+}

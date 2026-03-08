@@ -156,4 +156,44 @@ describe('runtime routes', () => {
       }
     });
   });
+
+  it('T-S74-R4 OPTIONS preflight allows codespaces cockpit origin', async () => {
+    const app = createApp({
+      config: config(),
+      logger: vi.fn(),
+      services: {
+        missionService: {
+          listMissions: vi.fn(() => []),
+          inspectMission: vi.fn(),
+          startMission: vi.fn(),
+          cancelMission: vi.fn()
+        } as never,
+        workflowService: {
+          listWorkflows: vi.fn(() => []),
+          inspectWorkflow: vi.fn(),
+          traceWorkflow: vi.fn()
+        } as never,
+        runtimeService: {
+          retryWorkflowNode: vi.fn(),
+          resumeWorkflow: vi.fn(),
+          cancelWorkflow: vi.fn()
+        } as never
+      }
+    });
+
+    const response = await app.dispatch({
+      method: 'OPTIONS',
+      pathname: '/missions',
+      query: new URLSearchParams(),
+      bodyText: null,
+      headers: {
+        origin: 'https://5173-sample-org.app.github.dev'
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('https://5173-sample-org.app.github.dev');
+    expect(response.headers['access-control-allow-methods']).toBe('GET,POST,OPTIONS');
+    expect(response.headers['access-control-allow-headers']).toContain('content-type');
+  });
 });

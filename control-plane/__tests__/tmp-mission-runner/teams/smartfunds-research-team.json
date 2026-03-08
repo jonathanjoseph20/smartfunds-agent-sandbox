@@ -1,0 +1,11 @@
+{
+  "teamId": "smartfunds-research-team",
+  "name": "SmartFunds Research Team",
+  "projectId": "smartfunds-core",
+  "members": [
+    "lead-thesis-architect",
+    "macro-signal-analyst",
+    "compliance-risk-reviewer"
+  ],
+  "executionMode": "structured"
+}

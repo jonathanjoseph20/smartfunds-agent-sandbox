@@ -1,0 +1,27 @@
+{
+  "teamId": "smart-contract-web3-dev",
+  "teamType": "specialized",
+  "persistence": "persistent",
+  "description": "Smart contract engineering and security team.",
+  "capabilities": [
+    "onchain-architecture",
+    "smart-contract-auditing",
+    "solidity-engineering"
+  ],
+  "missionCompatibility": [
+    "build",
+    "code-review",
+    "verification"
+  ],
+  "tools": [
+    "llm-analysis",
+    "repo",
+    "shell"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "solidity-security-engineer"
+    }
+  ]
+}

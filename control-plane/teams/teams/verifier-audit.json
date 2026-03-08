@@ -1,0 +1,25 @@
+{
+  "teamId": "verifier-audit",
+  "teamType": "specialized",
+  "persistence": "persistent",
+  "description": "Independent verification and audit team.",
+  "capabilities": [
+    "artifact-audit",
+    "compliance-checks",
+    "evidence-verification"
+  ],
+  "missionCompatibility": [
+    "audit",
+    "verification"
+  ],
+  "tools": [
+    "llm-analysis",
+    "repo"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "audit-verifier"
+    }
+  ]
+}

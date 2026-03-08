@@ -1,0 +1,30 @@
+{
+  "missionId": "rwa-market-analysis",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "research-analysis-workflow",
+  "objective": "Analyze near-term tokenized RWA opportunities.",
+  "successCriteria": [
+    "Produce market landscape summary"
+  ],
+  "deliverables": [
+    "market-summary"
+  ],
+  "parameterSchema": {
+    "allowed": [
+      "market",
+      "horizon",
+      "risk-level"
+    ],
+    "required": [
+      "market"
+    ],
+    "defaults": {
+      "horizon": "30d",
+      "risk-level": "medium"
+    }
+  },
+  "initialContext": {
+    "sector": "RWA"
+  }
+}

@@ -1,6 +1,10 @@
 export type OperatorCommandSource = 'cli' | 'slack';
 
 export type OperatorCommandName =
+  | 'mission:create'
+  | 'mission:run'
+  | 'mission:status'
+  | 'mission:runtime-list'
   | 'mission:start'
   | 'mission:list'
   | 'mission:inspect'
@@ -37,6 +41,25 @@ export type MissionStartCommand = {
   name: 'mission:start';
   missionId: string;
   params: Record<string, string>;
+};
+
+export type MissionCreateCommand = {
+  name: 'mission:create';
+  templateId: string;
+};
+
+export type MissionRunCommand = {
+  name: 'mission:run';
+  missionId: string;
+};
+
+export type MissionStatusCommand = {
+  name: 'mission:status';
+  missionId: string;
+};
+
+export type MissionRuntimeListCommand = {
+  name: 'mission:runtime-list';
 };
 
 export type MissionListCommand = {
@@ -84,6 +107,10 @@ export type WorkflowCancelCommand = {
 };
 
 export type ParsedOperatorCommand =
+  | MissionCreateCommand
+  | MissionRunCommand
+  | MissionStatusCommand
+  | MissionRuntimeListCommand
   | MissionStartCommand
   | MissionListCommand
   | MissionInspectCommand
@@ -97,6 +124,10 @@ export type ParsedOperatorCommand =
 
 export type OperatorServices = {
   mission: {
+    createMission: (input: { templateId: string }) => unknown;
+    runMission: (input: { missionId: string }) => Promise<unknown>;
+    missionStatus: (input: { missionId: string }) => unknown;
+    listRuntimeMissions: () => unknown;
     startMission: (input: { missionId: string; params: Record<string, string> }) => Promise<unknown>;
     listMissions: () => unknown;
     inspectMission: (input: { missionId: string }) => unknown;

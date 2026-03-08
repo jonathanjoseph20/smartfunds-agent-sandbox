@@ -1,0 +1,16 @@
+{
+  "agentId": "audit-verifier",
+  "skills": [
+    "artifact-audit",
+    "compliance-evidence",
+    "verification"
+  ],
+  "personality": {
+    "communication": "structured",
+    "riskPosture": "conservative"
+  },
+  "tools": [
+    "internal-docs",
+    "repo"
+  ]
+}

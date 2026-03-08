@@ -199,6 +199,69 @@ export function parseOperatorCommand(argv: string[]): ParsedOperatorCommand {
 
   const [command, ...rest] = argv;
 
+  if (command === 'mission') {
+    const action = rest[0];
+    const args = rest.slice(1);
+
+    if (action === 'create') {
+      return {
+        name: 'mission:create',
+        templateId: requireSinglePositional(args, '<templateId>')
+      };
+    }
+
+    if (action === 'list') {
+      if (args.length > 0) {
+        throw toError('INVALID_ARGUMENT', 'mission list does not accept arguments');
+      }
+      return { name: 'mission:runtime-list' };
+    }
+
+    if (action === 'run') {
+      return {
+        name: 'mission:run',
+        missionId: requireSinglePositional(args, '<missionId>')
+      };
+    }
+
+    if (action === 'status') {
+      return {
+        name: 'mission:status',
+        missionId: requireSinglePositional(args, '<missionId>')
+      };
+    }
+
+    throw toError('UNKNOWN_COMMAND', `Unknown command: mission ${action ?? ''}`.trim(), { command: ['mission', ...(action ? [action] : [])].join(' ') });
+  }
+
+  if (command === 'mission:create') {
+    return {
+      name: 'mission:create',
+      templateId: requireSinglePositional(rest, '<templateId>')
+    };
+  }
+
+  if (command === 'mission:run') {
+    return {
+      name: 'mission:run',
+      missionId: requireSinglePositional(rest, '<missionId>')
+    };
+  }
+
+  if (command === 'mission:status') {
+    return {
+      name: 'mission:status',
+      missionId: requireSinglePositional(rest, '<missionId>')
+    };
+  }
+
+  if (command === 'mission:runtime-list') {
+    if (rest.length > 0) {
+      throw toError('INVALID_ARGUMENT', 'mission:runtime-list does not accept arguments');
+    }
+    return { name: 'mission:runtime-list' };
+  }
+
   if (command === 'mission:list') {
     if (rest.length > 0) {
       throw toError('INVALID_ARGUMENT', 'mission:list does not accept arguments');

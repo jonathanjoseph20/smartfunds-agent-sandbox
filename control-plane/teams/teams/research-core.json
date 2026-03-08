@@ -1,0 +1,26 @@
+{
+  "teamId": "research-core",
+  "teamType": "persistent",
+  "persistence": "persistent",
+  "description": "Core research team for cross-domain analysis.",
+  "capabilities": [
+    "market-research",
+    "synthesis",
+    "verification"
+  ],
+  "missionCompatibility": [
+    "analysis",
+    "research"
+  ],
+  "tools": [
+    "llm-analysis",
+    "page-fetch",
+    "web-search"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "research-generalist"
+    }
+  ]
+}

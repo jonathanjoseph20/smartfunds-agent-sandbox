@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sprint77MissionTemplate",
+  "type": "object",
+  "required": [
+    "missionId",
+    "title",
+    "missionType",
+    "projectId",
+    "workflowId",
+    "objectives",
+    "successCriteria",
+    "deliverables",
+    "artifacts",
+    "teamId",
+    "workflow"
+  ],
+  "properties": {
+    "missionId": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "missionType": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "background": { "type": "string" },
+    "objectives": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "successCriteria": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "deliverables": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["document", "dataset", "code", "report", "analysis"] }
+        }
+      }
+    },
+    "teamId": { "type": "string", "minLength": 1 },
+    "workflow": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+  }
+}

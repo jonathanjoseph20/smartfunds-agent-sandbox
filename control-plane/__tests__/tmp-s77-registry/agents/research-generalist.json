@@ -1,0 +1,13 @@
+{
+  "agentId": "research-generalist",
+  "skills": [
+    "research"
+  ],
+  "personality": {
+    "riskPosture": "balanced",
+    "communication": "structured"
+  },
+  "tools": [
+    "web-research"
+  ]
+}

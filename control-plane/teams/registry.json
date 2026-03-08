@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "teams": [
+    "research-core",
+    "smart-contract-web3-dev",
+    "smartfunds-legal",
+    "system-operations",
+    "verifier-audit",
+    "web2-saas-dev"
+  ]
+}

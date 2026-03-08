@@ -7,6 +7,16 @@ import { buildWorkflowNodeRecords } from '../observability/node-record.ts';
 import { buildWorkflowRunRecord, buildWorkflowRunRecords } from '../observability/run-record.ts';
 import type { MissionDefinition, MissionParameterSchema } from '../missions/mission-types.ts';
 import { loadMissionDefinitionById, loadMissionDefinitionsFromDir } from '../missions/mission-loader.ts';
+import { assertMissionArtifacts, verifyMissionArtifacts } from '../missions/mission-artifact-verifier.ts';
+import { loadMissionRegistryBundle, validateMissionTemplateAgainstRegistry } from '../missions/mission-registry-loader.ts';
+import { loadMissionTemplateById, loadMissionTemplatesFromDir } from '../missions/mission-template-loader.ts';
+import {
+  advanceRuntimeMissionPhase,
+  createRuntimeMissionInstance,
+  getRuntimeMissionRecord,
+  listRuntimeMissionRecords,
+  setRuntimeMissionResult
+} from '../missions/runtime-mission-instance.ts';
 import { createSwarmRunner } from '../swarm/swarm-runner.ts';
 import { loadTeamDefinitionById } from '../teams/team-loader.ts';
 import type { TeamDefinition } from '../teams/team-types.ts';
@@ -19,6 +29,11 @@ type MissionServiceOptions = {
   journal?: ExecutionJournal;
   rootDir?: string;
   missionsDir?: string;
+  missionTemplatesDir?: string;
+  runtimeMissionsDir?: string;
+  missionTeamRegistryPath?: string;
+  missionTeamsDir?: string;
+  missionAgentsDir?: string;
   teamsDir?: string;
   agentsDir?: string;
   workflowsDir?: string;
@@ -114,6 +129,53 @@ function buildJournal(options: MissionServiceOptions): ExecutionJournal {
   return options.journal ?? createExecutionJournal({ rootDir: options.rootDir });
 }
 
+async function executeMissionWorkflow(input: {
+  journal: ExecutionJournal;
+  missionId: string;
+  projectId: string;
+  workflowId: string;
+  missionParameters: Record<string, string>;
+  missionContext: Record<string, unknown>;
+  workflowsDir?: string;
+}): Promise<{ runId: string; status: string }> {
+  const workflow = loadWorkflowDefinitionById(input.workflowId, input.workflowsDir);
+
+  const run = input.journal.createRun({
+    projectId: input.projectId,
+    kind: 'mission',
+    entrypoint: `mission:${input.missionId}`
+  });
+
+  const swarmRunner = createSwarmRunner({ journal: input.journal });
+  const executor = createSwarmWorkflowExecutor({
+    swarmRunner,
+    projectId: input.projectId,
+    missionMemory: {
+      missionParameters: input.missionParameters,
+      missionContext: input.missionContext
+    }
+  });
+
+  await executeWorkflowRunWithHardening({
+    journal: input.journal,
+    runId: run.runId,
+    missionId: input.missionId,
+    workflow,
+    executor,
+    missionContextMemory: {
+      missionParameters: input.missionParameters,
+      missionContext: input.missionContext
+    }
+  });
+
+  const inspected = input.journal.inspectRun(run.runId);
+  const runRecord = buildWorkflowRunRecord(inspected);
+  return {
+    runId: runRecord.runId,
+    status: runRecord.status
+  };
+}
+
 export function createMissionService(options: MissionServiceOptions = {}) {
   const journal = buildJournal(options);
 
@@ -124,7 +186,6 @@ export function createMissionService(options: MissionServiceOptions = {}) {
 
     validateMissionTeamCoherence(mission, team);
     const agentRoster = resolveAgentRoster(team, profiles);
-    const workflow = loadWorkflowDefinitionById(mission.workflowId, options.workflowsDir);
     const missionParameters = resolveMissionParameters({
       missionId: mission.missionId,
       schema: mission.parameterSchema,
@@ -136,43 +197,22 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       missionParameters
     });
 
-    const run = journal.createRun({
-      projectId: mission.projectId,
-      kind: 'mission',
-      entrypoint: `mission:${mission.missionId}`
-    });
-
-    const swarmRunner = createSwarmRunner({ journal });
-    const executor = createSwarmWorkflowExecutor({
-      swarmRunner,
-      projectId: mission.projectId,
-      missionMemory: {
-        missionParameters,
-        missionContext: mergedContext
-      }
-    });
-
-    await executeWorkflowRunWithHardening({
+    const executed = await executeMissionWorkflow({
       journal,
-      runId: run.runId,
       missionId: mission.missionId,
-      workflow,
-      executor,
-      missionContextMemory: {
-        missionParameters,
-        missionContext: mergedContext
-      }
+      projectId: mission.projectId,
+      workflowId: mission.workflowId,
+      missionParameters,
+      missionContext: mergedContext,
+      workflowsDir: options.workflowsDir
     });
-
-    const inspected = journal.inspectRun(run.runId);
-    const runRecord = buildWorkflowRunRecord(inspected);
 
     return {
       missionId: mission.missionId,
-      status: mapRunStatusToMissionStatus(runRecord.status),
+      status: mapRunStatusToMissionStatus(executed.status),
       teamId: mission.teamId,
       workflowId: mission.workflowId,
-      workflowRun: runRecord.runId,
+      workflowRun: executed.runId,
       missionParameters,
       contextKeys: Object.keys(mergedContext).sort((left, right) => left.localeCompare(right))
     };
@@ -339,7 +379,158 @@ export function createMissionService(options: MissionServiceOptions = {}) {
     };
   }
 
+  function createMission(input: { templateId: string }): Record<string, unknown> {
+    const template = loadMissionTemplateById(input.templateId, options.missionTemplatesDir);
+    const registryBundle = loadMissionRegistryBundle({
+      registryPath: options.missionTeamRegistryPath,
+      teamsDir: options.missionTeamsDir,
+      agentsDir: options.missionAgentsDir
+    });
+    validateMissionTemplateAgainstRegistry(template, registryBundle);
+
+    const created = createRuntimeMissionInstance({
+      template,
+      rootDir: options.runtimeMissionsDir
+    });
+
+    return {
+      missionId: created.missionId,
+      template: created.template.missionId,
+      teamId: created.template.teamId,
+      status: created.status.status,
+      phase: created.status.phase
+    };
+  }
+
+  function listRuntimeMissions(): Array<Record<string, unknown>> {
+    const templates = loadMissionTemplatesFromDir(options.missionTemplatesDir);
+    return listRuntimeMissionRecords({
+      templates,
+      rootDir: options.runtimeMissionsDir
+    }).map((record) => ({
+      missionId: record.missionId,
+      template: record.status.template,
+      teamId: record.status.teamId,
+      status: record.status.status,
+      phase: record.status.phase
+    }));
+  }
+
+  function missionStatus(input: { missionId: string }): Record<string, unknown> {
+    const templates = loadMissionTemplatesFromDir(options.missionTemplatesDir);
+    const record = getRuntimeMissionRecord({
+      missionId: input.missionId,
+      templates,
+      rootDir: options.runtimeMissionsDir
+    });
+
+    const artifacts = verifyMissionArtifacts({
+      template: record.template,
+      artifactsDir: record.artifactsDir
+    });
+
+    return {
+      missionId: record.missionId,
+      template: record.status.template,
+      teamId: record.status.teamId,
+      status: record.status.status,
+      phase: record.status.phase,
+      artifacts
+    };
+  }
+
+  async function runMission(input: { missionId: string }): Promise<Record<string, unknown>> {
+    const templates = loadMissionTemplatesFromDir(options.missionTemplatesDir);
+    const record = getRuntimeMissionRecord({
+      missionId: input.missionId,
+      templates,
+      rootDir: options.runtimeMissionsDir
+    });
+
+    if (record.status.phase !== 'init') {
+      throw new Error(`MISSION_NOT_RUNNABLE: ${record.missionId}: phase=${record.status.phase}`);
+    }
+
+    advanceRuntimeMissionPhase({
+      missionId: record.missionId,
+      nextPhase: 'planning',
+      nextStatus: 'running',
+      rootDir: options.runtimeMissionsDir
+    });
+
+    advanceRuntimeMissionPhase({
+      missionId: record.missionId,
+      nextPhase: 'execution',
+      nextStatus: 'running',
+      rootDir: options.runtimeMissionsDir
+    });
+
+    try {
+      const missionContext = Object.fromEntries(
+        Object.entries({
+          missionType: record.template.missionType,
+          objectives: record.template.objectives,
+          successCriteria: record.template.successCriteria,
+          deliverables: record.template.deliverables
+        }).sort(([left], [right]) => left.localeCompare(right))
+      );
+
+      const executed = await executeMissionWorkflow({
+        journal,
+        missionId: record.missionId,
+        projectId: record.template.projectId,
+        workflowId: record.template.workflowId,
+        missionParameters: {},
+        missionContext,
+        workflowsDir: options.workflowsDir
+      });
+
+      advanceRuntimeMissionPhase({
+        missionId: record.missionId,
+        nextPhase: 'verification',
+        nextStatus: 'running',
+        rootDir: options.runtimeMissionsDir
+      });
+
+      assertMissionArtifacts({
+        template: record.template,
+        artifactsDir: record.artifactsDir
+      });
+
+      const delivered = advanceRuntimeMissionPhase({
+        missionId: record.missionId,
+        nextPhase: 'delivery',
+        nextStatus: 'completed',
+        rootDir: options.runtimeMissionsDir
+      });
+
+      return {
+        missionId: record.missionId,
+        template: record.template.missionId,
+        teamId: record.template.teamId,
+        workflowId: record.template.workflowId,
+        workflowRun: executed.runId,
+        status: delivered.status,
+        phase: delivered.phase
+      };
+    } catch (error) {
+      const failed = setRuntimeMissionResult({
+        missionId: record.missionId,
+        status: 'failed',
+        rootDir: options.runtimeMissionsDir
+      });
+
+      throw new Error(
+        `MISSION_RUN_FAILED: ${record.missionId}: status=${failed.status}: ${error instanceof Error ? error.message : 'unknown_error'}`
+      );
+    }
+  }
+
   return {
+    createMission,
+    listRuntimeMissions,
+    runMission,
+    missionStatus,
     startMission,
     listMissions,
     inspectMission,

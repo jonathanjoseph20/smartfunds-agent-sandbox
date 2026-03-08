@@ -1,0 +1,21 @@
+{
+  "teamId": "smartfunds-legal",
+  "teamType": "specialized",
+  "persistence": "persistent",
+  "description": "legal",
+  "capabilities": [
+    "securities-law"
+  ],
+  "missionCompatibility": [
+    "legal-analysis"
+  ],
+  "tools": [
+    "web-search"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "tokenization-compliance-expert"
+    }
+  ]
+}

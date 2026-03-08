@@ -1,0 +1,9 @@
+{
+  "teamId": "smartfunds-research-team",
+  "name": "SmartFunds Research Team",
+  "projectId": "smartfunds-core",
+  "members": [
+    "lead-thesis-architect"
+  ],
+  "executionMode": "structured"
+}

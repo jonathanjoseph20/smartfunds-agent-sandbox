@@ -1,0 +1,9 @@
+missionId: mission-002
+template: tokenization-legal-analysis
+title: Tokenization Compliance Review
+missionType: legal-analysis
+projectId: smartfunds-core
+workflowId: research-analysis-workflow
+teamId: smartfunds-legal
+deliverables:
+  - legal-memo.md

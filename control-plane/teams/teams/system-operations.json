@@ -1,0 +1,26 @@
+{
+  "teamId": "system-operations",
+  "teamType": "persistent",
+  "persistence": "persistent",
+  "description": "Runtime and platform operations team.",
+  "capabilities": [
+    "incident-response",
+    "platform-operations",
+    "runtime-reliability"
+  ],
+  "missionCompatibility": [
+    "operations",
+    "verification"
+  ],
+  "tools": [
+    "llm-analysis",
+    "repo",
+    "shell"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "operations-sre"
+    }
+  ]
+}

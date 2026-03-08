@@ -1,0 +1,45 @@
+{
+  "missionId": "tokenization-legal-analysis",
+  "title": "Tokenization Compliance Review",
+  "missionType": "legal-analysis",
+  "projectId": "smartfunds-core",
+  "workflowId": "research-analysis-workflow",
+  "background": "SmartFunds is evaluating tokenizing mineral royalty rights. Determine feasibility under US securities law.",
+  "objectives": [
+    "determine if Reg D exemption applies",
+    "identify transfer restrictions",
+    "recommend compliant offering structure"
+  ],
+  "successCriteria": [
+    "recommendation actionable",
+    "regulatory citations present",
+    "risk areas identified"
+  ],
+  "deliverables": [
+    "legal-memo.md",
+    "recommended-structure.md",
+    "risk-analysis.md"
+  ],
+  "artifacts": [
+    {
+      "name": "legal-memo.md",
+      "type": "document"
+    },
+    {
+      "name": "recommended-structure.md",
+      "type": "document"
+    },
+    {
+      "name": "risk-analysis.md",
+      "type": "analysis"
+    }
+  ],
+  "teamId": "smartfunds-legal",
+  "workflow": [
+    "planning",
+    "research",
+    "synthesis",
+    "verification",
+    "delivery"
+  ]
+}

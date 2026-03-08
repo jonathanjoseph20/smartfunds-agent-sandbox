@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sprint77TeamRegistry",
+  "type": "object",
+  "required": ["schemaVersion", "teams"],
+  "properties": {
+    "schemaVersion": { "type": "number" },
+    "teams": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    }
+  }
+}

@@ -5,6 +5,7 @@
   "pod": "smartfunds",
   "mode": "structured",
   "ownedPaths": [
+    "control-plane/",
     "control-plane/cli/",
     "control-plane/agents/",
     "control-plane/cockpit/",
@@ -42,6 +43,7 @@
     ".gitignore",
     ".pr-body.md",
     "TEST_GOVERNANCE.md",
+    "control-plane/bootstrap-labels.test.ts",
     "control-plane/governance-check.test.ts",
     "control-plane/governance-check.ts",
     "agent-cockpit-main.zip",

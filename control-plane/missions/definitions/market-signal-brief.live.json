@@ -1,0 +1,47 @@
+{
+  "missionId": "market-signal-brief-live",
+  "name": "Market Signal Brief (Live)",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "market-signal-brief-live",
+  "objective": "Generate a concise market signal brief from web and X/Twitter sources.",
+  "successCriteria": [
+    "Gather deterministic web signal set",
+    "Gather deterministic social signal set",
+    "Produce brief output"
+  ],
+  "deliverables": [
+    "brief-json",
+    "brief-markdown"
+  ],
+  "parameterSchema": {
+    "allowed": [
+      "live",
+      "lookbackDays",
+      "market",
+      "theme"
+    ],
+    "required": [
+      "theme",
+      "market",
+      "lookbackDays"
+    ],
+    "defaults": {
+      "live": "false"
+    },
+    "descriptions": {
+      "live": "Whether to execute live external research adapters.",
+      "lookbackDays": "Number of days for recent signal window.",
+      "market": "Market scope.",
+      "theme": "Brief theme."
+    }
+  },
+  "initialContext": {
+    "sourcePolicy": "research-policy.v1"
+  },
+  "tags": [
+    "brief",
+    "live",
+    "signals"
+  ]
+}

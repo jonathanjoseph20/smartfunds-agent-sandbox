@@ -1,0 +1,48 @@
+{
+  "missionId": "rwa-market-analysis-live",
+  "name": "RWA Market Analysis (Live)",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "rwa-market-analysis-live",
+  "objective": "Analyze a live RWA topic using web and social signal evidence.",
+  "successCriteria": [
+    "Collect structured web sources",
+    "Collect structured X/Twitter signals",
+    "Produce synthesized structured report"
+  ],
+  "deliverables": [
+    "report-json",
+    "memo-markdown"
+  ],
+  "parameterSchema": {
+    "allowed": [
+      "live",
+      "lookbackDays",
+      "query"
+    ],
+    "required": [
+      "query"
+    ],
+    "defaults": {
+      "live": "false",
+      "lookbackDays": "7"
+    },
+    "descriptions": {
+      "live": "Whether to execute live external research adapters.",
+      "lookbackDays": "Analysis horizon for social signal scan.",
+      "query": "Research query topic."
+    }
+  },
+  "initialContext": {
+    "outputFormats": [
+      "json",
+      "markdown"
+    ],
+    "sourcePolicy": "research-policy.v1"
+  },
+  "tags": [
+    "live",
+    "rwa",
+    "research"
+  ]
+}

@@ -104,8 +104,28 @@ function matchPath(routePath: string, requestPath: string): { matched: boolean; 
   return { matched: true, params };
 }
 
+function resolveCorsOrigin(config: RuntimeServiceConfig, origin: string | undefined): string {
+  if (!origin || origin.trim().length === 0) {
+    return config.corsOrigin;
+  }
+
+  if (origin === config.corsOrigin) {
+    return origin;
+  }
+
+  if (origin.endsWith('.app.github.dev')) {
+    return origin;
+  }
+
+  if (config.env !== 'production') {
+    return origin;
+  }
+
+  return config.corsOrigin;
+}
+
 function buildCorsHeaders(config: RuntimeServiceConfig, origin: string | undefined): Record<string, string> {
-  const allowOrigin = origin === config.corsOrigin ? origin : config.corsOrigin;
+  const allowOrigin = resolveCorsOrigin(config, origin);
   return {
     'access-control-allow-origin': allowOrigin,
     'access-control-allow-methods': 'GET,POST,OPTIONS',

@@ -1,0 +1,8 @@
+{
+  "default": "ollama",
+  "summarization": "groq",
+  "extract": "ollama",
+  "analysis": "google",
+  "comparison": "openrouter",
+  "premium": "openai"
+}

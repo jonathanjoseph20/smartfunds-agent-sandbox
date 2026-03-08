@@ -16,11 +16,26 @@ describe('task adapter registry', () => {
     expect(getAdapter('repo')).toBe(repoTaskAdapter);
   });
 
+  it('returns runtime adapter for llm.generate task type', () => {
+    expect(getAdapter('llm.generate').type).toBe('llm.generate');
+  });
+
   it('throws deterministic error for unknown adapter type', () => {
     expect(() => getAdapter('unknown' as 'llm')).toThrow('ERR_TASK_ADAPTER_NOT_FOUND: unknown');
   });
 
   it('lists adapters in stable deterministic order', () => {
-    expect(listRegisteredAdapters().map((entry) => entry.type)).toEqual(['llm', 'repo', 'shell']);
+    expect(listRegisteredAdapters().map((entry) => entry.type)).toEqual([
+      'llm',
+      'llm.generate',
+      'output.write_artifact',
+      'output.write_csv',
+      'output.write_xlsx',
+      'repo',
+      'shell',
+      'tool.page_fetch',
+      'tool.reader_extract',
+      'tool.web_search'
+    ]);
   });
 });

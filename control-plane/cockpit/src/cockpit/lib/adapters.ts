@@ -2,12 +2,24 @@ import type { CommandEnvelope, Mission, WorkflowRun, TraceEvent, TeamRoster, Wor
 import { missions, runs, traceEvents, teamRosters, workflowDefinitions } from './mock-data';
 
 const DEFAULT_RUNTIME_BASE_URL = 'http://127.0.0.1:3100';
+const DEFAULT_CODE_SPACES_RUNTIME_PORT = '3100';
+
+function isDemoMode(): boolean {
+  return import.meta.env.VITE_COCKPIT_DEMO_MODE === '1';
+}
 
 function runtimeBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_RUNTIME_API_BASE_URL;
   if (typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
     return fromEnv.replace(/\/$/, '');
   }
+
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.app.github.dev')) {
+    const currentHost = window.location.hostname;
+    const runtimeHost = currentHost.replace(/^\d+-/, `${DEFAULT_CODE_SPACES_RUNTIME_PORT}-`);
+    return `${window.location.protocol}//${runtimeHost}`;
+  }
+
   return DEFAULT_RUNTIME_BASE_URL;
 }
 
@@ -74,7 +86,7 @@ function fromRunRows(rows: Array<Record<string, unknown>>): WorkflowRun[] {
 export async function fetchMissions(): Promise<Mission[]> {
   const payload = await request<Array<Record<string, unknown>>>('/missions');
   if (!payload) {
-    return [...missions];
+    return isDemoMode() ? [...missions] : [];
   }
   return fromMissionRows(payload);
 }
@@ -82,7 +94,7 @@ export async function fetchMissions(): Promise<Mission[]> {
 export async function fetchMission(missionId: string): Promise<Mission | null> {
   const payload = await request<Record<string, unknown>>(`/missions/${missionId}`);
   if (!payload) {
-    return missions.find((m) => m.missionId === missionId) ?? null;
+    return isDemoMode() ? missions.find((m) => m.missionId === missionId) ?? null : null;
   }
 
   return {
@@ -100,7 +112,7 @@ export async function fetchMission(missionId: string): Promise<Mission | null> {
 export async function fetchRuns(): Promise<WorkflowRun[]> {
   const payload = await request<Array<Record<string, unknown>>>('/runs');
   if (!payload) {
-    return [...runs];
+    return isDemoMode() ? [...runs] : [];
   }
   return fromRunRows(payload);
 }
@@ -108,7 +120,7 @@ export async function fetchRuns(): Promise<WorkflowRun[]> {
 export async function fetchRun(runId: string): Promise<WorkflowRun | null> {
   const payload = await request<Record<string, unknown>>(`/runs/${runId}`);
   if (!payload) {
-    return runs.find((r) => r.runId === runId) ?? null;
+    return isDemoMode() ? runs.find((r) => r.runId === runId) ?? null : null;
   }
 
   const nodeStates = Array.isArray(payload.nodeStates) ? payload.nodeStates : [];
@@ -150,6 +162,9 @@ export async function fetchRunsForMission(missionId: string): Promise<WorkflowRu
 export async function fetchTraceEvents(runId: string): Promise<TraceEvent[]> {
   const payload = await request<Record<string, unknown>>(`/runs/${runId}/trace`);
   if (!payload || !Array.isArray(payload.trace)) {
+    if (!isDemoMode()) {
+      return [];
+    }
     const events = traceEvents[runId] ?? [];
     return [...events].sort((a, b) => a.sequence - b.sequence);
   }
@@ -165,7 +180,7 @@ export async function fetchTraceEvents(runId: string): Promise<TraceEvent[]> {
 export async function fetchTeamRoster(teamId: string): Promise<TeamRoster | null> {
   const payload = await request<Record<string, unknown>>(`/teams/${teamId}`);
   if (!payload) {
-    return teamRosters.find((t) => t.teamId === teamId) ?? null;
+    return isDemoMode() ? teamRosters.find((t) => t.teamId === teamId) ?? null : null;
   }
 
   const agents = Array.isArray(payload.agents) ? payload.agents : [];
@@ -182,7 +197,7 @@ export async function fetchTeamRoster(teamId: string): Promise<TeamRoster | null
 export async function fetchWorkflowDefinition(workflowId: string): Promise<WorkflowDefinition | null> {
   const payload = await request<Record<string, unknown>>(`/workflows/${workflowId}`);
   if (!payload) {
-    return workflowDefinitions.find((w) => w.workflowId === workflowId) ?? null;
+    return isDemoMode() ? workflowDefinitions.find((w) => w.workflowId === workflowId) ?? null : null;
   }
 
   const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];

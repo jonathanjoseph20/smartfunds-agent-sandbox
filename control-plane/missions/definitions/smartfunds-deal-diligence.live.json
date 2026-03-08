@@ -1,0 +1,50 @@
+{
+  "missionId": "smartfunds-deal-diligence-live",
+  "name": "SmartFunds Deal Diligence (Live)",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "smartfunds-deal-diligence-live",
+  "objective": "Run external diligence on a target and produce a risk-aware memo.",
+  "successCriteria": [
+    "Fetch and summarize target website",
+    "Collect external references",
+    "Produce diligence memo"
+  ],
+  "deliverables": [
+    "diligence-json",
+    "diligence-memo"
+  ],
+  "parameterSchema": {
+    "allowed": [
+      "focusArea",
+      "live",
+      "sector",
+      "targetName",
+      "targetUrl"
+    ],
+    "required": [
+      "targetName",
+      "targetUrl",
+      "sector",
+      "focusArea"
+    ],
+    "defaults": {
+      "live": "false"
+    },
+    "descriptions": {
+      "focusArea": "Primary diligence focus.",
+      "live": "Whether to execute live external research adapters.",
+      "sector": "Target sector.",
+      "targetName": "Target company name.",
+      "targetUrl": "Target website URL."
+    }
+  },
+  "initialContext": {
+    "sourcePolicy": "research-policy.v1"
+  },
+  "tags": [
+    "deal",
+    "diligence",
+    "live"
+  ]
+}

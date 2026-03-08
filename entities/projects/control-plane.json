@@ -46,7 +46,8 @@
     "control-plane/governance-check.ts",
     "agent-cockpit-main.zip",
     "package-lock.json",
-    "package.json"
+    "package.json",
+    "control-plane/risk-contract.json"
   ],
   "complianceProfile": "internal",
   "financeScope": null

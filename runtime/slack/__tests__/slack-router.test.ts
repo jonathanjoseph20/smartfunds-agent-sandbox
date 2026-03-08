@@ -47,18 +47,29 @@ describe('slack router', () => {
 
     await expect(router.handleCommand('/mission', ['run'])).resolves.toEqual({
       ok: false,
-      error: { code: 'MISSING_ARGUMENT', message: 'Missing required <mission-name> for /mission run' }
+      error: expect.objectContaining({ code: 'INVALID_COMMAND' })
     });
 
     await expect(router.handleCommand('/mission', ['unknown', 'm1'])).resolves.toEqual({
       ok: false,
-      error: { code: 'UNKNOWN_SUBCOMMAND', message: 'Unknown mission subcommand: unknown' }
+      error: expect.objectContaining({ code: 'INVALID_COMMAND' })
     });
 
     await expect(router.handleCommand('/artifact', [])).resolves.toEqual({
       ok: false,
       error: { code: 'MISSING_ARGUMENT', message: 'Missing required <mission-id> for /artifact' }
     });
+  });
+
+  it('T-S81-R5 always serves /mission help without controller calls', async () => {
+    const controller = buildController();
+    const router = createSlackRouter(controller);
+
+    const result = await router.handleCommand('/mission', ['help']);
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.message.text).toBe('Mission command help');
+    expect(controller.startMission).not.toHaveBeenCalled();
+    expect(controller.getStatus).not.toHaveBeenCalled();
   });
 
   it('T-S80-R4 wraps controller failures', async () => {

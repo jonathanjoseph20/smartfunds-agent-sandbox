@@ -8,6 +8,7 @@ import {
   formatMissionStatus,
   type SlackMessage
 } from './slack-format.ts';
+import { formatSlackHelpMessage, slackHelpUsageText } from './slack-help.ts';
 
 export type SlackRouteResult =
   | { ok: true; message: SlackMessage; artifacts?: string[] }
@@ -34,6 +35,10 @@ function toError(code: string, message: string): SlackRouteResult {
   };
 }
 
+function formatMissionUsageError(message: string): SlackRouteResult {
+  return toError('INVALID_COMMAND', `${message}\n\n${slackHelpUsageText()}`);
+}
+
 export function createSlackRouter(controller: MissionController, options: SlackRouterOptions = {}) {
   async function handleCommand(command: '/mission' | '/artifact', args: string[]): Promise<SlackRouteResult> {
     try {
@@ -57,13 +62,20 @@ export function createSlackRouter(controller: MissionController, options: SlackR
 
       const subcommand = args[0];
       if (!subcommand) {
-        return toError('MISSING_SUBCOMMAND', 'Missing mission subcommand');
+        return formatMissionUsageError('Missing mission subcommand.');
+      }
+
+      if (subcommand === 'help') {
+        return {
+          ok: true,
+          message: formatSlackHelpMessage()
+        };
       }
 
       if (subcommand === 'run') {
         const missionId = args[1];
         if (!missionId) {
-          return toError('MISSING_ARGUMENT', 'Missing required <mission-name> for /mission run');
+          return formatMissionUsageError('Missing required <mission-name> for /mission run.');
         }
 
         const started = asRecord(await controller.startMission(missionId));
@@ -82,7 +94,7 @@ export function createSlackRouter(controller: MissionController, options: SlackR
       if (subcommand === 'status') {
         const missionId = args[1];
         if (!missionId) {
-          return toError('MISSING_ARGUMENT', 'Missing required <mission-id> for /mission status');
+          return formatMissionUsageError('Missing required <mission-id> for /mission status.');
         }
 
         const status = asRecord(controller.getStatus(missionId));
@@ -121,7 +133,7 @@ export function createSlackRouter(controller: MissionController, options: SlackR
       if (subcommand === 'logs') {
         const missionId = args[1];
         if (!missionId) {
-          return toError('MISSING_ARGUMENT', 'Missing required <mission-id> for /mission logs');
+          return formatMissionUsageError('Missing required <mission-id> for /mission logs.');
         }
 
         const trace = asRecord(controller.getLogs(missionId));
@@ -140,7 +152,7 @@ export function createSlackRouter(controller: MissionController, options: SlackR
       if (subcommand === 'cancel') {
         const missionId = args[1];
         if (!missionId) {
-          return toError('MISSING_ARGUMENT', 'Missing required <mission-id> for /mission cancel');
+          return formatMissionUsageError('Missing required <mission-id> for /mission cancel.');
         }
 
         const cancelled = asRecord(controller.cancelMission(missionId));
@@ -153,7 +165,7 @@ export function createSlackRouter(controller: MissionController, options: SlackR
         };
       }
 
-      return toError('UNKNOWN_SUBCOMMAND', `Unknown mission subcommand: ${subcommand}`);
+      return formatMissionUsageError(`Unknown mission subcommand: ${subcommand}`);
     } catch (error) {
       return toError('CONTROLLER_ERROR', error instanceof Error ? error.message : 'unknown_error');
     }

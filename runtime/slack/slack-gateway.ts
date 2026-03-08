@@ -1,19 +1,14 @@
 import { createMissionService } from '../../control-plane/operator/mission-service.ts';
 import { createMissionController } from '../mission/mission-controller.ts';
 import { createSlackClient } from './slack-client.ts';
+import { assertSlackGatewayReadiness, validateSlackStartupConfig } from './slack-config.ts';
 import { registerSlackEvents } from './slack-events.ts';
 import { createSlackRouter } from './slack-router.ts';
 
 export let slackApp: unknown;
 
 export async function startSlackGateway(): Promise<unknown> {
-  const botToken = process.env.SLACK_BOT_TOKEN;
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
-  const appToken = process.env.SLACK_APP_TOKEN;
-
-  if (!botToken || !signingSecret || !appToken) {
-    throw new Error('SLACK_CONFIG_MISSING: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, and SLACK_APP_TOKEN are required');
-  }
+  const config = validateSlackStartupConfig(process.env);
 
   let boltModule: { App: new (options: Record<string, unknown>) => Record<string, unknown> };
   try {
@@ -24,10 +19,10 @@ export async function startSlackGateway(): Promise<unknown> {
   }
 
   const app = new boltModule.App({
-    token: botToken,
-    signingSecret,
-    appToken,
-    socketMode: true
+    token: config.botToken,
+    signingSecret: config.signingSecret,
+    appToken: config.appToken,
+    socketMode: config.socketMode
   }) as Record<string, unknown>;
 
   const missionService = createMissionService();
@@ -38,7 +33,7 @@ export async function startSlackGateway(): Promise<unknown> {
 
   const client = createSlackClient((app.client ?? {}) as Parameters<typeof createSlackClient>[0]);
 
-  registerSlackEvents({
+  const registration = registerSlackEvents({
     app: app as Parameters<typeof registerSlackEvents>[0]['app'],
     router: slackRouter,
     client
@@ -50,6 +45,14 @@ export async function startSlackGateway(): Promise<unknown> {
   }
 
   await (start as () => Promise<void>)();
+  console.log('[Slack] Connected via Socket Mode');
+  assertSlackGatewayReadiness({
+    socketModeConnected: true,
+    commandsRegistered: registration.commandsRegistered
+  });
+  console.log('[Slack] Commands registered');
+  console.log('[Slack] Gateway ready');
+
   slackApp = app;
   return app;
 }

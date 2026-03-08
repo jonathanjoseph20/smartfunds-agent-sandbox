@@ -87,4 +87,18 @@ describe('runtime output writers', () => {
       payload: { ok: true }
     })).toThrow('ERR_ARTIFACT_UNDECLARED: unknown');
   });
+
+  it('T-E5 supports deterministic explicit multi-sheet ordering via order field', () => {
+    const workbook = writeXlsx({
+      sheets: [
+        { name: 'Sources', order: 3, rows: [{ source: 'S1' }] },
+        { name: 'Contacts', order: 2, rows: [{ name: 'A' }] },
+        { name: 'Companies', order: 1, rows: [{ organization: 'Z' }] }
+      ]
+    });
+
+    const text = Buffer.from(workbook).toString('utf8');
+    expect(text.indexOf('sheet name="Companies"')).toBeLessThan(text.indexOf('sheet name="Contacts"'));
+    expect(text.indexOf('sheet name="Contacts"')).toBeLessThan(text.indexOf('sheet name="Sources"'));
+  });
 });

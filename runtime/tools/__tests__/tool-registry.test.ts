@@ -6,8 +6,18 @@ describe('runtime tool registry', () => {
   it('T-T5 keeps adapters listed in stable sorted order', () => {
     const keys = listToolAdapters().map((entry) => `${entry.toolId}:${entry.action}`);
     expect(keys).toEqual([
+      'browser_fetch:fetch',
+      'commodity_data:extract',
+      'company_extract:extract',
+      'contact_extract:extract',
+      'domain_classify:classify',
+      'email_extract:extract',
+      'list_rank:rank',
       'page_fetch:fetch',
+      'pdf_extract:extract',
       'reader_extract:extract',
+      'table_extract:extract',
+      'url_normalize:normalize',
       'web_search:search'
     ]);
   });

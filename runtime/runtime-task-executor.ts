@@ -9,6 +9,16 @@ export type RuntimeTaskType =
   | 'tool.web_search'
   | 'tool.page_fetch'
   | 'tool.reader_extract'
+  | 'tool.pdf_extract'
+  | 'tool.table_extract'
+  | 'tool.company_extract'
+  | 'tool.contact_extract'
+  | 'tool.commodity_data'
+  | 'tool.url_normalize'
+  | 'tool.domain_classify'
+  | 'tool.email_extract'
+  | 'tool.list_rank'
+  | 'tool.browser_fetch'
   | 'output.write_csv'
   | 'output.write_xlsx'
   | 'output.write_artifact';
@@ -129,6 +139,126 @@ export async function executeRuntimeTask(input: {
     return ensureRecord(response.data);
   }
 
+  if (input.taskType === 'tool.pdf_extract') {
+    const response = await executeTool({
+      toolId: 'pdf_extract',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.table_extract') {
+    const response = await executeTool({
+      toolId: 'table_extract',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.company_extract') {
+    const response = await executeTool({
+      toolId: 'company_extract',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.contact_extract') {
+    const response = await executeTool({
+      toolId: 'contact_extract',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.commodity_data') {
+    const response = await executeTool({
+      toolId: 'commodity_data',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.url_normalize') {
+    const response = await executeTool({
+      toolId: 'url_normalize',
+      action: 'normalize',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.domain_classify') {
+    const response = await executeTool({
+      toolId: 'domain_classify',
+      action: 'classify',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.email_extract') {
+    const response = await executeTool({
+      toolId: 'email_extract',
+      action: 'extract',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.list_rank') {
+    const response = await executeTool({
+      toolId: 'list_rank',
+      action: 'rank',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
+  if (input.taskType === 'tool.browser_fetch') {
+    const response = await executeTool({
+      toolId: 'browser_fetch',
+      action: 'fetch',
+      input: input.payload
+    });
+    if (!response.ok) {
+      throw new Error(response.errors.join('; '));
+    }
+    return ensureRecord(response.data);
+  }
+
   if (input.taskType === 'output.write_csv') {
     const artifactId = typeof input.payload.artifactId === 'string' ? input.payload.artifactId : '';
     const rows = Array.isArray(input.payload.rows) ? input.payload.rows as Array<Record<string, unknown>> : [];
@@ -158,7 +288,8 @@ export async function executeRuntimeTask(input: {
         const columns = Array.isArray(sheet.columns)
           ? sheet.columns.filter((column): column is string => typeof column === 'string')
           : undefined;
-        return { name, rows, columns };
+        const order = typeof sheet.order === 'number' ? sheet.order : undefined;
+        return { name, rows, columns, order };
       });
 
     const filePath = input.artifactWriter.writeXlsx({

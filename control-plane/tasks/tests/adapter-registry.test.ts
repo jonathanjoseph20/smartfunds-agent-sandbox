@@ -33,8 +33,18 @@ describe('task adapter registry', () => {
       'output.write_xlsx',
       'repo',
       'shell',
+      'tool.browser_fetch',
+      'tool.commodity_data',
+      'tool.company_extract',
+      'tool.contact_extract',
+      'tool.domain_classify',
+      'tool.email_extract',
+      'tool.list_rank',
       'tool.page_fetch',
+      'tool.pdf_extract',
       'tool.reader_extract',
+      'tool.table_extract',
+      'tool.url_normalize',
       'tool.web_search'
     ]);
   });

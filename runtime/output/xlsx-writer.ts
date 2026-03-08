@@ -4,6 +4,7 @@ type Sheet = {
   name: string;
   rows: Array<Record<string, unknown>>;
   columns?: string[];
+  order?: number;
 };
 
 const encoder = new TextEncoder();
@@ -43,7 +44,7 @@ function columnName(index: number): string {
 
 function collectColumns(rows: Array<Record<string, unknown>>, explicit?: string[]): string[] {
   if (explicit && explicit.length > 0) {
-    return [...new Set(explicit)].sort((left, right) => left.localeCompare(right));
+    return [...new Set(explicit.map((entry) => entry.trim()).filter((entry) => entry.length > 0))];
   }
 
   const keys = new Set<string>();
@@ -54,6 +55,16 @@ function collectColumns(rows: Array<Record<string, unknown>>, explicit?: string[
   }
 
   return [...keys].sort((left, right) => left.localeCompare(right));
+}
+
+function sanitizeSheetName(name: string, fallbackIndex: number): string {
+  const cleaned = name
+    .replace(/[\\/*?:[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const withFallback = cleaned.length > 0 ? cleaned : `Sheet${fallbackIndex + 1}`;
+  return withFallback.slice(0, 31);
 }
 
 function sortRows(rows: Array<Record<string, unknown>>, columns: string[]): Array<Record<string, unknown>> {
@@ -199,7 +210,26 @@ function makeZip(entries: Array<{ name: string; data: Uint8Array }>): Uint8Array
 export function writeXlsx(input: {
   sheets: Sheet[];
 }): Uint8Array {
-  const orderedSheets = [...input.sheets].sort((left, right) => left.name.localeCompare(right.name));
+  const orderedSheets = [...input.sheets]
+    .map((sheet, index) => ({
+      ...sheet,
+      name: sanitizeSheetName(sheet.name, index),
+      order: typeof sheet.order === 'number' && Number.isFinite(sheet.order) ? sheet.order : undefined
+    }))
+    .sort((left, right) => {
+      const leftOrder = left.order;
+      const rightOrder = right.order;
+      if (typeof leftOrder === 'number' && typeof rightOrder === 'number' && leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      if (typeof leftOrder === 'number' && typeof rightOrder !== 'number') {
+        return -1;
+      }
+      if (typeof leftOrder !== 'number' && typeof rightOrder === 'number') {
+        return 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
 
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`

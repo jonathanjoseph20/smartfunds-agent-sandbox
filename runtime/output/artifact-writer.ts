@@ -73,7 +73,7 @@ export class ArtifactWriter {
     missionId: string;
     runId: string;
     artifactId: string;
-    sheets: Array<{ name: string; rows: Array<Record<string, unknown>>; columns?: string[] }>;
+    sheets: Array<{ name: string; rows: Array<Record<string, unknown>>; columns?: string[]; order?: number }>;
   }): string {
     const declared = this.declared.get(input.artifactId);
     if (!declared || declared.format !== 'xlsx') {

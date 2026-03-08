@@ -1,9 +1,0 @@
-{
-  "workflowId": "research-analysis-workflow",
-  "nodes": [
-    {
-      "id": "node-a",
-      "task": "repo"
-    }
-  ]
-}

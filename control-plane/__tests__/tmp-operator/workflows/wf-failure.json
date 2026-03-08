@@ -1,9 +1,0 @@
-{
-  "workflowId": "wf-failure",
-  "nodes": [
-    {
-      "id": "node-fail",
-      "task": "repo"
-    }
-  ]
-}

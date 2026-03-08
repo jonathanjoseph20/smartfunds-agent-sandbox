@@ -1,5 +1,7 @@
-import { createOperatorApiClient } from '../cli/api-client.ts';
+import { createMissionService } from './mission-service.ts';
+import { createRuntimeService } from './runtime-service.ts';
 import { parseOperatorCommand } from './schema.ts';
+import { createWorkflowService } from './workflow-service.ts';
 import type {
   OperatorCommandResult,
   OperatorRouterRequest,
@@ -11,6 +13,11 @@ type CommandRouterOptions = {
   services?: OperatorServices;
   rootDir?: string;
   missionsDir?: string;
+  missionTemplatesDir?: string;
+  runtimeMissionsDir?: string;
+  missionTeamRegistryPath?: string;
+  missionTeamsDir?: string;
+  missionAgentsDir?: string;
   teamsDir?: string;
   agentsDir?: string;
   workflowsDir?: string;
@@ -51,24 +58,46 @@ function errorResult(input: {
 }
 
 function createDefaultServices(options: CommandRouterOptions): OperatorServices {
-  const api = createOperatorApiClient();
+  const missionService = createMissionService({
+    rootDir: options.rootDir,
+    missionsDir: options.missionsDir,
+    missionTemplatesDir: options.missionTemplatesDir,
+    runtimeMissionsDir: options.runtimeMissionsDir,
+    missionTeamRegistryPath: options.missionTeamRegistryPath,
+    missionTeamsDir: options.missionTeamsDir,
+    missionAgentsDir: options.missionAgentsDir,
+    teamsDir: options.teamsDir,
+    agentsDir: options.agentsDir,
+    workflowsDir: options.workflowsDir
+  });
+  const workflowService = createWorkflowService({
+    rootDir: options.rootDir
+  });
+  const runtimeService = createRuntimeService({
+    rootDir: options.rootDir,
+    workflowsDir: options.workflowsDir
+  });
 
   return {
     mission: {
-      startMission: async (input) => api.startMission(input.missionId, input.params),
-      listMissions: () => api.listMissions(),
-      inspectMission: (input) => api.inspectMission(input.missionId),
-      cancelMission: (input) => api.cancelMission(input.missionId)
+      createMission: (input) => missionService.createMission({ templateId: input.templateId }),
+      runMission: async (input) => missionService.runMission({ missionId: input.missionId }),
+      missionStatus: (input) => missionService.missionStatus({ missionId: input.missionId }),
+      listRuntimeMissions: () => missionService.listRuntimeMissions(),
+      startMission: async (input) => missionService.startMission({ missionId: input.missionId, params: input.params }),
+      listMissions: () => missionService.listMissions(),
+      inspectMission: (input) => missionService.inspectMission({ missionId: input.missionId }),
+      cancelMission: (input) => missionService.cancelMission({ missionId: input.missionId })
     },
     workflow: {
-      listWorkflows: () => api.listWorkflows(),
-      inspectWorkflow: (input) => api.inspectWorkflowRun(input.runId),
-      traceWorkflow: (input) => api.traceWorkflowRun(input.runId)
+      listWorkflows: () => workflowService.listWorkflows(),
+      inspectWorkflow: (input) => workflowService.inspectWorkflow({ runId: input.runId }),
+      traceWorkflow: (input) => workflowService.traceWorkflow({ runId: input.runId })
     },
     runtime: {
-      retryWorkflowNode: (input) => api.retryWorkflowNode(input.runId, input.nodeId),
-      resumeWorkflow: (input) => api.resumeWorkflow(input.runId),
-      cancelWorkflow: (input) => api.cancelWorkflow(input.runId)
+      retryWorkflowNode: (input) => runtimeService.retryWorkflowNode({ runId: input.runId, nodeId: input.nodeId }),
+      resumeWorkflow: (input) => runtimeService.resumeWorkflow({ runId: input.runId }),
+      cancelWorkflow: (input) => runtimeService.cancelWorkflow({ runId: input.runId })
     }
   };
 }
@@ -84,6 +113,22 @@ async function dispatch(input: {
       missionId: command.missionId,
       params: command.params
     });
+  }
+
+  if (command.name === 'mission:create') {
+    return input.services.mission.createMission({ templateId: command.templateId });
+  }
+
+  if (command.name === 'mission:run') {
+    return input.services.mission.runMission({ missionId: command.missionId });
+  }
+
+  if (command.name === 'mission:status') {
+    return input.services.mission.missionStatus({ missionId: command.missionId });
+  }
+
+  if (command.name === 'mission:runtime-list') {
+    return input.services.mission.listRuntimeMissions();
   }
 
   if (command.name === 'mission:list') {

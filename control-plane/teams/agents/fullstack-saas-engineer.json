@@ -1,0 +1,16 @@
+{
+  "agentId": "fullstack-saas-engineer",
+  "skills": [
+    "api-design",
+    "fullstack-engineering",
+    "test-automation"
+  ],
+  "personality": {
+    "communication": "direct",
+    "riskPosture": "balanced"
+  },
+  "tools": [
+    "repo",
+    "shell"
+  ]
+}

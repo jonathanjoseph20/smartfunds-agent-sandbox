@@ -1,0 +1,16 @@
+{
+  "agentId": "research-generalist",
+  "skills": [
+    "analysis",
+    "evidence-synthesis",
+    "research"
+  ],
+  "personality": {
+    "communication": "structured",
+    "riskPosture": "balanced"
+  },
+  "tools": [
+    "internal-docs",
+    "web-research"
+  ]
+}

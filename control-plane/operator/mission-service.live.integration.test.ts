@@ -156,7 +156,10 @@ describe('mission service live integration', () => {
     expect(llmNode).toBeDefined();
     expect(llmNode?.output).toMatchObject({
       output: {
-        mode: 'gateway'
+        runId: expect.any(String),
+        status: 'completed',
+        completedPhases: expect.any(Array),
+        eventCount: expect.any(Number)
       }
     });
   });

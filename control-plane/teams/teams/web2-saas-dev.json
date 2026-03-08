@@ -1,0 +1,26 @@
+{
+  "teamId": "web2-saas-dev",
+  "teamType": "specialized",
+  "persistence": "persistent",
+  "description": "Web2 SaaS product delivery team.",
+  "capabilities": [
+    "api-design",
+    "frontend-delivery",
+    "product-engineering"
+  ],
+  "missionCompatibility": [
+    "build",
+    "delivery"
+  ],
+  "tools": [
+    "llm-analysis",
+    "repo",
+    "shell"
+  ],
+  "roles": [
+    {
+      "slotId": "lead",
+      "agentId": "fullstack-saas-engineer"
+    }
+  ]
+}

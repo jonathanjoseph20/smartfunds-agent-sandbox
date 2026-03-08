@@ -1,0 +1,30 @@
+{
+  "teamId": "smartfunds-legal",
+  "teamType": "specialized",
+  "persistence": "persistent",
+  "description": "SmartFunds legal and compliance team.",
+  "capabilities": [
+    "securities-law",
+    "spv-structuring",
+    "tokenization"
+  ],
+  "missionCompatibility": [
+    "compliance-review",
+    "legal-analysis"
+  ],
+  "tools": [
+    "llm-analysis",
+    "page-fetch",
+    "web-search"
+  ],
+  "roles": [
+    {
+      "slotId": "attorney",
+      "agentId": "securities-law-attorney"
+    },
+    {
+      "slotId": "lead",
+      "agentId": "tokenization-compliance-expert"
+    }
+  ]
+}

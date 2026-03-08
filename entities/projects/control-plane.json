@@ -5,7 +5,6 @@
   "pod": "smartfunds",
   "mode": "structured",
   "ownedPaths": [
-    "control-plane/",
     "control-plane/cli/",
     "control-plane/agents/",
     "control-plane/cockpit/",
@@ -47,7 +46,8 @@
     "control-plane/governance-check.ts",
     "agent-cockpit-main.zip",
     "package-lock.json",
-    "package.json"
+    "package.json",
+    "control-plane/risk-contract.json"
   ],
   "complianceProfile": "internal",
   "financeScope": null

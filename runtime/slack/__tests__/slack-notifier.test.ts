@@ -12,11 +12,13 @@ describe('slack notifier', () => {
     }, 'C-OPS');
 
     await notifier.notify('mission_started', { missionId: 'stratum-dealflow', runId: 'run_1' });
+    await notifier.notify('step_started', { missionId: 'stratum-dealflow', stepIndex: 1, totalSteps: 7, stepName: 'web_search' });
+    await notifier.notify('step_completed', { missionId: 'stratum-dealflow', stepIndex: 1, totalSteps: 7, stepName: 'web_search' });
     await notifier.notify('mission_completed', { missionId: 'stratum-dealflow' });
     await notifier.notify('mission_failed', { missionId: 'stratum-dealflow' });
     await notifier.notify('artifact_ready', { missionId: 'stratum-dealflow', artifacts: ['companies.csv'] });
 
-    expect(postMessage).toHaveBeenCalledTimes(4);
+    expect(postMessage).toHaveBeenCalledTimes(6);
     expect(postMessage.mock.calls[0]?.[0]).toBe('C-OPS');
   });
 });

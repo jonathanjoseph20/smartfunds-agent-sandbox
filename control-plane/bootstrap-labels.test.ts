@@ -101,4 +101,41 @@ describe('bootstrap-labels', () => {
     const methods = fetchMock.mock.calls.map((call) => call[1]?.method ?? 'GET');
     expect(methods).toEqual(['GET']);
   });
+
+  it('handles paginated label listing before reconcile', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockResponse(Array.from({ length: 100 }, (_, index) => ({
+        name: `existing-${index}`,
+        color: 'ededed',
+        description: 'label'
+      }))))
+      .mockResolvedValueOnce(mockResponse([]))
+      .mockResolvedValue(mockResponse({}));
+
+    const summary = await ensureLabels({
+      repo: 'owner/repo',
+      token: 'token',
+      yes: true,
+      requiredLabels: [
+        { name: 'tier-0', color: 'ededed', description: 'Cosmetic / docs-only' }
+      ],
+      fetchImpl: fetchMock as unknown as typeof fetch
+    });
+
+    expect(summary.created).toEqual(['tier-0']);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('page=1');
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('page=2');
+  });
+
+  it('returns deterministic missing-token failure', async () => {
+    await expect(
+      ensureLabels({
+        repo: 'owner/repo',
+        token: '',
+        yes: true,
+        fetchImpl: vi.fn() as unknown as typeof fetch
+      })
+    ).rejects.toThrow('Missing GITHUB_TOKEN or GH_TOKEN environment variable.');
+  });
 });

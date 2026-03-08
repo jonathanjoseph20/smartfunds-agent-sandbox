@@ -52,3 +52,5 @@ npm run pr:refresh-metadata
 - The evidence block must open with a line that is exactly ` ```evidence` and close with a line that is exactly ` ``` `.
 - `gh pr view --json body --jq .body` is the canonical source for verification.
 - `npm run pr:create` refuses to proceed if `.pr-body.md` is missing or empty.
+
+For automated label bootstrap/apply and the deterministic sprint helper, see `docs/runbooks/pr-governance-automation.md`.

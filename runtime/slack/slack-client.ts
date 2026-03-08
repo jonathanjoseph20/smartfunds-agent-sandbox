@@ -29,14 +29,22 @@ export function createSlackClient(client: SlackWebClient) {
     if (!SUPPORTED_UPLOAD_EXTENSIONS.has(ext)) {
       throw new Error(`SLACK_UNSUPPORTED_FILE_TYPE: ${ext || 'none'}`);
     }
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`SLACK_ARTIFACT_NOT_FOUND: ${filePath}`);
+    }
 
     const filename = path.basename(filePath);
     const file = fs.readFileSync(filePath);
-    await client.files.upload({
-      channels: channel,
-      filename,
-      file
-    });
+    try {
+      await client.files.upload({
+        channels: channel,
+        filename,
+        file
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown_upload_error';
+      throw new Error(`SLACK_UPLOAD_FAILED: ${message}`);
+    }
   }
 
   async function postEphemeral(user: string, channel: string, blocks: SlackBlock[]): Promise<void> {

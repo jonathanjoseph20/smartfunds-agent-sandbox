@@ -42,3 +42,7 @@ Runtime workflow execution remains unchanged. Slack only orchestrates service ca
 - No random IDs or runtime hash changes.
 - Slack responses are deterministic and derived from service outputs.
 - Artifact retrieval is defensive and read-only from `./artifacts`.
+
+## Reference
+
+For Sprint 81 operational hardening details, see `docs/architecture/slack-operator-layer.md`.

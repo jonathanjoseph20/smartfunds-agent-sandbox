@@ -49,6 +49,20 @@ jobs:
 
       - run: npm ci
 
+      - name: Bootstrap governance labels
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run bootstrap:labels -- --yes
+
+      - name: Auto-apply missing tier label from PR body
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: npm run governance:auto-label
+
       - name: Validate lite governance contract
         id: validate_pr
         env:
@@ -81,6 +95,20 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Bootstrap governance labels
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run bootstrap:labels -- --yes
+
+      - name: Auto-apply missing tier label from PR body
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: npm run governance:auto-label
 
       - name: Validate full governance contract
         env:

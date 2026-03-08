@@ -21,6 +21,21 @@ function section(text: string): SlackBlock {
   };
 }
 
+function basename(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const parts = normalized.split('/');
+  return parts.at(-1) ?? filePath;
+}
+
+function extensionLabel(filePath: string): string {
+  const name = basename(filePath);
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot === name.length - 1) {
+    return 'artifact';
+  }
+  return name.slice(dot + 1).toUpperCase();
+}
+
 export function formatMissionStarted(input: {
   missionId: string;
   teamId?: string | null;
@@ -109,15 +124,33 @@ export function formatMissionCancelled(input: { missionId: string; runId?: strin
 
 export function formatArtifactList(input: { missionId: string; artifacts: string[] }): SlackMessage {
   const items = input.artifacts.slice().sort((left, right) => left.localeCompare(right));
+  const blocks: SlackBlock[] = [
+    section('*Artifacts ready*'),
+    section([
+      `Mission: ${input.missionId}`,
+      ...(items.length > 0 ? items.map((artifact) => `- ${artifact}`) : ['No artifacts found.'])
+    ].join('\n'))
+  ];
+
+  for (const artifact of items) {
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: `Download ${extensionLabel(artifact)}`
+          },
+          action_id: 'artifact_get',
+          value: artifact
+        }
+      ]
+    });
+  }
 
   return {
     text: `Artifacts for ${input.missionId}`,
-    blocks: [
-      section('*Artifacts ready*'),
-      section([
-        `Mission: ${input.missionId}`,
-        ...(items.length > 0 ? items.map((artifact) => `- ${artifact}`) : ['No artifacts found.'])
-      ].join('\n'))
-    ]
+    blocks
   };
 }

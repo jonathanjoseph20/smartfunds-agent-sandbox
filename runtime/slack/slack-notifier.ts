@@ -1,41 +1,47 @@
 import type { SlackClient } from './slack-client.ts';
 import {
   formatArtifactList,
-  formatMissionStarted,
-  formatMissionStatus,
   type SlackMessage
 } from './slack-format.ts';
+import { formatSlackProgress, type SlackProgressEventType } from './slack-progress.ts';
+import { formatSlackRunSummary } from './slack-run-summary.ts';
 
-export type MissionLifecycleEvent = 'mission_started' | 'mission_completed' | 'mission_failed' | 'artifact_ready';
+export type MissionLifecycleEvent =
+  | 'mission_started'
+  | 'step_started'
+  | 'step_completed'
+  | 'mission_completed'
+  | 'mission_failed'
+  | 'artifact_ready';
 
 function eventToMessage(event: MissionLifecycleEvent, payload: Record<string, unknown>): SlackMessage {
   const missionId = typeof payload.missionId === 'string' ? payload.missionId : 'unknown-mission';
 
-  if (event === 'mission_started') {
-    return formatMissionStarted({
+  if (event === 'mission_started' || event === 'step_started' || event === 'step_completed') {
+    return formatSlackProgress(event as SlackProgressEventType, {
       missionId,
-      runId: typeof payload.runId === 'string' ? payload.runId : null,
-      teamId: typeof payload.teamId === 'string' ? payload.teamId : null,
-      status: 'running',
-      agents: typeof payload.agents === 'number' ? payload.agents : null
+      stepName: typeof payload.stepName === 'string' ? payload.stepName : null,
+      stepIndex: typeof payload.stepIndex === 'number' ? payload.stepIndex : null,
+      totalSteps: typeof payload.totalSteps === 'number' ? payload.totalSteps : null,
+      status: typeof payload.status === 'string' ? payload.status : null
     });
   }
 
   if (event === 'mission_completed') {
-    return formatMissionStatus({
+    return formatSlackRunSummary({
       missionId,
       status: 'completed',
-      progress: 1,
-      agents: []
+      resultCounts: payload.resultCounts as Record<string, unknown> | null,
+      artifacts: Array.isArray(payload.artifacts) ? payload.artifacts : null
     });
   }
 
   if (event === 'mission_failed') {
-    return formatMissionStatus({
+    return formatSlackRunSummary({
       missionId,
       status: 'failed',
-      progress: 0,
-      agents: []
+      failureCode: typeof payload.failureCode === 'string' ? payload.failureCode : null,
+      failureMessage: typeof payload.failureMessage === 'string' ? payload.failureMessage : null
     });
   }
 

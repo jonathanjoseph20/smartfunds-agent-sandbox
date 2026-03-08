@@ -51,6 +51,31 @@ describe('governance validate tier routing', () => {
     expect(result.errors.join('\n')).toContain('MISSING_TIER_LABEL');
   });
 
+  it('uses PR body tier fallback when tier label is missing', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'lite',
+      prData: {
+        body: [
+          'tier-1',
+          '',
+          '```evidence',
+          'Risk Tier: 1',
+          'Justification: test',
+          'Affected Paths: docs/readme.md',
+          'Tests Added: yes',
+          'Determinism Statement: Deterministic.',
+          '```'
+        ].join('\n'),
+        labels: [],
+        changedFiles: ['docs/readme.md']
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.report.labelTier).toBe(1);
+    expect(result.report.missingLabels).toContain('tier-1');
+  });
+
   it('fails lite mode with SPLIT_REQUIRED for low-tier PRs touching restricted paths', async () => {
     const result = await runGovernanceValidation({
       mode: 'lite',

@@ -31,6 +31,7 @@ import { buildIsolationEnforcement } from '../governance-check.ts';
 import { normalizeChangedFiles } from './changed-files.ts';
 import { classifyPaths, type Tier as PolicyTier } from './tier-policy.ts';
 import { resolvePullRequestMetadata } from './pr-files-api.ts';
+import { validatePrBody } from './pr-body.ts';
 
 type GovernanceValidationResult = {
   ok: boolean;
@@ -166,20 +167,35 @@ async function buildReport(
   const warnings: string[] = [];
   const sealWarnings: string[] = [];
   const missingEvidenceFields: string[] = [];
+  let bodyTier: Tier | null = null;
+  try {
+    const validatedBody = validatePrBody(prData.body);
+    bodyTier = Number.parseInt(validatedBody.tier.replace('tier-', ''), 10) as Tier;
+  } catch (error) {
+    errors.push(formatGovernanceError('MISSING_EVIDENCE_BLOCK', (error as Error).message));
+  }
 
   let labelTier: Tier | null = null;
+  let explicitLabelTier: Tier | null = null;
   try {
-    labelTier = extractTierFromLabels(prData.labels) ?? null;
+    explicitLabelTier = extractTierFromLabels(prData.labels) ?? null;
+    labelTier = explicitLabelTier;
   } catch (error) {
     errors.push(formatGovernanceError('INVALID_TIER_LABEL', (error as Error).message));
   }
-  if (labelTier === null) {
-    errors.push(
-      formatGovernanceError(
-        'MISSING_TIER_LABEL',
-        'Missing risk tier label. Add exactly one: tier-0, tier-1, tier-2, tier-3.'
-      )
-    );
+  const labelMissing = explicitLabelTier === null;
+  if (labelMissing) {
+    if (bodyTier !== null) {
+      labelTier = bodyTier;
+      warnings.push(`Tier label missing; using PR body tier fallback ${`tier-${bodyTier}`}.`);
+    } else {
+      errors.push(
+        formatGovernanceError(
+          'MISSING_TIER_LABEL',
+          'Missing risk tier label. Add exactly one: tier-0, tier-1, tier-2, tier-3.'
+        )
+      );
+    }
   }
 
   const pathClassification = classifyPaths(prData.changedFiles);
@@ -215,7 +231,7 @@ async function buildReport(
       declaredTier: null,
       impliedTier,
       labelTier,
-      missingLabels: [],
+      missingLabels: labelMissing ? ['tier-0', 'tier-1', 'tier-2', 'tier-3'] : [],
       missingEvidenceFields,
       requiredChecks: [],
       projectsTouched: [],
@@ -265,7 +281,7 @@ async function buildReport(
       declaredTier: null,
       impliedTier,
       labelTier,
-      missingLabels: [],
+      missingLabels: labelMissing ? ['tier-0', 'tier-1', 'tier-2', 'tier-3'] : [],
       missingEvidenceFields,
       requiredChecks: getRequiredChecksForTier(finalTier, contract),
       projectsTouched: [],
@@ -315,7 +331,7 @@ async function buildReport(
       declaredTier: null,
       impliedTier,
       labelTier,
-      missingLabels: [],
+      missingLabels: labelMissing ? ['tier-0', 'tier-1', 'tier-2', 'tier-3'] : [],
       missingEvidenceFields,
       requiredChecks: [],
       projectsTouched: [],
@@ -379,14 +395,18 @@ async function buildReport(
 
   if (changeDeclaration.ok) {
     declaredTier = changeDeclaration.declaration.tier;
-    if (labelTier !== null && labelTier !== declaredTier) {
+    if (explicitLabelTier !== null && explicitLabelTier !== declaredTier) {
       errors.push(
-        `Risk tier mismatch: label tier-${labelTier} does not match governance/change.json tier ${declaredTier}. Update change.json or the label so they agree.`
+        `Risk tier mismatch: label tier-${explicitLabelTier} does not match governance/change.json tier ${declaredTier}. Update change.json or the label so they agree.`
+      );
+    } else if (explicitLabelTier === null && bodyTier !== null && bodyTier !== declaredTier) {
+      errors.push(
+        `Risk tier mismatch: PR body tier-${bodyTier} does not match governance/change.json tier ${declaredTier}. Update change.json or PR body tier.`
       );
     }
 
     missingLabels = [
-      ...getMissingTierLabels(labelTier),
+      ...getMissingTierLabels(explicitLabelTier),
       ...(finalTier === 3 && !prData.labels.includes('tier-3-approved') ? ['tier-3-approved'] : [])
     ];
 
@@ -484,7 +504,7 @@ async function buildReport(
 
   const nextActions = buildNextActions(
     {
-      tierLabel: labelTier,
+      tierLabel: explicitLabelTier,
       impliedTier,
       declaredTier
     },

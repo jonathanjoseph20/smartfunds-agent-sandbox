@@ -1,9 +1,11 @@
 tier-3
 
 ```evidence
-Risk Tier: 3
-Justification: Governance diagnostics, local preflight, and CI summary updates across control-plane and workflow.
-Affected Paths: control-plane/validate-pr.ts, control-plane/governance/diagnostics.ts, control-plane/governance-check.ts, .github/workflows/code-factory.yml, docs/code-factory-governance.md, docs/runbooks/governance-failure-recovery.md, package.json
-Tests Added: npm test; npx vitest run control-plane/validate-pr.test.ts control-plane/governance-check.test.ts control-plane/governance/diagnostics.test.ts control-plane/__tests__/risk-contract.test.ts
-Determinism Statement: Deterministic parsing and sorted outputs; no randomness or external state mutation.
+Sprint 76 completion verification:
+- runtime API successfully serving /runs and /missions on port 3100
+- cockpit UI successfully displaying real runtime rows
+- mission rwa-market-analysis-live executed successfully
+- workflow runs persisted and visible in cockpit
+- Codespaces forwarded port connectivity validated
+- browser path /cockpit/runs and /cockpit/missions confirmed working
 ```

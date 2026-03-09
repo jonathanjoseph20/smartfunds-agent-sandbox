@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartFunds Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="runs-pane">
+        <h1>Runs</h1>
+        <div id="runs-status" class="status">Loading runs…</div>
+        <ul id="runs-list" class="runs-list"></ul>
+      </aside>
+      <section class="detail-pane">
+        <h2>Run Details</h2>
+        <div id="run-details" class="empty">Select a run to inspect metadata and artifacts.</div>
+        <h3>Artifact Preview</h3>
+        <div id="artifact-preview" class="empty">Select an artifact to preview.</div>
+      </section>
+    </main>
+    <script type="module" src="/runs.js"></script>
+  </body>
+</html>

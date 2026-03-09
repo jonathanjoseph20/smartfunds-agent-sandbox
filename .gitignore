@@ -10,3 +10,5 @@ node_modules/.vite
 .tmp/
 .DS_Store
 control-plane/__tests__/tmp-*/
+runtime-data/
+.env

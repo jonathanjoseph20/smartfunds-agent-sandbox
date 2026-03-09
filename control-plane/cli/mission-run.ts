@@ -1,5 +1,5 @@
 import { canonicalStringify } from '../finance/determinism.ts';
-import { createMissionRunner } from '../missions/mission-runner.ts';
+import { createMissionService } from '../operator/mission-service.ts';
 
 type ParsedArgs = {
   missionId: string;
@@ -46,8 +46,11 @@ function printJson(value: unknown): void {
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   try {
     const args = parseArgs(argv);
-    const runner = createMissionRunner();
-    const result = await runner.runMission(args.missionId);
+    const missionService = createMissionService();
+    const result = await missionService.startMission({
+      missionId: args.missionId,
+      params: {}
+    });
     printJson(result);
     return 0;
   } catch (error) {

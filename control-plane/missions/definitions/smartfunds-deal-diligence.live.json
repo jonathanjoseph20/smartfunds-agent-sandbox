@@ -3,7 +3,7 @@
   "name": "SmartFunds Deal Diligence (Live)",
   "projectId": "smartfunds-core",
   "teamId": "smartfunds-research-team",
-  "workflowId": "smartfunds-deal-diligence-live",
+  "workflowId": "research-web-intelligence",
   "objective": "Run external diligence on a target and produce a risk-aware memo.",
   "successCriteria": [
     "Fetch and summarize target website",

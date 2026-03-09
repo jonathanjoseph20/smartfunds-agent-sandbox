@@ -3,7 +3,7 @@
   "name": "Market Signal Brief (Live)",
   "projectId": "smartfunds-core",
   "teamId": "smartfunds-research-team",
-  "workflowId": "market-signal-brief-live",
+  "workflowId": "research-web-intelligence",
   "objective": "Generate a concise market signal brief from web and X/Twitter sources.",
   "successCriteria": [
     "Gather deterministic web signal set",

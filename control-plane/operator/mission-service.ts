@@ -156,27 +156,6 @@ function buildDatasetRows(input: {
     }));
 }
 
-function buildLogsText(input: {
-  events: Array<{
-    sequence: number;
-    type: string;
-    taskId?: string;
-    payload?: unknown;
-  }>;
-}): string {
-  const lines = [...input.events]
-    .sort((left, right) => left.sequence - right.sequence)
-    .map((event) => {
-      const payload = (event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
-        ? event.payload as Record<string, unknown>
-        : {};
-      const failureCode = typeof payload.failureCode === 'string' ? payload.failureCode : '';
-      const node = typeof event.taskId === 'string' ? event.taskId : '';
-      return [String(event.sequence), event.type, node, failureCode].join('|');
-    });
-  return `${lines.join('\n')}\n`;
-}
-
 function writeMissionArtifacts(input: {
   missionId: string;
   runId: string;
@@ -197,15 +176,35 @@ function writeMissionArtifacts(input: {
     payload?: unknown;
   }>;
 }): void {
-  const generatedArtifacts = ['report.md', 'dataset.csv', 'summary.json', 'logs.txt'];
-  const summaryPayload = {
+  const generatedArtifacts = ['dataset.csv', 'report.md', 'research-pages.json', 'search-results.json'];
+  const searchResultsPayload = {
     generatedArtifacts,
     missionId: input.missionId,
     runId: input.runId,
     workflowId: input.workflowId,
     status: input.status,
     nodeCount: input.nodeStates.length,
-    executionOrder: [...input.executionOrder].sort((left, right) => left.localeCompare(right))
+    executionOrder: [...input.executionOrder].sort((left, right) => left.localeCompare(right)),
+    nodeStates: [...input.nodeStates]
+      .sort((left, right) => left.nodeId.localeCompare(right.nodeId))
+      .map((node) => ({
+        nodeId: node.nodeId,
+        status: node.status,
+        retryCount: node.retryCount
+      }))
+  };
+
+  const researchPagesPayload = {
+    missionId: input.missionId,
+    runId: input.runId,
+    workflowId: input.workflowId,
+    events: [...input.events]
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((event) => ({
+        sequence: event.sequence,
+        type: event.type,
+        taskId: event.taskId ?? null
+      }))
   };
 
   const report = [
@@ -237,8 +236,8 @@ function writeMissionArtifacts(input: {
     missionId: input.missionId,
     runId: input.runId,
     type: 'json',
-    filename: 'summary.json',
-    content: summaryPayload
+    filename: 'search-results.json',
+    content: searchResultsPayload
   });
 
   writeArtifact({
@@ -260,9 +259,9 @@ function writeMissionArtifacts(input: {
   writeArtifact({
     missionId: input.missionId,
     runId: input.runId,
-    type: 'text',
-    filename: 'logs.txt',
-    content: buildLogsText({ events: input.events })
+    type: 'json',
+    filename: 'research-pages.json',
+    content: researchPagesPayload
   });
 }
 

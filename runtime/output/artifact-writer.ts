@@ -3,7 +3,7 @@ import path from 'node:path';
 import { writeCsv } from './csv-writer.ts';
 import { writeXlsx } from './xlsx-writer.ts';
 
-export type ArtifactFormat = 'csv' | 'xlsx' | 'artifact';
+export type ArtifactFormat = 'csv' | 'xlsx' | 'artifact' | 'markdown';
 
 export interface DeclaredArtifact {
   artifactId: string;
@@ -21,6 +21,7 @@ function ensureRelativePath(value: string): string {
 function extensionForFormat(format: ArtifactFormat): string {
   if (format === 'csv') return 'csv';
   if (format === 'xlsx') return 'xlsx';
+  if (format === 'markdown') return 'md';
   return 'json';
 }
 
@@ -105,6 +106,23 @@ export class ArtifactWriter {
     const filePath = this.resolveArtifactPath(input);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, `${JSON.stringify(input.payload, null, 2)}\n`, 'utf8');
+    return filePath;
+  }
+
+  writeMarkdown(input: {
+    missionId: string;
+    runId: string;
+    artifactId: string;
+    content: string;
+  }): string {
+    const declared = this.declared.get(input.artifactId);
+    if (!declared || declared.format !== 'markdown') {
+      throw new Error(`ERR_ARTIFACT_UNDECLARED: ${input.artifactId}`);
+    }
+
+    const filePath = this.resolveArtifactPath(input);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${input.content}\n`, 'utf8');
     return filePath;
   }
 }

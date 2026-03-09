@@ -26,10 +26,15 @@ describe('task adapter registry', () => {
 
   it('lists adapters in stable deterministic order', () => {
     expect(listRegisteredAdapters().map((entry) => entry.type)).toEqual([
+      'adapter.extract_structured_data',
+      'adapter.fetch_page',
+      'adapter.llm_invoke',
+      'adapter.search_web',
       'llm',
       'llm.generate',
       'output.write_artifact',
       'output.write_csv',
+      'output.write_markdown',
       'output.write_xlsx',
       'repo',
       'shell',

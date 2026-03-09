@@ -20,9 +20,14 @@ const RUNTIME_TASK_TYPES: RuntimeTaskType[] = [
   'tool.email_extract',
   'tool.list_rank',
   'tool.browser_fetch',
+  'adapter.llm_invoke',
+  'adapter.search_web',
+  'adapter.fetch_page',
+  'adapter.extract_structured_data',
   'output.write_csv',
   'output.write_xlsx',
-  'output.write_artifact'
+  'output.write_artifact',
+  'output.write_markdown'
 ];
 
 const ARTIFACTS_BASE_DIR = 'runtime-data/artifacts';
@@ -40,7 +45,7 @@ function toDeclaredArtifacts(input: unknown): DeclaredArtifact[] {
       const format = entry.format;
       if (
         artifactId.length === 0
-        || (format !== 'csv' && format !== 'xlsx' && format !== 'artifact')
+        || (format !== 'csv' && format !== 'xlsx' && format !== 'artifact' && format !== 'markdown')
       ) {
         return [];
       }

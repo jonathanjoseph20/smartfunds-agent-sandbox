@@ -1,0 +1,66 @@
+{
+  "workflowId": "research-web-intelligence",
+  "nodes": [
+    {
+      "id": "search-web",
+      "task": "adapter.search_web",
+      "phase": "research"
+    },
+    {
+      "id": "fetch-pages",
+      "task": "adapter.fetch_page",
+      "phase": "research",
+      "dependsOn": [
+        "search-web"
+      ]
+    },
+    {
+      "id": "extract-content",
+      "task": "adapter.extract_structured_data",
+      "phase": "analysis",
+      "dependsOn": [
+        "fetch-pages"
+      ]
+    },
+    {
+      "id": "analyze-with-llm",
+      "task": "adapter.llm_invoke",
+      "phase": "analysis",
+      "dependsOn": [
+        "extract-content"
+      ]
+    },
+    {
+      "id": "write-search-results",
+      "task": "output.write_artifact",
+      "phase": "release",
+      "dependsOn": [
+        "search-web"
+      ]
+    },
+    {
+      "id": "write-research-pages",
+      "task": "output.write_artifact",
+      "phase": "release",
+      "dependsOn": [
+        "fetch-pages"
+      ]
+    },
+    {
+      "id": "write-dataset",
+      "task": "output.write_csv",
+      "phase": "release",
+      "dependsOn": [
+        "extract-content"
+      ]
+    },
+    {
+      "id": "write-report",
+      "task": "output.write_markdown",
+      "phase": "release",
+      "dependsOn": [
+        "analyze-with-llm"
+      ]
+    }
+  ]
+}

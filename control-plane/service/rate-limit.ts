@@ -68,12 +68,16 @@ export function resolveRateLimitConfig(env: NodeJS.ProcessEnv): {
 
 export class RateLimiter {
   private readonly counters = new Map<string, CounterState>();
+  private readonly windowMs: number;
+  private readonly nowMs: () => number;
 
   public constructor(
-    private readonly windowMs: number,
-    private readonly nowMs: () => number = () => Date.now()
-  ) {}
-
+    windowMs: number,
+    nowMs: () => number = () => Date.now()
+  ) {
+    this.windowMs = windowMs;
+    this.nowMs = nowMs;
+  }
   public checkAndIncrement(key: string, limit: number): RateLimitCheckResult {
     const now = this.nowMs();
     const current = this.counters.get(key);

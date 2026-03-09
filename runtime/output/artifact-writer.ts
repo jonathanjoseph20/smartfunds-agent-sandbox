@@ -26,11 +26,13 @@ function extensionForFormat(format: ArtifactFormat): string {
 
 export class ArtifactWriter {
   private readonly declared = new Map<string, DeclaredArtifact>();
+  private readonly baseDir: string;
 
   constructor(
-    private readonly baseDir: string,
+    baseDir: string,
     declaredArtifacts: DeclaredArtifact[]
   ) {
+    this.baseDir = baseDir;
     for (const artifact of [...declaredArtifacts].sort((left, right) => left.artifactId.localeCompare(right.artifactId))) {
       this.declared.set(artifact.artifactId, artifact);
     }
@@ -82,7 +84,10 @@ export class ArtifactWriter {
 
     const filePath = this.resolveArtifactPath(input);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, writeXlsx({ sheets: input.sheets }));
+    writeXlsx({
+      filePath,
+      sheets: input.sheets
+    });
     return filePath;
   }
 
@@ -90,10 +95,10 @@ export class ArtifactWriter {
     missionId: string;
     runId: string;
     artifactId: string;
-    payload: Record<string, unknown>;
+    payload: unknown;
   }): string {
     const declared = this.declared.get(input.artifactId);
-    if (!declared) {
+    if (!declared || declared.format !== 'artifact') {
       throw new Error(`ERR_ARTIFACT_UNDECLARED: ${input.artifactId}`);
     }
 

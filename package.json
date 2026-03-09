@@ -55,6 +55,7 @@
     "service:start": "node --experimental-strip-types control-plane/service/index.ts",
     "runtime:start": "bash scripts/start-runtime.sh",
     "runtime:dev": "bash scripts/dev-up.sh",
+    "artifacts:list": "node --experimental-strip-types scripts/artifacts-list.ts",
     "cockpit:start": "bash scripts/start-cockpit.sh",
     "slack:start": "bash scripts/start-slack.sh",
     "webhook:simulate": "node --experimental-strip-types control-plane/cli/webhook-simulate.ts",

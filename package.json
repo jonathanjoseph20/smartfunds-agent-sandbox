@@ -62,7 +62,10 @@
     "lint:workflows": "node --experimental-strip-types scripts/ci/verify-workflows.ts",
     "lint_tier0": "npm run lint --workspaces --if-present",
     "lint": "npm run lint_tier0",
-    "entities:validate": "node --experimental-strip-types runtime/entity-registry.ts --validate"
+    "entities:validate": "node --experimental-strip-types runtime/entity-registry.ts --validate",
+    "demo:rwa": "node --experimental-strip-types scripts/demo-rwa.ts",
+    "artifacts:view": "node --experimental-strip-types scripts/artifacts-view.ts",
+    "runs:list": "node --experimental-strip-types scripts/runs-list.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

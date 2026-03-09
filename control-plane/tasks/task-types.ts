@@ -16,9 +16,14 @@ export const TASK_TYPES = [
   'tool.email_extract',
   'tool.list_rank',
   'tool.browser_fetch',
+  'adapter.llm_invoke',
+  'adapter.search_web',
+  'adapter.fetch_page',
+  'adapter.extract_structured_data',
   'output.write_csv',
   'output.write_xlsx',
-  'output.write_artifact'
+  'output.write_artifact',
+  'output.write_markdown'
 ] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];

@@ -1,0 +1,95 @@
+{
+  "missionId": "research-web-intelligence",
+  "name": "Research Web Intelligence",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "research-web-intelligence",
+  "objective": "Perform deterministic web intelligence collection and produce mission artifacts.",
+  "successCriteria": [
+    "Create deterministic search result artifact",
+    "Create deterministic page content artifact",
+    "Create deterministic dataset artifact",
+    "Create deterministic markdown report artifact"
+  ],
+  "deliverables": [
+    "dataset.csv",
+    "report.md",
+    "research-pages.json",
+    "search-results.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "dataset",
+        "format": "csv"
+      },
+      {
+        "artifactId": "report",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "research-pages",
+        "format": "artifact"
+      },
+      {
+        "artifactId": "search-results",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "search-web": {
+        "query": "smart funds issuance platform",
+        "maxResults": 3
+      },
+      "fetch-pages": {
+        "url": "https://example.com/research"
+      },
+      "extract-content": {
+        "text": "Alpha Capital operates in Texas and is in growth stage.",
+        "schema": {
+          "assetType": "string",
+          "company": "string",
+          "location": "string",
+          "stage": "string"
+        }
+      },
+      "analyze-with-llm": {
+        "prompt": "Summarize the extracted research data in four bullet points.",
+        "systemPrompt": "Return concise markdown-safe text."
+      },
+      "write-search-results": {
+        "artifactId": "search-results",
+        "payload": {
+          "results": []
+        }
+      },
+      "write-research-pages": {
+        "artifactId": "research-pages",
+        "payload": {
+          "pages": []
+        }
+      },
+      "write-dataset": {
+        "artifactId": "dataset",
+        "rows": [
+          {
+            "assetType": "unknown",
+            "company": "placeholder",
+            "location": "unknown",
+            "stage": "unknown"
+          }
+        ]
+      },
+      "write-report": {
+        "artifactId": "report",
+        "content": "# Research Report\n\nPending runtime execution."
+      }
+    }
+  },
+  "tags": [
+    "phase-1",
+    "research",
+    "sprint-83",
+    "web-intelligence"
+  ]
+}

@@ -101,4 +101,20 @@ describe('runtime output writers', () => {
     expect(text.indexOf('sheet name="Companies"')).toBeLessThan(text.indexOf('sheet name="Contacts"'));
     expect(text.indexOf('sheet name="Contacts"')).toBeLessThan(text.indexOf('sheet name="Sources"'));
   });
+
+  it('T-E6 writes markdown artifact with deterministic naming', () => {
+    const writer = new ArtifactWriter(tmpRoot, [
+      { artifactId: 'report', format: 'markdown' }
+    ]);
+
+    const filePath = writer.writeMarkdown({
+      missionId: 'mission',
+      runId: 'run',
+      artifactId: 'report',
+      content: '# Report'
+    });
+
+    expect(filePath).toBe(path.join(tmpRoot, 'mission', 'run', 'report.md'));
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('# Report\n');
+  });
 });

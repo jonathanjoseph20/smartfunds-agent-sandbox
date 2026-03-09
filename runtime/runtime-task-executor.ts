@@ -1,4 +1,8 @@
 import type { WorkflowTaskExecutor } from '../control-plane/workflows/workflow-runner.ts';
+import { fetchPage } from './adapters/browser/browser-adapter.ts';
+import { extractStructuredData } from './adapters/extract/extract-adapter.ts';
+import { invokeLLM } from './adapters/llm/llm-adapter.ts';
+import { searchWeb } from './adapters/search/search-adapter.ts';
 import { createLLMGateway, type LLMGateway } from './llm/gateway.ts';
 import type { LLMRequest } from './llm/types.ts';
 import { ArtifactWriter } from './output/artifact-writer.ts';
@@ -19,9 +23,14 @@ export type RuntimeTaskType =
   | 'tool.email_extract'
   | 'tool.list_rank'
   | 'tool.browser_fetch'
+  | 'adapter.llm_invoke'
+  | 'adapter.search_web'
+  | 'adapter.fetch_page'
+  | 'adapter.extract_structured_data'
   | 'output.write_csv'
   | 'output.write_xlsx'
-  | 'output.write_artifact';
+  | 'output.write_artifact'
+  | 'output.write_markdown';
 
 function ensureRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -259,6 +268,50 @@ export async function executeRuntimeTask(input: {
     return ensureRecord(response.data);
   }
 
+  if (input.taskType === 'adapter.llm_invoke') {
+    const response = await invokeLLM({
+      prompt: typeof input.payload.prompt === 'string' ? input.payload.prompt : '',
+      systemPrompt: typeof input.payload.systemPrompt === 'string' ? input.payload.systemPrompt : undefined,
+      model: typeof input.payload.model === 'string' ? input.payload.model : undefined,
+      temperature: typeof input.payload.temperature === 'number' ? input.payload.temperature : undefined,
+      maxTokens: typeof input.payload.maxTokens === 'number' ? input.payload.maxTokens : undefined
+    });
+    return response as unknown as Record<string, unknown>;
+  }
+
+  if (input.taskType === 'adapter.search_web') {
+    const results = await searchWeb({
+      query: typeof input.payload.query === 'string' ? input.payload.query : '',
+      maxResults: typeof input.payload.maxResults === 'number' ? input.payload.maxResults : undefined
+    }, {
+      fetchImpl: typeof input.payload.fetchImpl === 'function' ? input.payload.fetchImpl as typeof fetch : undefined
+    });
+    return { results: [...results].sort((left, right) => left.rank - right.rank) };
+  }
+
+  if (input.taskType === 'adapter.fetch_page') {
+    const page = await fetchPage({
+      url: typeof input.payload.url === 'string' ? input.payload.url : ''
+    }, {
+      fetchImpl: typeof input.payload.fetchImpl === 'function' ? input.payload.fetchImpl as typeof fetch : undefined
+    });
+    return page as unknown as Record<string, unknown>;
+  }
+
+  if (input.taskType === 'adapter.extract_structured_data') {
+    const schema = ensureRecord(input.payload.schema);
+    const data = await extractStructuredData({
+      text: typeof input.payload.text === 'string' ? input.payload.text : '',
+      schema: Object.fromEntries(
+        Object.entries(schema)
+          .filter(([, value]) => typeof value === 'string')
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, value]) => [key, value as string])
+      )
+    });
+    return { data };
+  }
+
   if (input.taskType === 'output.write_csv') {
     const artifactId = typeof input.payload.artifactId === 'string' ? input.payload.artifactId : '';
     const rows = Array.isArray(input.payload.rows) ? input.payload.rows as Array<Record<string, unknown>> : [];
@@ -303,7 +356,7 @@ export async function executeRuntimeTask(input: {
 
   if (input.taskType === 'output.write_artifact') {
     const artifactId = typeof input.payload.artifactId === 'string' ? input.payload.artifactId : '';
-    const payload = ensureRecord(input.payload.payload);
+    const payload = input.payload.payload ?? {};
     const filePath = input.artifactWriter.writeArtifact({
       missionId: input.missionId,
       runId: input.runId,
@@ -311,6 +364,18 @@ export async function executeRuntimeTask(input: {
       payload
     });
 
+    return { filePath };
+  }
+
+  if (input.taskType === 'output.write_markdown') {
+    const artifactId = typeof input.payload.artifactId === 'string' ? input.payload.artifactId : '';
+    const content = typeof input.payload.content === 'string' ? input.payload.content : '';
+    const filePath = input.artifactWriter.writeMarkdown({
+      missionId: input.missionId,
+      runId: input.runId,
+      artifactId,
+      content
+    });
     return { filePath };
   }
 

@@ -16,7 +16,7 @@ const missionsDir = path.join(tmpRoot, 'missions');
 const teamsDir = path.join(tmpRoot, 'teams');
 const agentsDir = path.join(tmpRoot, 'agents');
 const workflowsDir = path.join(tmpRoot, 'workflows');
-const missionId = 's84-slack-research';
+const missionId = 'rwa-market-analysis';
 
 function writeJson(dir: string, fileName: string, value: unknown): void {
   fs.mkdirSync(dir, { recursive: true });
@@ -30,7 +30,7 @@ function resetFixtures(): void {
     missionId,
     projectId: 'smartfunds-core',
     teamId: 'smartfunds-research-team',
-    workflowId: 's84-slack-workflow',
+    workflowId: 'research-analysis-workflow',
     objective: 'Slack integration mission.',
     successCriteria: ['Run through mission service.'],
     deliverables: ['report'],
@@ -87,8 +87,8 @@ function resetFixtures(): void {
     }
   });
 
-  writeJson(workflowsDir, 's84-slack-workflow.json', {
-    workflowId: 's84-slack-workflow',
+  writeJson(workflowsDir, 'research-analysis-workflow.json', {
+    workflowId: 'research-analysis-workflow',
     nodes: [
       {
         id: 'extract-content',
@@ -218,29 +218,11 @@ describe('slack mission integration', () => {
     });
 
     expect(artifactResponses).toHaveLength(1);
-    expect(artifactResponses[0]?.text).toBe([
-      'Artifacts',
-      '',
-      'dataset.csv',
-      'logs.txt',
-      'report.md',
-      'summary.json'
-    ].join('\n'));
+    expect(artifactResponses[0]?.text).toBe(['Artifacts', '', 'dataset.csv', 'report.md', 'research-pages.json', 'search-results.json'].join('\n'));
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
     const completionText = String(sendMessage.mock.calls[0]?.[0]?.text);
-    expect(completionText).toBe([
-      'Mission completed',
-      '',
-      `mission: ${missionId}`,
-      `runId: ${runId}`,
-      '',
-      'Artifacts available',
-      'dataset.csv',
-      'logs.txt',
-      'report.md',
-      'summary.json'
-    ].join('\n'));
+    expect(completionText).toBe(['Mission completed', '', `mission: ${missionId}`, `runId: ${runId}`, '', 'Artifacts available', 'dataset.csv', 'report.md', 'research-pages.json', 'search-results.json'].join('\n'));
 
     const artifactDir = path.join('artifacts', missionId, runId);
     expect(fs.existsSync(path.join(artifactDir, 'report.md'))).toBe(true);

@@ -29,6 +29,7 @@
     ],
     "defaults": {
       "horizon": "30d",
+      "market": "us",
       "risk-level": "medium"
     },
     "descriptions": {

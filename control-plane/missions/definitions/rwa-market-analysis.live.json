@@ -3,7 +3,7 @@
   "name": "RWA Market Analysis (Live)",
   "projectId": "smartfunds-core",
   "teamId": "smartfunds-research-team",
-  "workflowId": "rwa-market-analysis-live",
+  "workflowId": "research-web-intelligence",
   "objective": "Analyze a live RWA topic using web and social signal evidence.",
   "successCriteria": [
     "Collect structured web sources",

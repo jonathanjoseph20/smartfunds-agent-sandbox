@@ -15,7 +15,7 @@ function buildController() {
     })),
     getArtifactsByRun: vi.fn((runId: string) => ({
       runId,
-      missionId: 'research-web-intelligence',
+      missionId: 'rwa-market-analysis',
       artifacts: ['report.md', 'dataset.csv', 'search-results.json', 'research-pages.json']
     }))
   };
@@ -26,18 +26,18 @@ describe('slack adapter router', () => {
     const controller = buildController();
     const router = createSlackRouter(controller);
 
-    const result = await router.routeMissionText('run research-web-intelligence');
+    const result = await router.routeMissionText('run rwa-market-analysis');
 
     expect(result).toEqual({
       ok: true,
       text: [
         'Mission started',
         '',
-        'mission: research-web-intelligence',
+        'mission: rwa-market-analysis',
         'runId: run_smartfunds-core_0004'
       ].join('\n')
     });
-    expect(controller.startMission).toHaveBeenCalledWith('research-web-intelligence');
+    expect(controller.startMission).toHaveBeenCalledWith('rwa-market-analysis');
   });
 
   it('T-S84-R2 parses /mission status by runId and formats deterministic output', async () => {
@@ -63,7 +63,7 @@ describe('slack adapter router', () => {
     const controller = buildController();
     controller.getArtifactsByRun.mockReturnValueOnce({
       runId: 'run_smartfunds-core_0004',
-      missionId: 'research-web-intelligence',
+      missionId: 'rwa-market-analysis',
       artifacts: ['search-results.json', 'dataset.csv', 'report.md', 'research-pages.json']
     });
 

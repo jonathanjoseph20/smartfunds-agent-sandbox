@@ -3,12 +3,14 @@ import path from 'node:path';
 
 import { createMissionService } from '../../control-plane/operator/mission-service.ts';
 import { createWorkflowService } from '../../control-plane/operator/workflow-service.ts';
+import { listArtifactsForRun } from '../output/artifact-listing.ts';
 
 export type MissionControllerOptions = {
   rootDir?: string;
   artifactsDir?: string;
   missionService?: ReturnType<typeof createMissionService>;
   workflowService?: ReturnType<typeof createWorkflowService>;
+  onMissionCompleted?: (input: { missionId: string; runId: string; artifacts: string[] }) => Promise<void> | void;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -57,7 +59,19 @@ export function createMissionController(options: MissionControllerOptions = {}) 
   const artifactsDir = options.artifactsDir ?? path.join('.', 'artifacts');
 
   async function startMission(missionName: string): Promise<Record<string, unknown>> {
-    return asRecord(await missionService.startMission({ missionId: missionName, params: {} }));
+    const started = asRecord(await missionService.startMission({ missionId: missionName, params: {} }));
+    const runId = asString(started.workflowRun);
+    const missionId = asString(started.missionId) ?? missionName;
+    if (options.onMissionCompleted && runId) {
+      const artifacts = listArtifactsForRun({
+        missionId,
+        runId,
+        artifactsRoot: artifactsDir
+      });
+      await options.onMissionCompleted({ missionId, runId, artifacts });
+    }
+
+    return started;
   }
 
   function getStatus(missionId: string): Record<string, unknown> {
@@ -114,12 +128,44 @@ export function createMissionController(options: MissionControllerOptions = {}) 
     };
   }
 
+  function getRunStatus(runId: string): Record<string, unknown> {
+    const status = asRecord(workflowService.inspectWorkflow({ runId }));
+    const summary = asRecord(status.summary);
+
+    return {
+      runId,
+      missionId: asString(status.missionId),
+      status: asString(status.status) ?? 'unknown',
+      phase: asString(summary.activeNodeId)
+    };
+  }
+
+  function getArtifactsByRun(runId: string): Record<string, unknown> {
+    const status = asRecord(workflowService.inspectWorkflow({ runId }));
+    const missionId = asString(status.missionId);
+    if (!missionId) {
+      throw new Error(`MISSION_NOT_FOUND_FOR_RUN: ${runId}`);
+    }
+
+    return {
+      missionId,
+      runId,
+      artifacts: listArtifactsForRun({
+        missionId,
+        runId,
+        artifactsRoot: artifactsDir
+      })
+    };
+  }
+
   return {
     startMission,
     getStatus,
     cancelMission,
     getLogs,
-    getArtifacts
+    getArtifacts,
+    getRunStatus,
+    getArtifactsByRun
   };
 }
 

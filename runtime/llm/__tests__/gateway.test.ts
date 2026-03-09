@@ -6,11 +6,15 @@ import type { LLMProvider, ProviderInvokeRequest, ProviderInvokeResponse } from 
 import type { LLMRequest } from '../types.ts';
 
 class StubProvider implements LLMProvider {
-  constructor(
-    public readonly providerId: string,
-    private readonly content: string,
-    private readonly usage: ProviderInvokeResponse['usage'] = { inputTokens: 1, outputTokens: 2 }
-  ) {}
+  public readonly providerId: string;
+  private readonly content: string;
+  private readonly usage: ProviderInvokeResponse['usage'];
+
+  constructor(providerId: string, content: string, usage: ProviderInvokeResponse['usage'] = { inputTokens: 1, outputTokens: 2 }) {
+    this.providerId = providerId;
+    this.content = content;
+    this.usage = usage;
+  }
 
   async invoke(_request: ProviderInvokeRequest): Promise<ProviderInvokeResponse> {
     return {

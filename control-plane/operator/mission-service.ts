@@ -24,6 +24,7 @@ import { loadWorkflowDefinitionById } from '../workflows/workflow-loader.ts';
 import { createSwarmWorkflowExecutor } from '../workflows/workflow-runner.ts';
 import { executeWorkflowRunWithHardening } from '../runtime/hardened-workflow-runtime.ts';
 import { cancelWorkflowRun, reconstructWorkflowStateFromJournal } from '../runtime/recovery-engine.ts';
+import { writeArtifact } from '../../runtime/output/artifact-writer.ts';
 
 type MissionServiceOptions = {
   journal?: ExecutionJournal;
@@ -129,6 +130,142 @@ function buildJournal(options: MissionServiceOptions): ExecutionJournal {
   return options.journal ?? createExecutionJournal({ rootDir: options.rootDir });
 }
 
+function buildDatasetRows(input: {
+  missionId: string;
+  runId: string;
+  workflowId: string;
+  nodeStates: Array<{
+    nodeId: string;
+    status: string;
+    agentId: string | null;
+    adapterId: string | null;
+    retryCount: number;
+  }>;
+}): Array<Record<string, unknown>> {
+  return [...input.nodeStates]
+    .sort((left, right) => left.nodeId.localeCompare(right.nodeId))
+    .map((node) => ({
+      missionId: input.missionId,
+      runId: input.runId,
+      workflowId: input.workflowId,
+      nodeId: node.nodeId,
+      status: node.status,
+      task: node.adapterId ?? '',
+      agentId: node.agentId ?? '',
+      retryCount: node.retryCount
+    }));
+}
+
+function buildLogsText(input: {
+  events: Array<{
+    sequence: number;
+    type: string;
+    taskId?: string;
+    payload?: unknown;
+  }>;
+}): string {
+  const lines = [...input.events]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((event) => {
+      const payload = (event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload))
+        ? event.payload as Record<string, unknown>
+        : {};
+      const failureCode = typeof payload.failureCode === 'string' ? payload.failureCode : '';
+      const node = typeof event.taskId === 'string' ? event.taskId : '';
+      return [String(event.sequence), event.type, node, failureCode].join('|');
+    });
+  return `${lines.join('\n')}\n`;
+}
+
+function writeMissionArtifacts(input: {
+  missionId: string;
+  runId: string;
+  workflowId: string;
+  status: string;
+  executionOrder: string[];
+  nodeStates: Array<{
+    nodeId: string;
+    status: string;
+    agentId: string | null;
+    adapterId: string | null;
+    retryCount: number;
+  }>;
+  events: Array<{
+    sequence: number;
+    type: string;
+    taskId?: string;
+    payload?: unknown;
+  }>;
+}): void {
+  const generatedArtifacts = ['report.md', 'dataset.csv', 'summary.json', 'logs.txt'];
+  const summaryPayload = {
+    generatedArtifacts,
+    missionId: input.missionId,
+    runId: input.runId,
+    workflowId: input.workflowId,
+    status: input.status,
+    nodeCount: input.nodeStates.length,
+    executionOrder: [...input.executionOrder].sort((left, right) => left.localeCompare(right))
+  };
+
+  const report = [
+    '# Mission Report',
+    '',
+    `Mission ID: ${input.missionId}`,
+    `Run ID: ${input.runId}`,
+    `Workflow ID: ${input.workflowId}`,
+    `Status: ${input.status}`,
+    `Nodes: ${String(input.nodeStates.length)}`,
+    '',
+    'Execution Order',
+    ...input.executionOrder.map((nodeId) => `- ${nodeId}`),
+    '',
+    'Generated Artifacts',
+    ...generatedArtifacts.map((name) => `- ${name}`),
+    ''
+  ].join('\n');
+
+  writeArtifact({
+    missionId: input.missionId,
+    runId: input.runId,
+    type: 'markdown',
+    filename: 'report.md',
+    content: report
+  });
+
+  writeArtifact({
+    missionId: input.missionId,
+    runId: input.runId,
+    type: 'json',
+    filename: 'summary.json',
+    content: summaryPayload
+  });
+
+  writeArtifact({
+    missionId: input.missionId,
+    runId: input.runId,
+    type: 'csv',
+    filename: 'dataset.csv',
+    content: {
+      columns: ['agentId', 'missionId', 'nodeId', 'retryCount', 'runId', 'status', 'task', 'workflowId'],
+      rows: buildDatasetRows({
+        missionId: input.missionId,
+        runId: input.runId,
+        workflowId: input.workflowId,
+        nodeStates: input.nodeStates
+      })
+    }
+  });
+
+  writeArtifact({
+    missionId: input.missionId,
+    runId: input.runId,
+    type: 'text',
+    filename: 'logs.txt',
+    content: buildLogsText({ events: input.events })
+  });
+}
+
 async function executeMissionWorkflow(input: {
   journal: ExecutionJournal;
   missionId: string;
@@ -170,6 +307,44 @@ async function executeMissionWorkflow(input: {
 
   const inspected = input.journal.inspectRun(run.runId);
   const runRecord = buildWorkflowRunRecord(inspected);
+  const nodeRecords = buildWorkflowNodeRecords({
+    runId: runRecord.runId,
+    workflowId: runRecord.workflowId,
+    events: inspected.events
+  });
+  const nodeStates = nodeRecords.map((node) => ({
+    nodeId: node.nodeId,
+    status: node.status,
+    agentId: node.agentId,
+    adapterId: node.adapterId,
+    retryCount: node.retryCount
+  }));
+  const executionOrder = Array.isArray(runRecord.summary.executionOrder)
+    ? runRecord.summary.executionOrder
+    : [...nodeRecords]
+      .sort((left, right) => {
+        const seqCmp = left.sequenceStarted - right.sequenceStarted;
+        if (seqCmp !== 0) {
+          return seqCmp;
+        }
+        return left.nodeId.localeCompare(right.nodeId);
+      })
+      .map((node) => node.nodeId);
+  writeMissionArtifacts({
+    missionId: input.missionId,
+    runId: runRecord.runId,
+    workflowId: runRecord.workflowId,
+    status: runRecord.status,
+    executionOrder,
+    nodeStates,
+    events: inspected.events.map((event) => ({
+      sequence: event.sequence,
+      type: event.type,
+      ...(event.taskId ? { taskId: event.taskId } : {}),
+      ...(event.payload ? { payload: event.payload } : {})
+    }))
+  });
+
   return {
     runId: runRecord.runId,
     status: runRecord.status

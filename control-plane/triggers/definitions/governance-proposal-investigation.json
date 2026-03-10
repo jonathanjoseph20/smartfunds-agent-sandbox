@@ -1,0 +1,6 @@
+{
+  "triggerId": "governance-proposal-investigation",
+  "signalType": "governance_proposal",
+  "mission": "defi-governance-events",
+  "cooldownSlots": 1
+}

@@ -1,0 +1,6 @@
+{
+  "triggerId": "tvl-spike-investigation",
+  "signalType": "tvl_spike",
+  "mission": "defi-liquidity-scan",
+  "cooldownSlots": 1
+}

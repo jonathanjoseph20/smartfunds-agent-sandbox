@@ -1,0 +1,6 @@
+{
+  "triggerId": "liquidity-drain-investigation",
+  "signalType": "liquidity_drain",
+  "mission": "defi-liquidity-scan",
+  "cooldownSlots": 1
+}

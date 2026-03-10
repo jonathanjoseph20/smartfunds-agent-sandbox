@@ -1,0 +1,6 @@
+{
+  "triggerId": "large-token-unlock-investigation",
+  "signalType": "large_token_unlock",
+  "mission": "research-market-scan",
+  "cooldownSlots": 1
+}

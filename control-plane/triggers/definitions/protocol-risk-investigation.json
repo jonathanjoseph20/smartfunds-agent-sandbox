@@ -1,0 +1,6 @@
+{
+  "triggerId": "protocol-risk-investigation",
+  "signalType": "protocol_risk",
+  "mission": "defi-governance-events",
+  "cooldownSlots": 1
+}

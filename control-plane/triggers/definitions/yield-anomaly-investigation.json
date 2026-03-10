@@ -1,0 +1,6 @@
+{
+  "triggerId": "yield-anomaly-investigation",
+  "signalType": "yield_anomaly",
+  "mission": "defi-yield-report",
+  "cooldownSlots": 1
+}

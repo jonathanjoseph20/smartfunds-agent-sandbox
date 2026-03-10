@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { canonicalStringify } from '../finance/determinism.ts';
+import { createTriggerEngine, type TriggerEngine } from '../triggers/trigger-engine.ts';
 
 import { computeSignalDedupeKey, createSignalDeduper, type SignalDeduper } from './signal-deduper.ts';
 import { createSignalRegistry, type SignalRegistry } from './signal-registry.ts';
@@ -87,13 +88,24 @@ function buildSignalRecord(input: {
 export function createSignalEmitter(options: {
   definitionsDir?: string;
   signalsRootDir?: string;
+  triggerDefinitionsDir?: string;
+  triggersRootDir?: string;
   registry?: SignalRegistry;
   store?: SignalStore;
   deduper?: SignalDeduper;
+  triggerEngine?: TriggerEngine;
+  onTriggerLaunchRequests?: (requests: Array<{ missionId: string; triggerId: string; sourceSignal: string }>) => void;
 } = {}) {
+  const resolvedSignalsRootDir = path.resolve(options.signalsRootDir ?? 'signals');
+  const defaultTriggersRootDir = path.join(path.dirname(resolvedSignalsRootDir), 'triggers');
+
   const registry = options.registry ?? createSignalRegistry({ definitionsDir: options.definitionsDir });
-  const store = options.store ?? createSignalStore({ rootDir: options.signalsRootDir });
+  const store = options.store ?? createSignalStore({ rootDir: resolvedSignalsRootDir });
   const deduper = options.deduper ?? createSignalDeduper(store);
+  const triggerEngine = options.triggerEngine ?? createTriggerEngine({
+    definitionsDir: options.triggerDefinitionsDir,
+    triggersRootDir: options.triggersRootDir ?? defaultTriggersRootDir
+  });
 
   function emitSignal(signalType: string, payload: unknown): EmitSignalResult {
     if (!isRecord(payload)) {
@@ -124,6 +136,15 @@ export function createSignalEmitter(options: {
       };
     }
 
+    try {
+      const evaluated = triggerEngine.evaluateSignalForTriggers(record);
+      if (evaluated.launchRequests.length > 0 && options.onTriggerLaunchRequests) {
+        options.onTriggerLaunchRequests(evaluated.launchRequests);
+      }
+    } catch {
+      // Trigger evaluation is passive and must not alter signal emission semantics.
+    }
+
     return {
       status: 'persisted',
       signal: record,
@@ -137,7 +158,7 @@ export function createSignalEmitter(options: {
     listSignalTypes: registry.listSignalTypes,
     listSignals: store.listSignals,
     listHistory: store.listHistory,
-    signalsRootDir: path.resolve(options.signalsRootDir ?? 'signals')
+    signalsRootDir: resolvedSignalsRootDir
   };
 }
 

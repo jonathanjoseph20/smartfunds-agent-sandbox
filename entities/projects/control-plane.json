@@ -40,7 +40,8 @@
     "control-plane/service/",
     "control-plane/llm/",
     "deploy/",
-    "scripts/"
+    "scripts/",
+    "control-plane/"
   ],
   "ownedFiles": [
     ".gitignore",

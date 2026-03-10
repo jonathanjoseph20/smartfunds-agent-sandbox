@@ -1,6 +1,10 @@
 import type { MissionDefinition, MissionPriority } from './mission-types.ts';
+import type { CapabilityClass, MutationIntent, PolicyProfile } from '../policy/types.ts';
 
 const MISSION_PRIORITIES: MissionPriority[] = ['low', 'medium', 'high', 'critical'];
+const POLICY_PROFILES: PolicyProfile[] = ['lite', 'build', 'core'];
+const CAPABILITY_CLASSES: CapabilityClass[] = ['artifact_write', 'pr_open', 'protected_write', 'read', 'repo_write'];
+const MUTATION_INTENTS: MutationIntent[] = ['none', 'artifact', 'code_change', 'governance_change'];
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -35,6 +39,62 @@ function parsePriority(value: unknown, missionId: string): MissionPriority | und
     throw new Error(`Mission ${missionId} priority must be one of ${MISSION_PRIORITIES.join(', ')}.`);
   }
   return value as MissionPriority;
+}
+
+function parseProfile(value: unknown, missionId: string): PolicyProfile | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!POLICY_PROFILES.includes(value as PolicyProfile)) {
+    throw new Error(`Mission ${missionId} profile must be one of ${POLICY_PROFILES.join(', ')}.`);
+  }
+  return value as PolicyProfile;
+}
+
+function parseMutationIntent(value: unknown, missionId: string): MutationIntent | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!MUTATION_INTENTS.includes(value as MutationIntent)) {
+    throw new Error(`Mission ${missionId} mutationIntent must be one of ${MUTATION_INTENTS.join(', ')}.`);
+  }
+  return value as MutationIntent;
+}
+
+function parseRequestedCapabilities(value: unknown, missionId: string): CapabilityClass[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const requested = ensureStringArray(value, `Mission ${missionId} requestedCapabilities`);
+  const invalid = requested.filter((capability) => !CAPABILITY_CLASSES.includes(capability as CapabilityClass));
+  if (invalid.length > 0) {
+    throw new Error(
+      `Mission ${missionId} requestedCapabilities contains unsupported capability classes: ${sortedUnique(invalid).join(', ')}.`
+    );
+  }
+
+  return sortedUnique(requested) as CapabilityClass[];
+}
+
+function parseTargetScope(value: unknown, missionId: string): MissionDefinition['targetScope'] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Mission ${missionId} targetScope must be an object.`);
+  }
+
+  const record = value as Record<string, unknown>;
+  assertNonEmptyString(record.repo, `Mission ${missionId} targetScope.repo`);
+  const paths = record.paths === undefined
+    ? undefined
+    : sortedUnique(ensureStringArray(record.paths, `Mission ${missionId} targetScope.paths`));
+
+  return {
+    repo: record.repo,
+    ...(paths ? { paths } : {})
+  };
 }
 
 function parseInitialContext(value: unknown, missionId: string): Record<string, unknown> {
@@ -120,6 +180,10 @@ export function validateMissionDefinition(value: unknown): MissionDefinition {
     : ensureStringArray(record.deliverables, `Mission ${record.missionId} deliverables`);
 
   const priority = parsePriority(record.priority, record.missionId);
+  const profile = parseProfile(record.profile, record.missionId);
+  const mutationIntent = parseMutationIntent(record.mutationIntent, record.missionId);
+  const requestedCapabilities = parseRequestedCapabilities(record.requestedCapabilities, record.missionId);
+  const targetScope = parseTargetScope(record.targetScope, record.missionId);
   const parameterSchema = parseParameterSchema(record.parameterSchema, record.missionId);
 
   return {
@@ -132,6 +196,10 @@ export function validateMissionDefinition(value: unknown): MissionDefinition {
     successCriteria: sortedUnique(successCriteria),
     deliverables: sortedUnique(deliverables),
     initialContext: parseInitialContext(record.initialContext, record.missionId),
+    ...(profile ? { profile } : {}),
+    ...(mutationIntent ? { mutationIntent } : {}),
+    ...(requestedCapabilities ? { requestedCapabilities } : {}),
+    ...(targetScope ? { targetScope } : {}),
     ...(parameterSchema ? { parameterSchema } : {}),
     ...(isNonEmptyString(record.description) ? { description: record.description } : {}),
     ...(priority ? { priority } : {}),

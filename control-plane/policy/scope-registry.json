@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "profiles": {
+    "lite": {
+      "mutationAllowed": false
+    },
+    "build": {
+      "allowedRepos": ["smartfunds-agent-sandbox"],
+      "allowedPaths": {
+        "smartfunds-agent-sandbox": [
+          "dashboard/**",
+          "apps/**",
+          "tools/**",
+          "docs/**"
+        ]
+      }
+    },
+    "core": {
+      "allowedRepos": ["smartfunds-agent-sandbox"],
+      "allowedPaths": {
+        "smartfunds-agent-sandbox": [
+          "control-plane/**",
+          "entities/**"
+        ]
+      }
+    }
+  }
+}

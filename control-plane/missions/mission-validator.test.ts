@@ -25,6 +25,8 @@ describe('mission-validator', () => {
 
     expect(mission.missionId).toBe('rwa-market-analysis');
     expect(mission.workflowId).toBe('research-analysis-workflow');
+    expect(mission.profile).toBeUndefined();
+    expect(mission.requestedCapabilities).toBeUndefined();
   });
 
   it('T-M2 rejects missing teamId', () => {
@@ -54,6 +56,38 @@ describe('mission-validator', () => {
       defaults: {
         'risk-level': 'medium'
       }
+    });
+  });
+
+  it('T-M11 preserves compatibility when policy profile fields are absent', () => {
+    const mission = validateMissionDefinition(validMission());
+
+    expect(mission).toMatchObject({
+      missionId: 'rwa-market-analysis',
+      workflowId: 'research-analysis-workflow'
+    });
+    expect(mission.profile).toBeUndefined();
+    expect(mission.mutationIntent).toBeUndefined();
+    expect(mission.targetScope).toBeUndefined();
+  });
+
+  it('T-M12 validates policy profile fields with deterministic ordering', () => {
+    const mission = validateMissionDefinition(validMission({
+      profile: 'build',
+      mutationIntent: 'code_change',
+      requestedCapabilities: ['repo_write', 'read', 'read', 'artifact_write'],
+      targetScope: {
+        repo: 'smartfunds-agent-sandbox',
+        paths: ['tools/**', 'apps/**', 'apps/**']
+      }
+    }));
+
+    expect(mission.profile).toBe('build');
+    expect(mission.mutationIntent).toBe('code_change');
+    expect(mission.requestedCapabilities).toEqual(['artifact_write', 'read', 'repo_write']);
+    expect(mission.targetScope).toEqual({
+      repo: 'smartfunds-agent-sandbox',
+      paths: ['apps/**', 'tools/**']
     });
   });
 });

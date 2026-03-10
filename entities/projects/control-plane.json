@@ -25,6 +25,7 @@
     "control-plane/journal/",
     "control-plane/swarm/",
     "control-plane/tasks/",
+    "control-plane/policy/",
     "dashboard/",
     "entities/",
     "governance/",

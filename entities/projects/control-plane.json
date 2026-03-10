@@ -40,8 +40,7 @@
     "control-plane/service/",
     "control-plane/llm/",
     "deploy/",
-    "scripts/",
-    "control-plane/"
+    "scripts/"
   ],
   "ownedFiles": [
     ".gitignore",
@@ -53,7 +52,8 @@
     "agent-cockpit-main.zip",
     "package-lock.json",
     "package.json",
-    "control-plane/risk-contract.json"
+    "control-plane/risk-contract.json",
+    "control-plane/governance-runtime.ts"
   ],
   "complianceProfile": "internal",
   "financeScope": null

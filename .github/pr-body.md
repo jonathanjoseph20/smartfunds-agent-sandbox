@@ -1,9 +1,9 @@
-tier-3
+profile: core
 
-```evidence
-Risk Tier: 3
-Justification: Sprint 28 — swarm formalization (parser/schema/validator + governance integration).
-Affected Paths: control-plane/governance/**; control-plane/swarm/**; control-plane/__tests__/**
-Tests Added: Added/updated unit tests for swarm contract/schema/validator + governance report/schema tests.
-Determinism Statement: All outputs remain deterministic (no timestamps/UUIDs/randomness; stable ordering).
-```
+Governance context:
+- control-plane/governance/**
+- control-plane/swarm/**
+- control-plane/__tests__/**
+
+Validation:
+- Added/updated unit tests for swarm contract/schema/validator and governance report/schema coverage.

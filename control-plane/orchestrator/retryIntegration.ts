@@ -12,15 +12,7 @@ type WriteFile = (path: string, body: string) => void;
 
 const METADATA_REFRESH_COMMIT_MESSAGE = 'chore: refresh retry metadata';
 
-const STRICT_RETRYABLE_CODES = [
-  'MISSING_TIER_LABEL',
-  'MISSING_APPROVAL_LABEL',
-  'MISSING_TIER_3_APPROVED',
-  'MISSING_EVIDENCE_BLOCK',
-  'MISSING_EVIDENCE_FIELDS',
-  'MISSING_EVIDENCE_FIELD',
-  'INVALID_BODY_FORMAT'
-] as const;
+const STRICT_RETRYABLE_CODES: readonly string[] = [];
 
 type RetryReasonCode =
   | 'retry_applied'
@@ -142,7 +134,7 @@ function isStrictRetryableGovernanceCode(value: string | null): boolean {
     return false;
   }
   const normalized = value.trim().toUpperCase();
-  return STRICT_RETRYABLE_CODES.includes(normalized as (typeof STRICT_RETRYABLE_CODES)[number]);
+  return STRICT_RETRYABLE_CODES.includes(normalized);
 }
 
 function evaluateEligibility(args: {

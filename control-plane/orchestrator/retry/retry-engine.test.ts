@@ -12,12 +12,17 @@ import type { GovernanceReport } from '../../governance/diagnostics.ts';
 
 function baseReport(overrides: Partial<GovernanceReport> = {}): GovernanceReport {
   return {
-    declaredTier: 2,
-    impliedTier: 2,
-    labelTier: 2,
+    requestedProfile: 'core',
+    requiredProfile: 'core',
+    finalProfile: 'core',
+    matchedScopes: [],
+    routingSource: 'policy-registry',
+    declaredTier: null,
+    impliedTier: null,
+    labelTier: null,
     missingLabels: [],
     missingEvidenceFields: [],
-    requiredChecks: ['lint_tier0'],
+    requiredChecks: ['lint'],
     projectsTouched: [],
     teamsTouched: [],
     swarmsDeclared: [],
@@ -94,32 +99,31 @@ describe('retry engine', () => {
     expect(extractGovernanceReportJson(raw)).toBe('{"errors":[]}');
   });
 
-  it('classifies retriable governance error deterministically', () => {
+  it('does not classify legacy governance errors as retriable', () => {
     const report = baseReport({
-      missingEvidenceFields: ['Risk Tier'],
       errors: [{
-        code: 'MISSING_EVIDENCE_FIELDS',
+        code: 'UNOWNED_PATHS',
         severity: 'error',
-        retryable: true,
-        message: 'missing',
+        retryable: false,
+        message: 'unowned',
         suggestedFix: null,
-        sourceFields: ['missingEvidenceFields']
+        sourceFields: ['unownedPaths']
       }]
     });
 
-    expect(classifyRetriableGovernanceError(report)).toBe('MISSING_EVIDENCE_FIELD');
+    expect(classifyRetriableGovernanceError(report)).toBeNull();
   });
 
   it('enforces mode restriction for structured mode', () => {
     const retryState = createInitialRetryState();
     const report = baseReport({
       errors: [{
-        code: 'MISSING_TIER_LABEL',
+        code: 'UNOWNED_PATHS',
         severity: 'error',
-        retryable: true,
-        message: 'tier label missing',
+        retryable: false,
+        message: 'unowned paths',
         suggestedFix: null,
-        sourceFields: ['missingLabels']
+        sourceFields: ['unownedPaths']
       }]
     });
 
@@ -140,12 +144,12 @@ describe('retry engine', () => {
   it('enforces retry limit after one attempt', () => {
     const report = baseReport({
       errors: [{
-        code: 'MISSING_TIER_LABEL',
+        code: 'UNOWNED_PATHS',
         severity: 'error',
-        retryable: true,
-        message: 'tier label missing',
+        retryable: false,
+        message: 'unowned paths',
         suggestedFix: null,
-        sourceFields: ['missingLabels']
+        sourceFields: ['unownedPaths']
       }]
     });
 
@@ -166,13 +170,13 @@ describe('retry engine', () => {
   });
 
   it('builds deterministic fix plans', () => {
-    const first = buildDeterministicFixPlan('INVALID_BODY_FORMAT');
-    const second = buildDeterministicFixPlan('INVALID_BODY_FORMAT');
+    const first = buildDeterministicFixPlan('UNOWNED_PATHS');
+    const second = buildDeterministicFixPlan('UNOWNED_PATHS');
 
     expect(first).toEqual(second);
     expect(first).toEqual({
-      errorCode: 'INVALID_BODY_FORMAT',
-      fix: 'NORMALIZE_BODY'
+      errorCode: 'UNOWNED_PATHS',
+      fix: 'ASSIGN_PROJECT_MAPPING'
     });
   });
 
@@ -182,7 +186,7 @@ describe('retry engine', () => {
       JSON.stringify(baseReport({
         errors: [
           {
-            code: 'MISSING_TIER_LABEL',
+            code: 'UNOWNED_PATHS',
             severity: 'error',
             retryable: true,
             message: 'b',
@@ -190,7 +194,7 @@ describe('retry engine', () => {
             sourceFields: []
           },
           {
-            code: 'MISSING_TIER_LABEL',
+            code: 'UNOWNED_PATHS',
             severity: 'error',
             retryable: true,
             message: 'a',

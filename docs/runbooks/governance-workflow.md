@@ -13,17 +13,11 @@ git checkout main
 git pull
 git checkout -b feature-branch-name
 
-## Emit Governance Evidence (Required)
-
-npm run governance:emit
-
-Writes canonical `governance/evidence.json`.
-
 ## Run Governance Preflight
 
 npm run governance:preflight
 
-Runs governance validation checks before PR creation.
+Runs profile-native governance validation checks before PR creation.
 
 ## Create PR (Blessed Path)
 
@@ -41,7 +35,7 @@ This command:
 
 npm run pr:verify
 
-Re-validates governance metadata and confirms correct tier detection.
+Re-validates governance metadata and confirms profile routing.
 
 ## Refresh PR Metadata (If CI Reads Stale Data)
 
@@ -52,15 +46,8 @@ If CI still reads stale data, run:
 git commit --allow-empty -m "chore: refresh metadata"
 git push
 
-## Validate Evidence Contract
-
-npm run governance:preflight
-
-Confirms `governance/evidence.json` and labels match the required contract.
-
 ## Merge Checklist
 
 - CI is green
-- Correct tier label applied
-- `governance/evidence.json` present and valid
+- Profile routing matches the change scope
 - No unintended file changes

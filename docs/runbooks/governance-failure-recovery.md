@@ -2,20 +2,20 @@
 
 ## Purpose
 
-Provide deterministic, copy/paste recovery steps for governance failures. Governance reads `governance/evidence.json`; PR body is informational only.
+Provide deterministic, copy/paste recovery steps for governance failures. Governance is profile-native and scope-driven.
 
 ## Quick Diagnostics
 
 ```bash
-cat governance/evidence.json
 gh pr view --json labels --jq '.labels[].name'
+gh pr view --json body --jq .body
 ```
 
 ## Common Fixes
 
-- Add or align tier labels (labels are authoritative).
-- Ensure `governance/evidence.json` exists and is valid.
-- Ensure `governance/evidence.json` tier matches the applied label.
+- Confirm the changed files should route to the observed profile.
+- If optional profile metadata is present, align it with the actual changed scope.
+- Review ownership diagnostics as informational only.
 
 ## Label Bootstrap
 
@@ -28,7 +28,7 @@ npm run bootstrap:labels -- --repo owner/name --dry-run
 
 ## Stale PR Metadata
 
-GitHub Actions re-runs can read stale evidence/labels. If you edited `governance/evidence.json` or labels after a failed run, push a new commit to refresh the PR payload:
+GitHub Actions re-runs can read stale PR metadata. If you edited PR metadata after a failed run, push a new commit to refresh the PR payload:
 
 ```bash
 git commit --allow-empty -m "chore: refresh governance"
@@ -43,9 +43,6 @@ Run the local governance preflight:
 npm run governance:preflight
 ```
 
-## Evidence File Reminder
+## Legacy Metadata Reminder
 
-```bash
-npm run governance:emit
-npm run governance:preflight
-```
+Legacy tier labels and ` ```evidence ` blocks are tolerated for backward compatibility, but they do not affect governance enforcement.

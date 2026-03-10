@@ -1,7 +1,7 @@
 import type { ExecutionMode } from '../teams/types';
 
 export type ModeEnforcementStatus = 'ok' | 'failed';
-export type ModeViolation = null | 'mixed_execution_modes' | 'structured_min_tier_violation';
+export type ModeViolation = null | 'mixed_execution_modes';
 
 export type ModePolicyResult = {
   status: ModeEnforcementStatus;
@@ -13,7 +13,6 @@ export type ModePolicyResult = {
 
 export function evaluateModePolicy(params: {
   executionModesTouched: ExecutionMode[];
-  declaredTier: number | null;
 }): ModePolicyResult {
   const hasStructured = params.executionModesTouched.includes('structured');
   const hasAutonomous = params.executionModesTouched.includes('autonomous');
@@ -29,21 +28,10 @@ export function evaluateModePolicy(params: {
     };
   }
 
-  if (hasStructured && (params.declaredTier === null || params.declaredTier < 2)) {
-    return {
-      status: 'failed',
-      violation: 'structured_min_tier_violation',
-      requiredMinimumTier: 2,
-      message:
-        'Mode policy violation: structured execution mode requires declared tier-2 or tier-3. Raise the declared tier and align PR metadata/evidence.',
-      nextActions: ['Raise declared tier to tier-2 or tier-3 and align PR metadata/evidence.']
-    };
-  }
-
   return {
     status: 'ok',
     violation: null,
-    requiredMinimumTier: hasStructured ? 2 : null,
+    requiredMinimumTier: null,
     message: null,
     nextActions: []
   };

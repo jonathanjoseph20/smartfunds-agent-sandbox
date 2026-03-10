@@ -265,10 +265,19 @@ function buildProvenanceBody(input: {
   branchName: string;
   mutationSummary: string[];
 }): string {
+  const scope = `${input.targetRepo}:${input.targetPaths.join(', ') || 'N/A'}`;
+  const classification = 'requestedProfile=build;requiredProfile=build;finalProfile=build;source=metadata';
   const evidenceFields = Object.fromEntries(Object.entries({
+    missionId: input.missionId,
+    runId: input.runId,
+    profile: 'build',
+    scope,
+    classification,
     'Mission ID': input.missionId,
     'Run ID': input.runId,
     'Profile': 'build',
+    Scope: scope,
+    Classification: classification,
     'Target Repo': input.targetRepo,
     'Target Paths': input.targetPaths.join(', ') || 'N/A',
     'Artifacts Produced': 'runtime-only',

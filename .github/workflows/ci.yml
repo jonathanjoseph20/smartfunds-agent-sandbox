@@ -21,7 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -34,16 +33,17 @@ jobs:
       - name: Verify workflow YAML and entrypoints
         run: npm run lint:workflows
 
-  policy_lite:
+  detect_governance_profile:
+    if: github.event_name == 'pull_request'
     needs: workflow_integrity
     runs-on: ubuntu-latest
-
     outputs:
-      tier: ${{ steps.validate_pr.outputs.tier }}
-      detected_tier: ${{ steps.validate_pr.outputs.detected_tier }}
-      implied_tier: ${{ steps.validate_pr.outputs.implied_tier }}
-      final_tier: ${{ steps.validate_pr.outputs.final_tier }}
-      required_checks: ${{ steps.validate_pr.outputs.required_checks }}
+      profile: ${{ steps.detect_profile.outputs.profile }}
+      requested_profile: ${{ steps.detect_profile.outputs.requested_profile }}
+      required_profile: ${{ steps.detect_profile.outputs.required_profile }}
+      final_profile: ${{ steps.detect_profile.outputs.final_profile }}
+      matched_scopes: ${{ steps.detect_profile.outputs.matched_scopes }}
+      routing_source: ${{ steps.detect_profile.outputs.routing_source }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,36 +54,45 @@ jobs:
 
       - run: npm ci
 
-      - name: Bootstrap governance labels
-        if: github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: npm run bootstrap:labels -- --yes
-
-      - name: Auto-apply missing tier label from PR body
-        if: github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_EVENT_PATH: ${{ github.event_path }}
-        run: npm run governance:auto-label
-
-      - name: Validate lite governance contract
-        id: validate_pr
+      - name: Detect governance profile
+        id: detect_profile
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
-        run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode lite
+        run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode route
 
-      - name: Report lite policy resolution
+      - name: Report governance route
         run: |
-          echo "Detected tier: ${{ steps.validate_pr.outputs.detected_tier }}"
-          echo "Implied tier: ${{ steps.validate_pr.outputs.implied_tier }}"
-          echo "Final tier: ${{ steps.validate_pr.outputs.final_tier }}"
-          echo "Required checks: ${{ steps.validate_pr.outputs.required_checks }}"
+          echo "Detected profile: ${{ steps.detect_profile.outputs.profile }}"
+          echo "Requested profile: ${{ steps.detect_profile.outputs.requested_profile }}"
+          echo "Required profile: ${{ steps.detect_profile.outputs.required_profile }}"
+          echo "Final profile: ${{ steps.detect_profile.outputs.final_profile }}"
+          echo "Matched scope: ${{ steps.detect_profile.outputs.matched_scopes }}"
+          echo "Routing governance: ${{ steps.detect_profile.outputs.final_profile }}"
 
-  policy_full:
-    needs: workflow_integrity
+  governance_build:
+    if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'build'
+    needs: detect_governance_profile
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Validate build governance route
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GOVERNANCE_SUMMARY: 'true'
+        run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
+
+  governance_core:
+    if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'core'
+    needs: detect_governance_profile
     runs-on: ubuntu-latest
 
     steps:
@@ -102,13 +111,11 @@ jobs:
         run: npm ci
 
       - name: Bootstrap governance labels
-        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run bootstrap:labels -- --yes
 
       - name: Auto-apply missing tier label from PR body
-        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -121,9 +128,9 @@ jobs:
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
 
-  lint_tier0:
-    needs: policy_lite
-    if: fromJSON(needs.policy_lite.outputs.final_tier) <= 1 && contains(needs.policy_lite.outputs.required_checks, 'lint_tier0')
+  quality_checks:
+    if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile != 'lite'
+    needs: detect_governance_profile
     runs-on: ubuntu-latest
 
     steps:
@@ -136,4 +143,18 @@ jobs:
       - run: npm ci
 
       - name: Run lint checks
-        run: npm run lint_tier0
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+  governance_lite_notice:
+    if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'lite'
+    needs: detect_governance_profile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report lite routing
+        run: |
+          echo "Detected profile: lite"
+          echo "Routing governance: lite"
+          echo "Governance enforcement skipped for lite profile."

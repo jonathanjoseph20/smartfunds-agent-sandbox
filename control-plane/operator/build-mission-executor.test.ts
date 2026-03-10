@@ -121,6 +121,11 @@ describe('build-mission-executor', () => {
     expect(result.mutationSummary).toEqual(['dashboard/ui/index.html', 'docs/build-mission.md']);
     expect(state.createdPrBody).toContain('Mission ID: dashboard-copy-refresh');
     expect(state.createdPrBody).toContain('Execution Path: build');
+    expect(state.createdPrBody).toContain('missionId: dashboard-copy-refresh');
+    expect(state.createdPrBody).toContain('runId: run_smartfunds-core_0001');
+    expect(state.createdPrBody).toContain('profile: build');
+    expect(state.createdPrBody).toContain('scope: smartfunds-agent-sandbox:dashboard/**, docs/**');
+    expect(state.createdPrBody).toContain('classification: requestedProfile=build;requiredProfile=build;finalProfile=build;source=metadata');
   });
 
   it('T-SPC-BE4 rejects runtime artifact leakage into staged files', () => {

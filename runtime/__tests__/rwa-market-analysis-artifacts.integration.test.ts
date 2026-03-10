@@ -128,12 +128,13 @@ describe('rwa-market-analysis artifact integration', () => {
 
     const artifactDir = path.join('artifacts', missionId, runId);
     const files = fs.readdirSync(artifactDir).sort((left, right) => left.localeCompare(right));
-    expect(files).toEqual(['dataset.csv', 'report.md', 'research-pages.json', 'search-results.json']);
+    expect(files).toEqual(['dataset.csv', 'report.md', 'research-pages.json', 'run-metadata.json', 'search-results.json']);
 
     expect(listArtifactsForRun({ missionId, runId })).toEqual([
       'dataset.csv',
       'report.md',
       'research-pages.json',
+      'run-metadata.json',
       'search-results.json'
     ]);
   });

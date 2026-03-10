@@ -2,12 +2,18 @@
 
 ## Inspect Run
 1. `npm run workflow:run-inspect -- --run <runId>`
-2. Review `failedNodeIds`, `timedOutNodeIds`, and `firstInspectTarget`.
+2. Review `runtime.status`, `runtime.attemptCount`, `runtime.currentAttemptIndex`, and `runtime.retryCount`.
+3. Review `runtime.failureClass` / `runtime.failureReason` when present.
+4. Review `runtime.artifactValidation` and `runtime.artifacts`:
+   - required missing artifacts force terminal `failed`
+   - optional missing artifacts produce `partial` artifact validation only
+5. Review `failedNodeIds`, `timedOutNodeIds`, and `firstInspectTarget`.
 
 ## Retry Failed Node
 1. Verify node is `failed` or `timeout`.
 2. `npm run workflow:retry -- --run <runId> --node <nodeId>`
 3. Check output fields: `retryAttempt`, `tickDelay`, `scheduled`, `started`.
+4. Re-run inspect and verify `runtime.attempts` shows deterministic retry history.
 
 ## Resume Workflow
 1. `npm run workflow:resume -- --run <runId>`

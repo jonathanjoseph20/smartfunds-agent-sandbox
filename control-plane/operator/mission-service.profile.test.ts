@@ -115,6 +115,31 @@ function writeFixtures(): void {
     }
   });
 
+  writeJson(missionsDir, 'lite-missing-required-artifact.json', {
+    missionId: 'lite-missing-required-artifact',
+    projectId: 'smartfunds-core',
+    teamId: 'smartfunds-research-team',
+    workflowId: 'lite-ok-workflow',
+    profile: 'lite',
+    mutationIntent: 'none',
+    requestedCapabilities: ['artifact_write', 'read'],
+    objective: 'artifact validation failure',
+    successCriteria: ['detect missing required artifact'],
+    deliverables: ['lite-output.md', 'missing-report.md'],
+    initialContext: {
+      declaredArtifacts: [
+        { artifactId: 'lite-output', format: 'markdown' },
+        { artifactId: 'missing-report', format: 'markdown', required: true }
+      ],
+      taskInputsByNode: {
+        'write-lite-output': {
+          artifactId: 'lite-output',
+          content: '# Lite Output\\n\\nArtifact only.\\n'
+        }
+      }
+    }
+  });
+
   writeJson(missionsDir, 'lite-bad-capability.json', {
     missionId: 'lite-bad-capability',
     projectId: 'smartfunds-core',
@@ -231,6 +256,7 @@ beforeEach(() => {
 afterEach(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.rmSync(path.join('artifacts', 'lite-ok'), { recursive: true, force: true });
+  fs.rmSync(path.join('artifacts', 'lite-missing-required-artifact'), { recursive: true, force: true });
   fs.rmSync(path.join('artifacts', 'governed-default'), { recursive: true, force: true });
   fs.rmSync(path.join('artifacts', 'build-ok'), { recursive: true, force: true });
 });
@@ -298,6 +324,36 @@ describe('mission-service profile routing', () => {
       missionId: 'lite-bad-capability',
       params: {}
     })).rejects.toThrowError('LITE_REPO_MUTATION_FORBIDDEN');
+  });
+
+  it('T-RH-M1 marks mission status failed when required declared artifact is missing', async () => {
+    const service = createMissionService({
+      journal: createExecutionJournal({ rootDir: journalRoot }),
+      missionsDir,
+      workflowsDir,
+      teamsDir,
+      agentsDir
+    });
+
+    const result = await service.startMission({
+      missionId: 'lite-missing-required-artifact',
+      params: {}
+    });
+
+    expect(result).toMatchObject({
+      missionId: 'lite-missing-required-artifact',
+      status: 'failed',
+      executionPath: 'lite'
+    });
+
+    const runId = String(result.workflowRun);
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join('artifacts', 'lite-missing-required-artifact', runId, 'run-metadata.json'), 'utf8')
+    ) as Record<string, unknown>;
+
+    expect(metadata.status).toBe('failed');
+    expect(metadata.failureClass).toBe('artifact_validation_error');
+    expect(metadata.failureReason).toContain('required artifact missing');
   });
 
   it('T-SPB-M3 rejects lite forbidden mutation task steps', async () => {

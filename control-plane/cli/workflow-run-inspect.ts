@@ -3,6 +3,8 @@ import { createExecutionJournal } from '../journal/journal.ts';
 import { getRunDiagnosticReport } from '../observability/diagnostics.ts';
 import { buildWorkflowNodeRecords } from '../observability/node-record.ts';
 import { buildWorkflowRunRecord } from '../observability/run-record.ts';
+import { listArtifactsForRun } from '../../runtime/output/artifact-listing.ts';
+import { buildNormalizedRunInspection, parseArtifactExpectationsFromEvents } from '../operator/run-inspection.ts';
 
 function parseArgs(argv: string[]): { runId: string } {
   let runId: string | null = null;
@@ -58,6 +60,20 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       events: inspected.events,
       nodes: nodeRecords
     });
+    const expectedArtifacts = parseArtifactExpectationsFromEvents(inspected.events);
+    const actualArtifactFiles = runRecord.missionId
+      ? listArtifactsForRun({
+        missionId: runRecord.missionId,
+        runId: runRecord.runId
+      }).filter((file) => file !== 'run-metadata.json')
+      : [];
+    const runtime = buildNormalizedRunInspection({
+      run: runRecord,
+      events: inspected.events,
+      nodeStates: nodeRecords,
+      expectedArtifacts,
+      actualArtifactFiles
+    });
 
     printJson({
       summary: runRecord.summary,
@@ -69,6 +85,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         projectId: runRecord.projectId,
         status: runRecord.status
       },
+      runtime,
       nodes: nodeRecords.map((node) => ({
         nodeId: node.nodeId,
         status: node.status,

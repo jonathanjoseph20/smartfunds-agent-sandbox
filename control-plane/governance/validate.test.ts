@@ -36,10 +36,10 @@ function withMockedDeclaration(
   });
 }
 
-describe('governance validate tier routing', () => {
-  it('fails lite mode when tier label is missing', async () => {
+describe('governance validate profile routing', () => {
+  it('T-GVR1 supports route-only detection with fallback classification', async () => {
     const result = await runGovernanceValidation({
-      mode: 'lite',
+      mode: 'route',
       prData: {
         body: '',
         labels: [],
@@ -47,23 +47,23 @@ describe('governance validate tier routing', () => {
       }
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errors.join('\n')).toContain('MISSING_TIER_LABEL');
+    expect(result.ok).toBe(true);
+    expect(result.routing.source).toBe('fallback');
+    expect(result.routing.requiredProfile).toBe('build');
+    expect(result.routing.finalProfile).toBe('build');
   });
 
-  it('uses PR body tier fallback when tier label is missing', async () => {
+  it('T-GVR2 uses metadata profile detection when present', async () => {
     const result = await runGovernanceValidation({
-      mode: 'lite',
+      mode: 'full',
       prData: {
         body: [
-          'tier-1',
+          'tier-3',
           '',
           '```evidence',
-          'Risk Tier: 1',
-          'Justification: test',
-          'Affected Paths: docs/readme.md',
-          'Tests Added: yes',
-          'Determinism Statement: Deterministic.',
+          'profile: build',
+          'Mission ID: test',
+          'Run ID: test',
           '```'
         ].join('\n'),
         labels: [],
@@ -72,74 +72,73 @@ describe('governance validate tier routing', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.report.labelTier).toBe(1);
-    expect(result.report.missingLabels).toContain('tier-1');
+    expect(result.routing.source).toBe('metadata');
+    expect(result.routing.requestedProfile).toBe('build');
+    expect(result.routing.finalProfile).toBe('build');
   });
 
-  it('fails lite mode with SPLIT_REQUIRED for low-tier PRs touching restricted paths', async () => {
-    const result = await runGovernanceValidation({
-      mode: 'lite',
-      prData: {
-        body: '',
-        labels: ['tier-1'],
-        changedFiles: ['control-plane/validate-pr.ts']
-      }
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.errors.join('\n')).toContain('SPLIT_REQUIRED');
-    expect(result.errors.join('\n')).toContain('control-plane/validate-pr.ts');
-  });
-
-  it('fails with TIER_LABEL_TOO_LOW when label is below implied tier outside low-tier split boundary', async () => {
+  it('T-GVR3 allows build route without tier/evidence enforcement', async () => {
     const result = await runGovernanceValidation({
       mode: 'full',
       prData: {
         body: '',
-        labels: ['tier-2'],
-        changedFiles: ['governance/evidence.json']
+        labels: [],
+        changedFiles: ['docs/readme.md']
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.routing.finalProfile).toBe('build');
+    expect(result.errors).toEqual([]);
+    expect(result.report.requiredChecks).toEqual(['lint', 'policy_validation', 'scope_enforcement', 'tests']);
+  });
+
+  it('T-GVR4 hard-fails when requested build overlaps core scope', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'full',
+      prData: {
+        body: 'profile: build',
+        labels: [],
+        changedFiles: ['control-plane/governance/validate.ts']
       }
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errors.join('\n')).toContain('TIER_LABEL_TOO_LOW');
+    expect(result.routing.requiredProfile).toBe('core');
+    expect(result.errors).toContain('BUILD_REQUESTED_PROFILE_REQUIRES_CORE_SCOPE');
   });
 
-  it('fails full mode when change.json is missing', async () => {
+  it('T-GVR5 keeps core route strict with legacy checks', async () => {
     await withMockedDeclaration(null, async () => {
       const result = await runGovernanceValidation({
         mode: 'full',
         prData: {
           body: '',
-          labels: ['tier-2'],
-          changedFiles: ['apps/api/src/index.ts']
+          labels: [],
+          changedFiles: ['control-plane/governance/validate.ts']
         }
       });
 
       expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('Missing governance/change.json');
+      expect(result.routing.finalProfile).toBe('core');
+      expect(result.errors.join('\n')).toContain('MISSING_TIER_LABEL');
+      expect(result.errors.join('\n')).toContain('MISSING_EVIDENCE_BLOCK');
     });
   });
 
-  it('fails full mode when change.json tier does not match label tier', async () => {
-    const declaration = JSON.stringify({
-      tier: 1,
-      mode: 'structured',
-      justification: 'test'
+  it('T-GVR6 supports lite skip behavior', async () => {
+    const result = await runGovernanceValidation({
+      mode: 'full',
+      prData: {
+        body: 'profile: lite',
+        labels: [],
+        changedFiles: []
+      }
     });
 
-    await withMockedDeclaration(declaration, async () => {
-      const result = await runGovernanceValidation({
-        mode: 'full',
-        prData: {
-          body: '',
-          labels: ['tier-2'],
-          changedFiles: ['apps/api/src/index.ts']
-        }
-      });
-
-      expect(result.ok).toBe(false);
-      expect(result.errors.join('\n')).toContain('Risk tier mismatch');
-    });
+    expect(result.ok).toBe(true);
+    expect(result.routing.finalProfile).toBe('lite');
+    expect(result.report.requiredChecks).toEqual([]);
+    expect(result.report.warnings).toContain('Governance enforcement skipped: profile route resolved to lite.');
   });
 });

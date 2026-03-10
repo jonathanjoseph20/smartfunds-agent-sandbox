@@ -7,22 +7,22 @@ function hasSelfCheckFlag(argv: string[]): boolean {
   return argv.includes('--self-check');
 }
 
-function resolveMode(argv: string[]): 'lite' | 'full' {
+function resolveMode(argv: string[]): 'route' | 'lite' | 'full' {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--mode') {
       const value = argv[index + 1];
-      if (value === 'lite' || value === 'full') {
+      if (value === 'route' || value === 'lite' || value === 'full') {
         return value;
       }
-      throw new Error('Missing or invalid value for --mode. Use lite or full.');
+      throw new Error('Missing or invalid value for --mode. Use route, lite, or full.');
     }
     if (arg.startsWith('--mode=')) {
       const value = arg.slice('--mode='.length);
-      if (value === 'lite' || value === 'full') {
+      if (value === 'route' || value === 'lite' || value === 'full') {
         return value;
       }
-      throw new Error('Invalid --mode value. Use lite or full.');
+      throw new Error('Invalid --mode value. Use route, lite, or full.');
     }
   }
   return 'full';
@@ -51,6 +51,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   for (const warning of result.report.warnings) {
     console.warn(`Warning: ${warning}`);
   }
+  console.log(`Detected profile: ${result.routing.profile}`);
+  console.log(`Requested profile: ${result.routing.requestedProfile}`);
+  console.log(`Required profile: ${result.routing.requiredProfile}`);
+  console.log(`Final profile: ${result.routing.finalProfile}`);
+  console.log(`Matched scope: ${result.routing.matchedScopes.join(', ') || 'none'}`);
+  console.log(`Routing governance: ${result.routing.finalProfile}`);
 
   if (!result.ok) {
     console.error('GOVERNANCE STATUS: FAIL');
@@ -72,24 +78,26 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 1;
   }
 
-  if (result.report.labelTier === null) {
-    throw new Error('Unexpected state: tier label not resolved after validation.');
-  }
-
   const outputPath = process.env.GITHUB_OUTPUT;
   const finalTier = Math.max(result.report.labelTier ?? result.report.impliedTier ?? 0, result.report.impliedTier ?? 0);
   if (outputPath) {
-    fs.appendFileSync(outputPath, `tier=${result.report.labelTier}\n`);
-    fs.appendFileSync(outputPath, `detected_tier=${result.report.labelTier}\n`);
+    fs.appendFileSync(outputPath, `tier=${result.report.labelTier ?? ''}\n`);
+    fs.appendFileSync(outputPath, `detected_tier=${result.report.labelTier ?? ''}\n`);
     fs.appendFileSync(outputPath, `implied_tier=${result.report.impliedTier}\n`);
     fs.appendFileSync(outputPath, `final_tier=${finalTier}\n`);
     fs.appendFileSync(outputPath, `mode=${mode}\n`);
     fs.appendFileSync(outputPath, `required_checks=${result.report.requiredChecks.join(',')}\n`);
+    fs.appendFileSync(outputPath, `profile=${result.routing.profile}\n`);
+    fs.appendFileSync(outputPath, `requested_profile=${result.routing.requestedProfile}\n`);
+    fs.appendFileSync(outputPath, `required_profile=${result.routing.requiredProfile}\n`);
+    fs.appendFileSync(outputPath, `final_profile=${result.routing.finalProfile}\n`);
+    fs.appendFileSync(outputPath, `matched_scopes=${result.routing.matchedScopes.join(',')}\n`);
+    fs.appendFileSync(outputPath, `routing_source=${result.routing.source}\n`);
   }
 
   console.log('GOVERNANCE STATUS: PASS');
   console.log(
-    `Reason: PR governance validation passed in ${mode} mode with label tier-${result.report.labelTier ?? 'n/a'} (implied tier-${result.report.impliedTier}, final tier-${finalTier}).`
+    `Reason: PR governance validation passed in ${mode} mode with profile ${result.routing.finalProfile} and label tier-${result.report.labelTier ?? 'n/a'} (implied tier-${result.report.impliedTier}, final tier-${finalTier}).`
   );
   console.log('Suggested Action: Continue CI progression.');
   return 0;

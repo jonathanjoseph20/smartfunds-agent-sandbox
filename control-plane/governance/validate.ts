@@ -32,11 +32,13 @@ import { normalizeChangedFiles } from './changed-files.ts';
 import { classifyPaths, type Tier as PolicyTier } from './tier-policy.ts';
 import { resolvePullRequestMetadata } from './pr-files-api.ts';
 import { validatePrBody } from './pr-body.ts';
+import { routePrGovernanceProfile, type PrProfileRoutingResult } from '../policy/pr-profile-routing.ts';
 
 type GovernanceValidationResult = {
   ok: boolean;
   status: 'PASS' | 'FAIL';
   report: GovernanceReport;
+  routing: PrProfileRoutingResult;
   errors: string[];
   primaryAction: string | null;
   summaryText: string;
@@ -51,7 +53,7 @@ type GovernanceValidationOptions = {
   eventPath?: string;
   repository?: string;
   fetchImpl?: typeof fetch;
-  mode?: 'lite' | 'full';
+  mode?: 'route' | 'lite' | 'full';
 };
 
 function sortedUnique(values: string[]): string[] {
@@ -160,9 +162,162 @@ async function buildReport(
     repo?: string;
     bodySource: 'gh' | 'stub';
     labelSource: 'gh' | 'stub';
-    mode: 'lite' | 'full';
+    mode: 'route' | 'lite' | 'full';
+    routing: PrProfileRoutingResult;
   }
 ): Promise<{ report: GovernanceReport; errors: string[] }> {
+  if (context.mode === 'route') {
+    const routeErrors = [...context.routing.errors];
+    return {
+      report: buildGovernanceReport({
+        declaredTier: null,
+        impliedTier: null,
+        labelTier: null,
+        missingLabels: [],
+        missingEvidenceFields: [],
+        requiredChecks: [],
+        projectsTouched: [],
+        teamsTouched: [],
+        swarmsTouched: [],
+        unownedFiles: [],
+        ownershipStatus: 'ok',
+        nextActions: [],
+        warnings: [],
+        executionModesTouched: [],
+        swarmExecutionModesTouched: [],
+        modeWarnings: [],
+        unownedPaths: [],
+        ambiguousPaths: [],
+        metadataSource: {
+          bodySource: context.bodySource,
+          bodyPath: null,
+          labelSource: context.labelSource,
+          labelsPath: null,
+          commentSource: 'none'
+        },
+        commentEvidenceDetected: false,
+        commentEvidenceCount: 0,
+        sealWarnings: [],
+        executionContext: {
+          context: 'ci',
+          executionMode: 'unknown',
+          retryEnabled: false
+        },
+        retryTrace: {
+          attempted: false,
+          retryCount: 0,
+          initialStatus: routeErrors.length === 0 ? 'passed' : 'failed',
+          finalStatus: routeErrors.length === 0 ? 'passed' : 'failed',
+          triggerErrorCode: routeErrors[0] ?? null,
+          retryable: false,
+          patchApplied: null
+        }
+      }),
+      errors: routeErrors
+    };
+  }
+
+  if (context.routing.finalProfile === 'lite') {
+    return {
+      report: buildGovernanceReport({
+        declaredTier: null,
+        impliedTier: 0,
+        labelTier: null,
+        missingLabels: [],
+        missingEvidenceFields: [],
+        requiredChecks: [],
+        projectsTouched: [],
+        teamsTouched: [],
+        swarmsTouched: [],
+        unownedFiles: [],
+        ownershipStatus: 'ok',
+        nextActions: [],
+        warnings: ['Governance enforcement skipped: profile route resolved to lite.'],
+        executionModesTouched: [],
+        swarmExecutionModesTouched: [],
+        modeWarnings: [],
+        unownedPaths: [],
+        ambiguousPaths: [],
+        metadataSource: {
+          bodySource: context.bodySource,
+          bodyPath: null,
+          labelSource: context.labelSource,
+          labelsPath: null,
+          commentSource: 'none'
+        },
+        commentEvidenceDetected: false,
+        commentEvidenceCount: 0,
+        sealWarnings: [],
+        executionContext: {
+          context: 'ci',
+          executionMode: 'unknown',
+          retryEnabled: false
+        },
+        retryTrace: {
+          attempted: false,
+          retryCount: 0,
+          initialStatus: 'passed',
+          finalStatus: 'passed',
+          triggerErrorCode: null,
+          retryable: false,
+          patchApplied: null
+        }
+      }),
+      errors: []
+    };
+  }
+
+  if (context.routing.finalProfile === 'build') {
+    const buildErrors = [...context.routing.errors];
+    return {
+      report: buildGovernanceReport({
+        declaredTier: null,
+        impliedTier: 1,
+        labelTier: null,
+        missingLabels: [],
+        missingEvidenceFields: [],
+        requiredChecks: ['lint', 'policy_validation', 'scope_enforcement', 'tests'],
+        projectsTouched: [],
+        teamsTouched: [],
+        swarmsTouched: [],
+        unownedFiles: [],
+        ownershipStatus: 'ok',
+        nextActions: [],
+        warnings: ['Build governance route active: tier/evidence/manual approval checks are bypassed.'],
+        executionModesTouched: [],
+        swarmExecutionModesTouched: [],
+        modeWarnings: [],
+        unownedPaths: [],
+        ambiguousPaths: [],
+        metadataSource: {
+          bodySource: context.bodySource,
+          bodyPath: null,
+          labelSource: context.labelSource,
+          labelsPath: null,
+          commentSource: 'none'
+        },
+        commentEvidenceDetected: false,
+        commentEvidenceCount: 0,
+        sealWarnings: [],
+        executionContext: {
+          context: 'ci',
+          executionMode: 'unknown',
+          retryEnabled: false
+        },
+        retryTrace: {
+          attempted: false,
+          retryCount: 0,
+          initialStatus: buildErrors.length === 0 ? 'passed' : 'failed',
+          finalStatus: buildErrors.length === 0 ? 'passed' : 'failed',
+          triggerErrorCode: buildErrors[0] ?? null,
+          retryable: false,
+          patchApplied: null
+        }
+      }),
+      errors: buildErrors
+    };
+  }
+
   const errors: string[] = [];
   const warnings: string[] = [];
   const sealWarnings: string[] = [];
@@ -691,12 +846,25 @@ export async function runGovernanceValidation(
     changedFiles: normalizeChangedFiles(sortedUnique(prData.changedFiles))
   };
 
-  const { report, errors } = await buildReport(prData, contract, { repo, bodySource, labelSource, mode });
+  const routing = routePrGovernanceProfile({
+    prBody: prData.body,
+    changedFiles: prData.changedFiles,
+    repository: repo
+  });
+
+  const { report, errors } = await buildReport(prData, contract, {
+    repo,
+    bodySource,
+    labelSource,
+    mode,
+    routing
+  });
   if (metadataWarnings.length > 0) {
     report.warnings = sortedUnique([...report.warnings, ...metadataWarnings]);
   }
 
-  const ok = errors.length === 0 && report.modeEnforcementStatus === 'ok';
+  const allErrors = sortedUnique([...errors, ...routing.errors]);
+  const ok = allErrors.length === 0 && report.modeEnforcementStatus === 'ok';
   const status: 'PASS' | 'FAIL' = ok ? 'PASS' : 'FAIL';
   const primaryAction = selectPrimaryAction(report.nextActions);
   const summaryText = renderSummary(report, status, primaryAction, prData.changedFiles.length);
@@ -705,7 +873,8 @@ export async function runGovernanceValidation(
     ok,
     status,
     report,
-    errors,
+    routing,
+    errors: allErrors,
     primaryAction,
     summaryText
   };

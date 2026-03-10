@@ -21,6 +21,8 @@
     "operator": "node --experimental-strip-types control-plane/operator/cli.ts",
     "mission:inspect": "node --experimental-strip-types control-plane/cli/mission-inspect.ts",
     "mission:agents": "node --experimental-strip-types control-plane/cli/mission-agents.ts",
+    "policy:classify-scope": "node --experimental-strip-types control-plane/cli/policy-classify-scope.ts",
+    "policy:validate-profile": "node --experimental-strip-types control-plane/cli/policy-validate-profile.ts",
     "workflow:inspect": "node --experimental-strip-types control-plane/cli/workflow-inspect.ts",
     "workflow:validate": "node --experimental-strip-types control-plane/cli/workflow-validate.ts",
     "workflow:runs": "node --experimental-strip-types control-plane/cli/workflow-runs.ts",

@@ -346,6 +346,13 @@ async function executeMissionByPath(input: {
   missionContext: Record<string, unknown>;
   executionPath: ExecutionPath;
   profile: string;
+  requestedProfile: string;
+  profileValidation: {
+    requiredProfile: string;
+    scopeClassification: unknown;
+    coreScopeMatched: boolean;
+    coreReasons: string[];
+  };
   workflowsDir?: string;
 }): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
   const workflow = loadWorkflowDefinitionById(input.workflowId, input.workflowsDir);
@@ -448,8 +455,13 @@ async function executeMissionByPath(input: {
       missionId: input.missionId,
       workflowId: runRecord.workflowId,
       status: runRecord.status,
+      requestedProfile: input.requestedProfile,
+      requiredProfile: input.profileValidation.requiredProfile,
       profile: input.profile,
       executionPath: input.executionPath,
+      scopeClassification: input.profileValidation.scopeClassification,
+      coreScopeMatched: input.profileValidation.coreScopeMatched,
+      coreReasons: input.profileValidation.coreReasons,
       artifactCount: artifactFiles.length
     }
   });
@@ -471,6 +483,13 @@ async function executeLiteMission(input: {
   missionParameters: Record<string, string>;
   missionContext: Record<string, unknown>;
   profile: string;
+  requestedProfile: string;
+  profileValidation: {
+    requiredProfile: string;
+    scopeClassification: unknown;
+    coreScopeMatched: boolean;
+    coreReasons: string[];
+  };
   workflowsDir?: string;
 }): Promise<{ runId: string; status: string }> {
   return executeMissionByPath({
@@ -487,6 +506,13 @@ async function executeBuildMissionPath(input: {
   missionParameters: Record<string, string>;
   missionContext: Record<string, unknown>;
   profile: string;
+  requestedProfile: string;
+  profileValidation: {
+    requiredProfile: string;
+    scopeClassification: unknown;
+    coreScopeMatched: boolean;
+    coreReasons: string[];
+  };
   targetScope?: { repo: string; paths?: string[] };
 }): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
   const run = input.journal.createRun({
@@ -581,8 +607,13 @@ async function executeBuildMissionPath(input: {
       missionId: input.missionId,
       workflowId: input.workflowId,
       status: 'completed',
+      requestedProfile: input.requestedProfile,
+      requiredProfile: input.profileValidation.requiredProfile,
       profile: input.profile,
       executionPath: 'build',
+      scopeClassification: input.profileValidation.scopeClassification,
+      coreScopeMatched: input.profileValidation.coreScopeMatched,
+      coreReasons: input.profileValidation.coreReasons,
       branchName: buildResult.branchName,
       prNumber: buildResult.prNumber ?? null,
       prUrl: buildResult.prUrl ?? null,
@@ -612,6 +643,13 @@ async function executeGovernedMission(input: {
   missionParameters: Record<string, string>;
   missionContext: Record<string, unknown>;
   profile: string;
+  requestedProfile: string;
+  profileValidation: {
+    requiredProfile: string;
+    scopeClassification: unknown;
+    coreScopeMatched: boolean;
+    coreReasons: string[];
+  };
   workflowsDir?: string;
 }): Promise<{ runId: string; status: string }> {
   return executeMissionByPath({
@@ -629,6 +667,13 @@ async function executeMission(input: {
   missionContext: Record<string, unknown>;
   executionPath: ExecutionPath;
   profile: string;
+  requestedProfile: string;
+  profileValidation: {
+    requiredProfile: string;
+    scopeClassification: unknown;
+    coreScopeMatched: boolean;
+    coreReasons: string[];
+  };
   targetScope?: { repo: string; paths?: string[] };
   workflowsDir?: string;
 }): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
@@ -670,10 +715,11 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       mission,
       requestedProfile: input.profile
     });
-    assertProfileCapabilities({
+    const profileValidation = assertProfileCapabilities({
       mission,
       profile: resolved.profile
     });
+    const requestedProfile = input.profile ?? mission.profile ?? resolved.profile;
 
     const executed = await executeMission({
       journal,
@@ -683,6 +729,13 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       missionParameters,
       missionContext: mergedContext,
       profile: resolved.profile,
+      requestedProfile,
+      profileValidation: {
+        requiredProfile: profileValidation.requiredProfile,
+        scopeClassification: profileValidation.scopeClassification,
+        coreScopeMatched: profileValidation.coreScopeMatched,
+        coreReasons: profileValidation.coreReasons
+      },
       executionPath: resolved.executionPath,
       targetScope: mission.targetScope,
       workflowsDir: options.workflowsDir
@@ -696,6 +749,11 @@ export function createMissionService(options: MissionServiceOptions = {}) {
     return {
       missionId: mission.missionId,
       status: mapRunStatusToMissionStatus(executed.status),
+      requestedProfile,
+      requiredProfile: profileValidation.requiredProfile,
+      scopeClassification: profileValidation.scopeClassification,
+      coreScopeMatched: profileValidation.coreScopeMatched,
+      coreReasons: profileValidation.coreReasons,
       profile: resolved.profile,
       executionPath: resolved.executionPath,
       ...(resolved.executionPath === 'build' && executed.metadata

@@ -1,4 +1,5 @@
 import { PROFILE_CAPABILITIES } from './capabilities.ts';
+import { classifyCapability, classifyMutationIntent, classifyScope, resolveRequiredProfile } from './core-classification.ts';
 import { loadScopeRegistry, type ScopeRegistry } from './scope-registry.ts';
 import type {
   CapabilityClass,
@@ -20,13 +21,20 @@ const MUTATION_INTENTS: MutationIntent[] = [
   'artifact',
   'code_change',
   'control_plane_mutation',
+  'docs_change',
+  'entity_registry_change',
   'entity_registry_mutation',
+  'financial_logic_change',
   'financial_rail_mutation',
   'governance_change',
+  'non_core_code_change',
   'product_update',
+  'protected_infra_change',
   'protected_infra_mutation',
+  'runtime_kernel_change',
   'tooling_change',
   'ui_change',
+  'workflow_change',
   'none'
 ];
 
@@ -49,22 +57,14 @@ function isPolicyProfile(profile: string): profile is PolicyProfile {
   return profile === 'lite' || profile === 'build' || profile === 'core';
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
-}
-
-function globToRegExp(glob: string): RegExp {
-  const escaped = escapeRegex(glob);
-  const pattern = escaped
-    .replace(/\*\*/g, '__DOUBLE_STAR__')
-    .replace(/\*/g, '[^/]*')
-    .replace(/__DOUBLE_STAR__/g, '.*');
-
-  return new RegExp(`^${pattern}$`);
-}
-
-function pathAllowed(path: string, patterns: string[]): boolean {
-  return patterns.some((pattern) => globToRegExp(pattern).test(path));
+function profileRank(profile: PolicyProfile): number {
+  if (profile === 'core') {
+    return 2;
+  }
+  if (profile === 'build') {
+    return 1;
+  }
+  return 0;
 }
 
 export function validateProfileRequest(
@@ -81,6 +81,35 @@ export function validateProfileRequest(
     ? asSortedCapabilities(PROFILE_CAPABILITIES[profile])
     : [];
 
+  const capabilityClassifications = requestedCapabilities
+    .filter((capability): capability is CapabilityClass => CAPABILITY_CLASSES.includes(capability as CapabilityClass))
+    .map((capability) => classifyCapability(capability))
+    .sort((left, right) => left.capability.localeCompare(right.capability));
+
+  const knownMutationIntent = MUTATION_INTENTS.includes(mutationIntent as MutationIntent);
+  const mutationIntentClassification = classifyMutationIntent(
+    knownMutationIntent ? mutationIntent as MutationIntent : 'none'
+  );
+
+  const scopeClassification = classifyScope({
+    registry,
+    targetScope: input.targetScope
+  });
+
+  const requiredProfile = resolveRequiredProfile([
+    scopeClassification.requiredProfile,
+    mutationIntentClassification.requiredProfile,
+    ...capabilityClassifications.map((classification) => classification.requiredProfile)
+  ]);
+
+  const coreReasons = sortedUnique([
+    ...(scopeClassification.requiredProfile === 'core' ? [scopeClassification.reason] : []),
+    ...(mutationIntentClassification.requiredProfile === 'core' ? [mutationIntentClassification.reason] : []),
+    ...capabilityClassifications
+      .filter((classification) => classification.requiredProfile === 'core')
+      .map((classification) => classification.reason)
+  ]);
+
   if (!knownProfile) {
     violations.push(`unknown_profile_${profile}`);
   }
@@ -94,14 +123,24 @@ export function validateProfileRequest(
     if (knownProfile && !allowedCapabilities.includes(capability as CapabilityClass)) {
       violations.push(`profile_${profile}_disallows_${capability}`);
     }
+
+    if (knownProfile && profileRank(profile) < profileRank(classifyCapability(capability as CapabilityClass).requiredProfile)) {
+      violations.push(`capability_${capability}_requires_${classifyCapability(capability as CapabilityClass).requiredProfile}_profile`);
+    }
   }
 
-  if (!MUTATION_INTENTS.includes(mutationIntent as MutationIntent)) {
+  if (!knownMutationIntent) {
     violations.push(`unknown_mutation_intent_${mutationIntent}`);
   } else if (knownProfile) {
     const profileConfig = registry.profiles[profile];
     if (profileConfig.mutationAllowed === false && mutationIntent !== 'none') {
       violations.push(`profile_${profile}_disallows_mutation_intent_${mutationIntent}`);
+    }
+
+    if (profileRank(profile) < profileRank(mutationIntentClassification.requiredProfile)) {
+      violations.push(
+        `mutation_intent_${mutationIntentClassification.normalizedIntent}_requires_${mutationIntentClassification.requiredProfile}_profile`
+      );
     }
   }
 
@@ -119,16 +158,44 @@ export function validateProfileRequest(
       const requestedPaths = sortedUnique(input.targetScope.paths);
 
       for (const requestedPath of requestedPaths) {
-        if (!pathAllowed(requestedPath, allowedPatterns)) {
+        if (!allowedPatterns.some((pattern) => {
+          const escaped = pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+          const expression = escaped
+            .replace(/\*\*/g, '__DOUBLE_STAR__')
+            .replace(/\*/g, '[^/]*')
+            .replace(/__DOUBLE_STAR__/g, '.*');
+          return new RegExp(`^${expression}$`).test(requestedPath);
+        })) {
           violations.push(`profile_${profile}_disallows_target_path_${requestedPath}`);
         }
       }
+    }
+
+    if (profileRank(profile) < profileRank(scopeClassification.requiredProfile)) {
+      violations.push(`target_scope_requires_${scopeClassification.requiredProfile}_profile`);
+    }
+
+    if (
+      profile === 'build'
+      && scopeClassification.requiredProfile === 'core'
+      && (scopeClassification.reason === 'target_scope_matches_core_registry'
+        || scopeClassification.reason === 'target_repo_marked_core_only'
+        || scopeClassification.reason === 'target_scope_requires_core_profile')
+    ) {
+      violations.push('build_cannot_target_core_scope');
     }
   }
 
   return {
     ok: violations.length === 0,
+    requestedProfile: profile,
+    requiredProfile,
     profile,
+    scopeClassification,
+    coreScopeMatched: scopeClassification.coreScopeMatched,
+    coreReasons,
+    mutationIntentClassification,
+    capabilityClassifications,
     violations: sortedUnique(violations),
     allowedCapabilities
   };

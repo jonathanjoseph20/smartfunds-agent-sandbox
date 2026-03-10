@@ -1,0 +1,44 @@
+{
+  "missionId": "core-governance-policy-update",
+  "name": "Core Governance Policy Update",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "build-dashboard-copy-refresh",
+  "profile": "core",
+  "mutationIntent": "governance_change",
+  "requestedCapabilities": [
+    "artifact_write",
+    "pr_open",
+    "protected_write",
+    "read",
+    "repo_write"
+  ],
+  "targetScope": {
+    "repo": "smartfunds-agent-sandbox",
+    "paths": [
+      "control-plane/policy/scope-registry.json"
+    ]
+  },
+  "objective": "Demonstrate a Core-classified mission definition for protected governance policy mutation.",
+  "successCriteria": [
+    "Classify mission as Core",
+    "Allow protected_write under Core profile"
+  ],
+  "deliverables": [
+    "control-plane/policy/scope-registry.json"
+  ],
+  "initialContext": {
+    "buildMutations": [
+      {
+        "path": "control-plane/policy/scope-registry.json",
+        "content": "{}\n"
+      }
+    ],
+    "buildChecks": []
+  },
+  "tags": [
+    "core",
+    "governance",
+    "policy"
+  ]
+}

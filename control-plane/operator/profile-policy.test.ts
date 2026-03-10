@@ -110,10 +110,10 @@ describe('profile-policy', () => {
         }
       }),
       profile: 'build'
-    })).toThrowError('BUILD_PROTECTED_WRITE_FORBIDDEN');
+    })).toThrowError('PROTECTED_WRITE_REQUIRES_CORE');
   });
 
-  it('T-SPC-P8 build enforces mutation intent and protected path boundaries', () => {
+  it('T-SPD-P8 build rejects core mutation intent and core scope deterministically', () => {
     expect(() => assertProfileCapabilities({
       mission: mission({
         profile: 'build',
@@ -125,7 +125,7 @@ describe('profile-policy', () => {
         }
       }),
       profile: 'build'
-    })).toThrowError('BUILD_MUTATION_INTENT_FORBIDDEN');
+    })).toThrowError('CORE_MUTATION_INTENT_REQUIRED');
 
     expect(() => assertProfileCapabilities({
       mission: mission({
@@ -138,11 +138,30 @@ describe('profile-policy', () => {
         }
       }),
       profile: 'build'
-    })).toThrowError('BUILD_PROTECTED_SCOPE_FORBIDDEN');
+    })).toThrowError('BUILD_CANNOT_TARGET_CORE_SCOPE');
   });
 
-  it('T-SPC-P9 build accepts allowed scope and intent', () => {
-    expect(() => assertProfileCapabilities({
+  it('T-SPD-P8B core mission on core scope classifies and validates', () => {
+    const validation = assertProfileCapabilities({
+      mission: mission({
+        profile: 'core',
+        mutationIntent: 'governance_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'protected_write', 'read', 'repo_write'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['control-plane/policy/scope-registry.json']
+        }
+      }),
+      profile: 'core'
+    });
+
+    expect(validation.ok).toBe(true);
+    expect(validation.requiredProfile).toBe('core');
+    expect(validation.scopeClassification.requiredProfile).toBe('core');
+  });
+
+  it('T-SPC-P9 build accepts allowed scope and intent and returns validation metadata', () => {
+    const validation = assertProfileCapabilities({
       mission: mission({
         profile: 'build',
         mutationIntent: 'ui_change',
@@ -153,7 +172,11 @@ describe('profile-policy', () => {
         }
       }),
       profile: 'build'
-    })).not.toThrow();
+    });
+
+    expect(validation.ok).toBe(true);
+    expect(validation.requiredProfile).toBe('build');
+    expect(validation.scopeClassification.requiredProfile).toBe('build');
   });
 
   it('T-SPC-P10 build requires explicit target scope paths', () => {

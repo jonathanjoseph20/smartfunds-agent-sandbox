@@ -1,0 +1,42 @@
+{
+  "missionId": "build-governance-policy-update-rejected",
+  "name": "Build Governance Policy Update (Rejected)",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "build-dashboard-copy-refresh",
+  "profile": "build",
+  "mutationIntent": "code_change",
+  "requestedCapabilities": [
+    "artifact_write",
+    "pr_open",
+    "read",
+    "repo_write"
+  ],
+  "targetScope": {
+    "repo": "smartfunds-agent-sandbox",
+    "paths": [
+      "control-plane/policy/scope-registry.json"
+    ]
+  },
+  "objective": "Demonstrate deterministic Build rejection when targeting a Core-only scope.",
+  "successCriteria": [
+    "Reject Build mission with stable Core boundary code"
+  ],
+  "deliverables": [
+    "control-plane/policy/scope-registry.json"
+  ],
+  "initialContext": {
+    "buildMutations": [
+      {
+        "path": "control-plane/policy/scope-registry.json",
+        "content": "{}\n"
+      }
+    ],
+    "buildChecks": []
+  },
+  "tags": [
+    "build",
+    "core-boundary",
+    "rejected-example"
+  ]
+}

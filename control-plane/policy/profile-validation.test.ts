@@ -14,12 +14,15 @@ describe('profile-validation', () => {
       mutationIntent: 'none'
     }, registry);
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
+      requestedProfile: 'lite',
+      requiredProfile: 'lite',
       profile: 'lite',
       violations: [],
       allowedCapabilities: ['artifact_write', 'read']
     });
+    expect(result.scopeClassification.reason).toBe('no_target_scope_provided');
   });
 
   it('T-PV2 lite repo_write fails', () => {
@@ -29,17 +32,26 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.ok).toBe(false);
-    expect(result.violations).toEqual(['profile_lite_disallows_repo_write']);
+    expect(result.requiredProfile).toBe('build');
+    expect(result.violations).toEqual([
+      'capability_repo_write_requires_build_profile',
+      'profile_lite_disallows_repo_write'
+    ]);
   });
 
-  it('T-PV3 build protected_write fails', () => {
+  it('T-PV3 build protected_write fails with explicit core requirement', () => {
     const result = validateProfileRequest({
       profile: 'build',
       requestedCapabilities: ['protected_write']
     }, registry);
 
     expect(result.ok).toBe(false);
-    expect(result.violations).toEqual(['profile_build_disallows_protected_write']);
+    expect(result.requiredProfile).toBe('core');
+    expect(result.coreReasons).toContain('capability_requires_core_profile');
+    expect(result.violations).toEqual([
+      'capability_protected_write_requires_core_profile',
+      'profile_build_disallows_protected_write'
+    ]);
   });
 
   it('T-PV4 core protected_write passes', () => {
@@ -54,6 +66,8 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.ok).toBe(true);
+    expect(result.requiredProfile).toBe('core');
+    expect(result.scopeClassification.reason).toBe('target_scope_matches_core_registry');
     expect(result.violations).toEqual([]);
   });
 
@@ -68,7 +82,7 @@ describe('profile-validation', () => {
     expect(result.allowedCapabilities).toEqual([]);
   });
 
-  it('T-PV6 unknown repo fails', () => {
+  it('T-PV6 unknown repo fails conservatively as core', () => {
     const result = validateProfileRequest({
       profile: 'build',
       requestedCapabilities: ['read'],
@@ -78,10 +92,15 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.ok).toBe(false);
-    expect(result.violations).toEqual(['profile_build_disallows_target_repo']);
+    expect(result.requiredProfile).toBe('core');
+    expect(result.scopeClassification.reason).toBe('target_repo_unmapped_defaults_core');
+    expect(result.violations).toEqual([
+      'profile_build_disallows_target_repo',
+      'target_scope_requires_core_profile'
+    ]);
   });
 
-  it('T-PV7 disallowed path fails', () => {
+  it('T-PV7 core scope path in build request fails with core boundary violation', () => {
     const result = validateProfileRequest({
       profile: 'build',
       requestedCapabilities: ['read'],
@@ -92,10 +111,15 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.ok).toBe(false);
-    expect(result.violations).toEqual(['profile_build_disallows_target_path_control-plane/policy/types.ts']);
+    expect(result.coreScopeMatched).toBe(true);
+    expect(result.violations).toEqual([
+      'build_cannot_target_core_scope',
+      'profile_build_disallows_target_path_control-plane/policy/types.ts',
+      'target_scope_requires_core_profile'
+    ]);
   });
 
-  it('T-PV8 emits sorted violations and allowedCapabilities deterministically', () => {
+  it('T-PV8 emits sorted violations and classification metadata deterministically', () => {
     const result = validateProfileRequest({
       profile: 'lite',
       requestedCapabilities: ['repo_write', 'protected_write', 'read'],
@@ -107,13 +131,18 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.allowedCapabilities).toEqual(['artifact_write', 'read']);
+    expect(result.requiredProfile).toBe('core');
     expect(result.violations).toEqual([
+      'capability_protected_write_requires_core_profile',
+      'capability_repo_write_requires_build_profile',
+      'mutation_intent_code_change_requires_build_profile',
       'profile_lite_disallows_mutation_intent_code_change',
       'profile_lite_disallows_protected_write',
       'profile_lite_disallows_repo_write',
       'profile_lite_disallows_target_path_a/path.ts',
       'profile_lite_disallows_target_path_z/path.ts',
-      'profile_lite_disallows_target_repo'
+      'profile_lite_disallows_target_repo',
+      'target_scope_requires_core_profile'
     ]);
   });
 
@@ -127,17 +156,49 @@ describe('profile-validation', () => {
       }
     }, registry);
 
-    expect(canonicalStringify(result)).toBe(
-      canonicalStringify({
-        ok: false,
-        profile: 'build',
-        violations: [
-          'profile_build_disallows_protected_write',
-          'profile_build_disallows_target_path_control-plane/x.ts'
-        ],
-        allowedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write']
-      })
-    );
+    expect(canonicalStringify(result)).toBe(canonicalStringify({
+      ok: false,
+      requestedProfile: 'build',
+      requiredProfile: 'core',
+      profile: 'build',
+      scopeClassification: {
+        requiredProfile: 'core',
+        reason: 'target_scope_matches_core_registry',
+        coreScopeMatched: true,
+        allowedForBuild: false,
+        matchedBuildPaths: ['apps/x.ts'],
+        matchedCorePaths: ['control-plane/x.ts'],
+        unmatchedPaths: []
+      },
+      coreScopeMatched: true,
+      coreReasons: ['capability_requires_core_profile', 'target_scope_matches_core_registry'],
+      mutationIntentClassification: {
+        intent: 'none',
+        normalizedIntent: 'none',
+        requiredProfile: 'lite',
+        reason: 'mutation_intent_non_mutating'
+      },
+      capabilityClassifications: [
+        {
+          capability: 'protected_write',
+          requiredProfile: 'core',
+          reason: 'capability_requires_core_profile'
+        },
+        {
+          capability: 'repo_write',
+          requiredProfile: 'build',
+          reason: 'capability_requires_build_profile'
+        }
+      ],
+      violations: [
+        'build_cannot_target_core_scope',
+        'capability_protected_write_requires_core_profile',
+        'profile_build_disallows_protected_write',
+        'profile_build_disallows_target_path_control-plane/x.ts',
+        'target_scope_requires_core_profile'
+      ],
+      allowedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write']
+    }));
   });
 
   it('T-SPC-PV10 build accepts ui_change mutation intent on allowed scope', () => {
@@ -152,6 +213,7 @@ describe('profile-validation', () => {
     }, registry);
 
     expect(result.ok).toBe(true);
+    expect(result.requiredProfile).toBe('build');
     expect(result.violations).toEqual([]);
   });
 });

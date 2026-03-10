@@ -180,9 +180,22 @@ export function createSignalStore(options: { rootDir?: string } = {}) {
     return false;
   }
 
+  function getSignalByDedupeKey(dedupeKey: string): SignalRecord | null {
+    for (const date of listDates()) {
+      const signals = listSignalsByDate(date);
+      const found = signals.find((entry) => entry.dedupeKey === dedupeKey);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
   return {
     appendSignal,
     hasDedupeKey,
+    getSignalByDedupeKey,
     listSignals,
     listSignalsByDate,
     listHistory

@@ -1,0 +1,69 @@
+{
+  "investigationDefinitionId": "yield-anomaly-investigation",
+  "sourceSignalType": "yield_anomaly",
+  "sourceTriggerId": "yield-anomaly-investigation",
+  "phases": [
+    {
+      "phaseId": "intake",
+      "kind": "intake",
+      "missionId": "defi-yield-report",
+      "requiredInputs": [
+        "source_signal"
+      ],
+      "produces": [
+        "intake_context"
+      ]
+    },
+    {
+      "phaseId": "gather",
+      "kind": "gather",
+      "missionId": "defi-yield-report",
+      "requiredInputs": [
+        "intake_context"
+      ],
+      "produces": [
+        "yield_evidence"
+      ]
+    },
+    {
+      "phaseId": "analyze",
+      "kind": "analyze",
+      "missionId": "research-market-scan",
+      "requiredInputs": [
+        "yield_evidence"
+      ],
+      "produces": [
+        "yield_assessment"
+      ]
+    },
+    {
+      "phaseId": "synthesize",
+      "kind": "synthesize",
+      "requiredInputs": [
+        "yield_assessment"
+      ],
+      "produces": [
+        "findings_summary"
+      ]
+    },
+    {
+      "phaseId": "finalize",
+      "kind": "finalize",
+      "requiredInputs": [
+        "findings_summary"
+      ],
+      "produces": [
+        "investigation_report"
+      ]
+    }
+  ],
+  "outputArtifacts": [
+    "investigation-report.json",
+    "investigation-report.md"
+  ],
+  "completionCriteria": [
+    "all_phases_completed",
+    "final_report_written"
+  ],
+  "dedupeStrategy": "definition_signal_slot"
+}

@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { canonicalStringify } from '../finance/determinism.ts';
+import { createInvestigationExecutor, type InvestigationExecutor } from '../investigations/investigation-executor.ts';
 import { createTriggerEngine, type TriggerEngine } from '../triggers/trigger-engine.ts';
 
 import { computeSignalDedupeKey, createSignalDeduper, type SignalDeduper } from './signal-deduper.ts';
@@ -90,14 +91,21 @@ export function createSignalEmitter(options: {
   signalsRootDir?: string;
   triggerDefinitionsDir?: string;
   triggersRootDir?: string;
+  investigationDefinitionsDir?: string;
+  investigationsRootDir?: string;
+  investigationArtifactsRoot?: string;
   registry?: SignalRegistry;
   store?: SignalStore;
   deduper?: SignalDeduper;
   triggerEngine?: TriggerEngine;
+  investigationExecutor?: InvestigationExecutor;
   onTriggerLaunchRequests?: (requests: Array<{ missionId: string; triggerId: string; sourceSignal: string }>) => void;
 } = {}) {
   const resolvedSignalsRootDir = path.resolve(options.signalsRootDir ?? 'signals');
-  const defaultTriggersRootDir = path.join(path.dirname(resolvedSignalsRootDir), 'triggers');
+  const baseRuntimeRoot = path.dirname(resolvedSignalsRootDir);
+  const defaultTriggersRootDir = path.join(baseRuntimeRoot, 'triggers');
+  const defaultInvestigationsRootDir = path.join(baseRuntimeRoot, 'investigations');
+  const defaultInvestigationArtifactsRoot = path.join(baseRuntimeRoot, 'artifacts', 'investigations');
 
   const registry = options.registry ?? createSignalRegistry({ definitionsDir: options.definitionsDir });
   const store = options.store ?? createSignalStore({ rootDir: resolvedSignalsRootDir });
@@ -105,6 +113,12 @@ export function createSignalEmitter(options: {
   const triggerEngine = options.triggerEngine ?? createTriggerEngine({
     definitionsDir: options.triggerDefinitionsDir,
     triggersRootDir: options.triggersRootDir ?? defaultTriggersRootDir
+  });
+  const investigationExecutor = options.investigationExecutor ?? createInvestigationExecutor({
+    definitionsDir: options.investigationDefinitionsDir,
+    investigationsRootDir: options.investigationsRootDir ?? defaultInvestigationsRootDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot ?? defaultInvestigationArtifactsRoot,
+    signalsRootDir: resolvedSignalsRootDir
   });
 
   function emitSignal(signalType: string, payload: unknown): EmitSignalResult {
@@ -138,8 +152,21 @@ export function createSignalEmitter(options: {
 
     try {
       const evaluated = triggerEngine.evaluateSignalForTriggers(record);
+
       if (evaluated.launchRequests.length > 0 && options.onTriggerLaunchRequests) {
-        options.onTriggerLaunchRequests(evaluated.launchRequests);
+        try {
+          options.onTriggerLaunchRequests(evaluated.launchRequests);
+        } catch {
+          // Trigger callbacks are passive and must not alter signal emission semantics.
+        }
+      }
+
+      if (evaluated.launchRequests.length > 0) {
+        try {
+          investigationExecutor.executeLaunchRequests(evaluated.launchRequests);
+        } catch {
+          // Investigations are passive and must not alter signal emission semantics.
+        }
       }
     } catch {
       // Trigger evaluation is passive and must not alter signal emission semantics.

@@ -4,13 +4,13 @@
 
 ## Governance
 
-<!-- governance/change.json is the machine-readable contract. This is for humans. -->
+<!-- Governance routing is profile-native. Legacy tier/evidence metadata is optional and ignored by enforcement. -->
 
-- **Tier**: <!-- matches governance/change.json — 0=docs, 1=normal, 2=core, 3=critical -->
-- **Why this tier**: <!-- one sentence justification -->
+- **Requested profile (optional)**: <!-- lite, build, or core -->
+- **Governance context**: <!-- what scopes or policy domains this touches -->
 
 ### Checklist
 
-- [ ] `governance/change.json` updated with correct tier, mode, and justification
-- [ ] Tier label set on PR matches `governance/change.json` tier
-- [ ] If tier 3: `tier-3-approved` label is applied
+- [ ] Summary explains what changed
+- [ ] Relevant tests and checks were run
+- [ ] If profile intent is specified, it matches the change scope

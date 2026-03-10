@@ -5,12 +5,17 @@ import { buildGovernanceReport } from '../governance/diagnostics';
 describe('governance report schema guard', () => {
   it('includes stable telemetry and ownership fields', () => {
     const report = buildGovernanceReport({
+      requestedProfile: 'build',
+      requiredProfile: 'build',
+      finalProfile: 'build',
+      matchedScopes: ['docs/readme.md'],
+      routingSource: 'fallback',
       declaredTier: null,
       impliedTier: 0,
-      labelTier: 0,
+      labelTier: null,
       missingLabels: [],
       missingEvidenceFields: [],
-      requiredChecks: ['lint_tier0'],
+      requiredChecks: ['lint'],
       projectsTouched: [],
       teamsTouched: [],
       swarmsTouched: [],
@@ -37,6 +42,11 @@ describe('governance report schema guard', () => {
     });
 
     expect(report).toMatchObject({
+      requestedProfile: 'build',
+      requiredProfile: 'build',
+      finalProfile: 'build',
+      matchedScopes: ['docs/readme.md'],
+      routingSource: 'fallback',
       projectsTouched: [],
       teamsTouched: [],
       swarmsDeclared: [],

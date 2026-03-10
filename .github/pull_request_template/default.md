@@ -8,14 +8,11 @@ Describe the change in a few sentences.
 
 # Governance Declaration
 
-Tier of this change:
+Optional requested profile:
 
-- [ ] tier-0 (docs / comments / formatting)
-- [ ] tier-1 (safe code change)
-- [ ] tier-2 (system change)
-- [ ] tier-3 (critical change)
-
-If tier-3, ensure the label **tier-3-approved** is applied.
+- [ ] lite
+- [ ] build
+- [ ] core
 
 ---
 
@@ -30,6 +27,5 @@ Explain why this change is necessary.
 Before submitting this PR:
 
 - [ ] governance/change.json updated
-- [ ] correct tier label applied
-- [ ] tier-3-approved label added if required
+- [ ] PR summary reflects actual changed scope
 - [ ] tests pass locally

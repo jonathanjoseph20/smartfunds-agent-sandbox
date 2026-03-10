@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { scanCommentsForEvidence } from './comment-scan.ts';
 
 describe('scanCommentsForEvidence', () => {
-  it('detects evidence when tier line and evidence fence are both present', () => {
+  it('detects legacy governance metadata when tier line and evidence fence are both present', () => {
     const result = scanCommentsForEvidence([
       {
         id: 11,
@@ -14,14 +14,14 @@ describe('scanCommentsForEvidence', () => {
     expect(result).toEqual({ detected: true, count: 1, commentIds: [11] });
   });
 
-  it('does not detect when only tier line is present', () => {
+  it('detects legacy tier-only metadata', () => {
     const result = scanCommentsForEvidence([{ id: 2, body: 'tier-1\nThis is text only' }]);
-    expect(result).toEqual({ detected: false, count: 0, commentIds: [] });
+    expect(result).toEqual({ detected: true, count: 1, commentIds: [2] });
   });
 
-  it('does not detect when only evidence fence is present', () => {
+  it('detects legacy evidence-only metadata', () => {
     const result = scanCommentsForEvidence([{ id: 3, body: '```evidence\nRisk Tier: 1\n```' }]);
-    expect(result).toEqual({ detected: false, count: 0, commentIds: [] });
+    expect(result).toEqual({ detected: true, count: 1, commentIds: [3] });
   });
 
   it('returns deterministic count and sorted ids across multiple comments', () => {

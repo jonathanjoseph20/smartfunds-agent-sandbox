@@ -2,10 +2,9 @@
 
 ## Model
 
-- PR labels are authoritative for tier detection once present.
-- PR body is still mandatory and must include:
-  - exactly one unfenced `tier-0|tier-1|tier-2|tier-3` line
-  - exactly one fenced ```evidence block
+- Governance routing is profile-native and scope-driven.
+- PR body metadata is optional. If present, `profile: lite|build|core` is the only governance input that may influence requested profile.
+- Legacy tier labels and ` ```evidence ` blocks are tolerated but ignored by enforcement.
 
 ## Bootstrap Labels
 
@@ -29,20 +28,6 @@ Missing auth returns exit code `2` and message:
 
 - `Missing GITHUB_TOKEN or GH_TOKEN environment variable.`
 
-## Auto-Apply Tier Label From PR Body
-
-```bash
-export GITHUB_TOKEN="$(gh auth token)"
-export GITHUB_REPOSITORY="<owner>/<repo>"
-export GITHUB_EVENT_PATH="<event-json-path>" # in CI this is provided
-npm run governance:auto-label
-```
-
-Expected output:
-
-- `Applied tier label from PR body: tier-X`
-- or `Tier label already present: tier-X`
-
 ## Deterministic Sprint PR Helper
 
 Generate canonical files only:
@@ -59,12 +44,10 @@ npm run sprint-pr -- --tier 1 --title "chore: sprint 81 governance hardening"
 
 What helper orchestrates:
 
-1. `governance:generate`
-2. `governance:normalize`
-3. `governance:preflight`
-4. `pr:body:check`
-5. optional `bootstrap:labels`
-6. optional `pr:create` + `pr:verify`
+1. optional PR body generation/normalization
+2. `governance:preflight`
+3. `pr:body:check`
+4. optional `pr:create` + `pr:verify`
 
 ## Verify PR Body on GitHub
 
@@ -86,7 +69,6 @@ npm run pr:refresh-metadata
 
 ## Human Responsibilities
 
-- Provide correct risk tier intent.
-- Ensure evidence fields are accurate and complete.
-- Apply `tier-3-approved` when required by governance policy.
+- Provide an accurate PR summary and, if used, accurate requested profile metadata.
+- Ensure tests and validation outputs are accurate.
 - Push a fresh commit when metadata refresh is needed.

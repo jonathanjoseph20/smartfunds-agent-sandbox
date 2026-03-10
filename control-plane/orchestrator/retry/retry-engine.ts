@@ -1,10 +1,6 @@
 import type { GovernanceError, GovernanceReport } from '../../governance/diagnostics.ts';
 
 export const RETRYABLE_ERROR_CODES = [
-  'MISSING_EVIDENCE_FIELD',
-  'MISSING_TIER_LABEL',
-  'MISSING_APPROVAL_LABEL',
-  'INVALID_BODY_FORMAT',
   'UNOWNED_PATHS'
 ] as const;
 
@@ -40,10 +36,6 @@ export type GovernanceRetryContext = {
 };
 
 export type RetryAppliedFix =
-  | 'ADD_LABEL'
-  | 'ADD_APPROVAL_LABEL'
-  | 'REGENERATE_BODY'
-  | 'NORMALIZE_BODY'
   | 'ASSIGN_PROJECT_MAPPING';
 
 export type DeterministicFixPlan = {
@@ -76,30 +68,7 @@ function hasBlockingError(errors: GovernanceError[]): boolean {
   return errors.some((error) => error.severity === 'error');
 }
 
-function mapGovernanceErrorToRetriableCode(error: GovernanceError, report: GovernanceReport): RetriableErrorCode | null {
-  if (error.code === 'MISSING_TIER_LABEL') {
-    return 'MISSING_TIER_LABEL';
-  }
-
-  if (error.code === 'MISSING_LABEL' && error.message.includes('tier-3-approved')) {
-    return 'MISSING_APPROVAL_LABEL';
-  }
-
-  if (error.code === 'MISSING_EVIDENCE_FIELDS' || error.code === 'MISSING_EVIDENCE_BLOCK') {
-    if (report.missingEvidenceFields.length > 0) {
-      return 'MISSING_EVIDENCE_FIELD';
-    }
-    return 'INVALID_BODY_FORMAT';
-  }
-
-  if (error.code === 'EVIDENCE_FORMAT_ERROR') {
-    return 'INVALID_BODY_FORMAT';
-  }
-
-  if (error.code === 'UNOWNED_PATHS') {
-    return 'UNOWNED_PATHS';
-  }
-
+function mapGovernanceErrorToRetriableCode(error: GovernanceError): RetriableErrorCode | null {
   return null;
 }
 
@@ -150,7 +119,7 @@ export function parseGovernanceReport(rawOutput: string): GovernanceReport {
 export function classifyRetriableGovernanceError(report: GovernanceReport): RetriableErrorCode | null {
   const candidates = normalizeGovernanceErrors(report.errors)
     .filter((error) => error.severity === 'error')
-    .map((error) => mapGovernanceErrorToRetriableCode(error, report))
+    .map((error) => mapGovernanceErrorToRetriableCode(error))
     .filter((code): code is RetriableErrorCode => code !== null);
 
   if (candidates.length === 0) {
@@ -158,10 +127,6 @@ export function classifyRetriableGovernanceError(report: GovernanceReport): Retr
   }
 
   const priorityOrder: RetriableErrorCode[] = [
-    'MISSING_APPROVAL_LABEL',
-    'MISSING_TIER_LABEL',
-    'MISSING_EVIDENCE_FIELD',
-    'INVALID_BODY_FORMAT',
     'UNOWNED_PATHS'
   ];
 
@@ -238,10 +203,6 @@ export function evaluateRetryEligibility(params: {
 
 export function buildDeterministicFixPlan(code: RetriableErrorCode): DeterministicFixPlan {
   const fixByCode: Record<RetriableErrorCode, RetryAppliedFix> = {
-    MISSING_TIER_LABEL: 'ADD_LABEL',
-    MISSING_APPROVAL_LABEL: 'ADD_APPROVAL_LABEL',
-    MISSING_EVIDENCE_FIELD: 'REGENERATE_BODY',
-    INVALID_BODY_FORMAT: 'NORMALIZE_BODY',
     UNOWNED_PATHS: 'ASSIGN_PROJECT_MAPPING'
   };
 

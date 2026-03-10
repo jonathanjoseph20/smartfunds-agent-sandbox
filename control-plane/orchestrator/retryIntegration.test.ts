@@ -95,7 +95,7 @@ describe('retryIntegration', () => {
   it('keeps patchId deterministic for identical inputs', async () => {
     const args = {
       executionMode: 'autonomous' as const,
-      ciResult: governanceFailureRawCheck('MISSING_EVIDENCE_BLOCK'),
+      ciResult: governanceFailureRawCheck('UNOWNED_PATHS'),
       prNumber: 41,
       currentPrBody: 'tier-3',
       currentLabels: [],
@@ -119,11 +119,10 @@ describe('retryIntegration', () => {
     expect(canonicalStringify(first)).toBe(canonicalStringify(second));
   });
 
-  it('applies deterministic retry wiring and blocks second retry via PR-body state', async () => {
+  it('does not auto-remediate legacy tier failures', async () => {
     const calls: RunnerCall[] = [];
-    const writes: Array<{ path: string; body: string }> = [];
 
-    const first = await runRetryIntegration({
+    const result = await runRetryIntegration({
       executionMode: 'autonomous',
       ciResult: governanceFailureRawCheck('MISSING_TIER_LABEL'),
       prNumber: 41,
@@ -133,46 +132,13 @@ describe('retryIntegration', () => {
       requiredTierLabel: 'tier-3',
       dryRun: false,
       gh: runner(calls, 'gh'),
-      git: runner(calls, 'git'),
-      writeFile: (path, body) => {
-        writes.push({ path, body });
-      }
+      git: runner(calls, 'git')
     });
 
-    expect(first.retryAttempted).toBe(true);
-    expect(first.retryEligible).toBe(true);
-    expect(first.retryReason).toBe('retry_applied');
-    expect(first.appliedMutations.bodyUpdated).toBe(true);
-    expect(first.appliedMutations.labelsUpdated).toBe(true);
-    expect(first.metadataRefreshed).toBe(true);
-    expect(writes).toHaveLength(1);
-    expect(writes[0].body).toContain('```evidence');
-    expect(writes[0].body).toContain('retry-attempt: 1');
-    expect(calls).toContainEqual({
-      runner: 'git',
-      args: ['commit', '--allow-empty', '-m', 'chore: refresh retry metadata']
-    });
-    expect(calls).toContainEqual({
-      runner: 'git',
-      args: ['push']
-    });
-
-    const second = await runRetryIntegration({
-      executionMode: 'autonomous',
-      ciResult: governanceFailureRawCheck('MISSING_TIER_LABEL'),
-      prNumber: 41,
-      currentPrBody: writes[0].body,
-      currentLabels: ['tier-3'],
-      requiredTier: 3,
-      requiredTierLabel: 'tier-3',
-      dryRun: false,
-      gh: runner([], 'gh'),
-      git: runner([], 'git')
-    });
-
-    expect(second.retryAttempted).toBe(false);
-    expect(second.retryEligible).toBe(false);
-    expect(second.retryReason).toBe('retry_already_consumed');
+    expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('error_code_not_retry_eligible');
+    expect(calls).toEqual([]);
   });
 
   it('does not retry governance schema failures', async () => {
@@ -255,7 +221,7 @@ describe('retryIntegration', () => {
 
     const result = await runRetryIntegration({
       executionMode: 'autonomous',
-      ciResult: governanceFailureRawCheck('MISSING_TIER_LABEL'),
+      ciResult: governanceFailureRawCheck('UNOWNED_PATHS'),
       prNumber: 41,
       currentPrBody: bodyWithRetryAttempt,
       currentLabels: ['tier-3'],
@@ -302,6 +268,8 @@ describe('retryIntegration', () => {
     });
 
     expect(result.retryAttempted).toBe(false);
+    expect(result.retryEligible).toBe(false);
+    expect(result.retryReason).toBe('retry_already_consumed');
     expect(result.metadataRefreshed).toBe(false);
     expect(calls).toEqual([]);
   });

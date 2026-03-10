@@ -1,46 +1,34 @@
 # PR Creation (Blessed Path)
 
-This runbook defines the single deterministic PR creation path. PR governance reads the PR **body**, not comments.
+This runbook defines the deterministic PR creation path. Governance routing reads optional profile metadata from the PR body and always reconciles it against changed-file scope.
 
 ## Steps (copy/paste)
 
-1. Generate (optional)
-
-```bash
-npm run governance:generate -- --tier 3 --out .pr-body.md
-```
-
-2. Normalize
-
-```bash
-npm run governance:normalize -- .pr-body.md
-```
-
-3. Preflight
+1. Preflight
 
 ```bash
 npm run governance:preflight
 ```
 
-4. Local PR body check
+2. Optional local PR body check
 
 ```bash
 npm run pr:body:check
 ```
 
-5. Create PR from `.pr-body.md` (blessed)
+3. Create PR from `.pr-body.md` (blessed)
 
 ```bash
 npm run pr:create -- --title "chore: <short summary>"
 ```
 
-6. Verify PR body on GitHub
+4. Verify PR body on GitHub
 
 ```bash
 npm run pr:verify
 ```
 
-7. If metadata was edited after a failure, refresh payload
+5. If metadata was edited after a failure, refresh payload
 
 ```bash
 npm run pr:refresh-metadata
@@ -48,8 +36,8 @@ npm run pr:refresh-metadata
 
 ## Notes
 
-- The PR body must contain exactly one unfenced line `tier-0`..`tier-3`.
-- The evidence block must open with a line that is exactly ` ```evidence` and close with a line that is exactly ` ``` `.
+- `profile: lite|build|core` is optional PR metadata.
+- Legacy tier/evidence content is tolerated but ignored by governance enforcement.
 - `gh pr view --json body --jq .body` is the canonical source for verification.
 - `npm run pr:create` refuses to proceed if `.pr-body.md` is missing or empty.
 

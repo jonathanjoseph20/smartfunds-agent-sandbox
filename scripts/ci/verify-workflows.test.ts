@@ -39,11 +39,11 @@ describe('verifyWorkflows', () => {
         '  policy_full:',
         '    runs-on: ubuntu-latest',
         '    steps:',
-        '      - name: Emit evidence',
-        '        run: node --experimental-strip-types control-plane/cli/governance-emit-ci.ts --pr 1',
+        '      - name: Detect profile',
+        '        run: node --experimental-strip-types control-plane/validate-pr.ts --mode route',
         '      - name: Validate',
         '        run: |',
-        '          node --experimental-strip-types control-plane/validate-pr.ts --mode full'
+          '          node --experimental-strip-types control-plane/validate-pr.ts --mode full'
       ].join('\n'),
       'utf8'
     );

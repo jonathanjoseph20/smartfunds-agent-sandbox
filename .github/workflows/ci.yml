@@ -67,10 +67,11 @@ jobs:
           echo "Requested profile: ${{ steps.detect_profile.outputs.requested_profile }}"
           echo "Required profile: ${{ steps.detect_profile.outputs.required_profile }}"
           echo "Final profile: ${{ steps.detect_profile.outputs.final_profile }}"
-          echo "Matched scope: ${{ steps.detect_profile.outputs.matched_scopes }}"
+          echo "Matched scopes: ${{ steps.detect_profile.outputs.matched_scopes }}"
+          echo "Routing source: ${{ steps.detect_profile.outputs.routing_source }}"
           echo "Routing governance: ${{ steps.detect_profile.outputs.final_profile }}"
 
-  governance_build:
+  build_validation:
     if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'build'
     needs: detect_governance_profile
     runs-on: ubuntu-latest
@@ -90,7 +91,7 @@ jobs:
           GOVERNANCE_SUMMARY: 'true'
         run: node --trace-uncaught --trace-warnings --experimental-strip-types control-plane/validate-pr.ts --mode full
 
-  governance_core:
+  core_validation:
     if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'core'
     needs: detect_governance_profile
     runs-on: ubuntu-latest
@@ -110,19 +111,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Bootstrap governance labels
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: npm run bootstrap:labels -- --yes
-
-      - name: Auto-apply missing tier label from PR body
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_EVENT_PATH: ${{ github.event_path }}
-        run: npm run governance:auto-label
-
-      - name: Validate full governance contract
+      - name: Validate core governance route
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOVERNANCE_SUMMARY: 'true'
@@ -148,7 +137,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-  governance_lite_notice:
+  lite_notice:
     if: github.event_name == 'pull_request' && needs.detect_governance_profile.outputs.final_profile == 'lite'
     needs: detect_governance_profile
     runs-on: ubuntu-latest

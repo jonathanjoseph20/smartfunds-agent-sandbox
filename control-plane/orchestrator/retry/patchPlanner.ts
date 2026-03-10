@@ -1,4 +1,3 @@
-import { buildCanonicalPrBody } from './canonicalPrBody.ts';
 import { canonicalStringify, sha256 } from '../../finance/determinism.ts';
 import type { PatchOp, PatchPlan } from './patchTypes.ts';
 
@@ -18,22 +17,6 @@ function normalizeCode(value: string | null): string | null {
   }
   const normalized = value.trim().toUpperCase();
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeTierLabel(params: { requiredTier?: number | null; requiredTierLabel?: string | null }): string | null {
-  if (params.requiredTierLabel) {
-    const match = params.requiredTierLabel.trim().match(/^tier-([0-3])$/i);
-    if (match) {
-      return `tier-${match[1]}`;
-    }
-  }
-
-  const tier = params.requiredTier;
-  if (tier === 0 || tier === 1 || tier === 2 || tier === 3) {
-    return `tier-${tier}`;
-  }
-
-  return null;
 }
 
 export function stableSortLabels(labels: string[]): string[] {
@@ -96,14 +79,6 @@ function noopPlan(governanceErrorCode: string, retryAttempt: number, reason: str
   };
 }
 
-function tierFromLabel(tierLabel: string): number | null {
-  const match = tierLabel.match(/^tier-([0-3])$/);
-  if (!match) {
-    return null;
-  }
-  return Number.parseInt(match[1], 10);
-}
-
 export function buildPatchPlan(params: BuildPatchPlanParams): PatchPlan {
   const code = normalizeCode(params.governanceErrorCode);
   const governanceCode = code ?? 'N/A';
@@ -120,53 +95,7 @@ export function buildPatchPlan(params: BuildPatchPlanParams): PatchPlan {
     return noopPlan(governanceCode, params.retryAttempt, 'missing_governance_error_code');
   }
 
-  const tierLabel = normalizeTierLabel({
-    requiredTier: params.requiredTier,
-    requiredTierLabel: params.requiredTierLabel
-  });
-  const tier = tierLabel ? tierFromLabel(tierLabel) : null;
-
-  const ops: PatchOp[] = [];
-
-  if (code === 'MISSING_TIER_LABEL') {
-    if (!tierLabel) {
-      return noopPlan(code, params.retryAttempt, 'missing_required_tier');
-    }
-    ops.push({ op: 'add_label', label: tierLabel });
-    ops.push({ op: 'refresh_payload', method: 'empty_commit' });
-  } else if (code === 'MISSING_TIER_3_APPROVED' || code === 'MISSING_APPROVAL_LABEL') {
-    if (tier !== 3) {
-      return noopPlan(code, params.retryAttempt, 'missing_required_tier3');
-    }
-    ops.push({ op: 'add_label', label: 'tier-3-approved' });
-    ops.push({ op: 'refresh_payload', method: 'empty_commit' });
-  } else if (
-    code === 'MISSING_EVIDENCE_BLOCK' ||
-    code === 'MISSING_EVIDENCE_FIELDS' ||
-    code === 'MISSING_EVIDENCE_FIELD' ||
-    code === 'INVALID_BODY_FORMAT'
-  ) {
-    if (!tierLabel) {
-      return noopPlan(code, params.retryAttempt, 'missing_required_tier');
-    }
-    ops.push({
-      op: 'set_pr_body',
-      body: buildCanonicalPrBody({
-        tierLabel
-      })
-    });
-    ops.push({ op: 'refresh_payload', method: 'empty_commit' });
-  } else {
-    return noopPlan(code, params.retryAttempt, `unhandled_error_code:${code}`);
-  }
-
-  return {
-    version: 'v1',
-    patchId: createPatchId(code, params.retryAttempt, stablePlanOps(ops)),
-    governanceErrorCode: code,
-    retryAttempt: params.retryAttempt,
-    ops: stablePlanOps(ops)
-  };
+  return noopPlan(code, params.retryAttempt, `legacy_governance_error_not_actionable:${code}`);
 }
 
 function createPatchId(governanceErrorCode: string, retryAttempt: number, ops: PatchOp[]): string {

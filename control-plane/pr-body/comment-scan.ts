@@ -10,7 +10,7 @@ export function scanCommentsForEvidence(comments: Array<{ id: number; body: stri
     const hasTierLine = lines.some((line) => TIER_LINES.has(line.trim()));
     const hasEvidenceFence = lines.some((line) => line === '```evidence');
 
-    if (hasTierLine && hasEvidenceFence) {
+    if (hasTierLine || hasEvidenceFence) {
       matchingIds.push(comment.id);
     }
   }

@@ -71,6 +71,11 @@ export interface PullRequestData {
 }
 
 export type GovernanceReport = {
+  requestedProfile: 'lite' | 'build' | 'core';
+  requiredProfile: 'lite' | 'build' | 'core';
+  finalProfile: 'lite' | 'build' | 'core';
+  matchedScopes: string[];
+  routingSource: string;
   declaredTier: number | null;
   impliedTier: number | null;
   labelTier: number | null;
@@ -359,10 +364,6 @@ function sortGovernanceErrors(values: GovernanceError[]): GovernanceError[] {
 }
 
 function buildCanonicalGovernanceErrors(input: {
-  declaredTier: number | null;
-  impliedTier: number | null;
-  missingLabels: string[];
-  missingEvidenceFields: string[];
   ownershipStatus: OwnershipStatus;
   swarmOrchestrationStatus: 'ok' | 'missing_registry' | 'invalid_graph' | 'violations';
   railBindingStatus: RailBindingStatus;
@@ -371,84 +372,16 @@ function buildCanonicalGovernanceErrors(input: {
   unownedPaths: string[];
 }): GovernanceError[] {
   const errors: GovernanceError[] = [];
-  const tierLabels = new Set(['tier-0', 'tier-1', 'tier-2', 'tier-3']);
-  const sortedMissingEvidenceFields = sortedUnique(input.missingEvidenceFields);
   const sortedUnownedPaths = sortedUnique(input.unownedPaths);
-  const missingTierLabel = input.missingLabels.some((label) => tierLabels.has(label));
-  const missingNonTierLabels = input.missingLabels.filter((label) => !tierLabels.has(label));
-
-  if (missingTierLabel) {
-    errors.push({
-      code: 'MISSING_TIER_LABEL',
-      severity: 'error',
-      retryable: true,
-      message: 'Missing required tier label.',
-      suggestedFix: {
-        action: 'add_tier_label',
-        details: 'Add exactly one tier label matching the declared or implied tier.'
-      },
-      sourceFields: ['missingLabels', 'declaredTier', 'impliedTier']
-    });
-  }
-
-  if (missingNonTierLabels.length > 0) {
-    errors.push({
-      code: 'MISSING_LABEL',
-      severity: 'error',
-      retryable: true,
-      message: `Missing required label(s): ${missingNonTierLabels.join(', ')}.`,
-      suggestedFix: {
-        action: 'add_missing_labels',
-        details: 'Add missing governance labels without removing existing labels.'
-      },
-      sourceFields: ['missingLabels']
-    });
-  }
-
-  if (sortedMissingEvidenceFields.length > 0) {
-    const missingSet = new Set(sortedMissingEvidenceFields);
-    const evidenceBlockMissing = EVIDENCE_FIELDS.every((field) => missingSet.has(field));
-    errors.push({
-      code: evidenceBlockMissing ? 'MISSING_EVIDENCE_BLOCK' : 'MISSING_EVIDENCE_FIELDS',
-      severity: 'error',
-      retryable: true,
-      message: evidenceBlockMissing
-        ? 'Missing required governance evidence fields.'
-        : `Evidence is missing required field(s): ${sortedMissingEvidenceFields.join(', ')}.`,
-      suggestedFix: {
-        action: 'update_evidence_file',
-        details: 'Ensure governance/evidence.json exists and includes all required fields.'
-      },
-      sourceFields: ['missingEvidenceFields']
-    });
-  }
-
-  if (
-    input.declaredTier !== null &&
-    input.impliedTier !== null &&
-    input.declaredTier < input.impliedTier
-  ) {
-    errors.push({
-      code: 'TIER_MISMATCH',
-      severity: 'error',
-      retryable: false,
-      message: `Declared tier-${input.declaredTier} is below implied tier-${input.impliedTier}.`,
-      suggestedFix: {
-        action: 'align_tier',
-        details: 'Raise declared tier and align metadata with implied tier.'
-      },
-      sourceFields: ['declaredTier', 'impliedTier']
-    });
-  }
 
   if (input.ownershipStatus === 'ambiguous_project_ownership') {
     errors.push({
       code: 'AMBIGUOUS_OWNERSHIP',
-      severity: 'error',
+      severity: 'warning',
       retryable: false,
-      message: 'Ownership is ambiguous for one or more changed paths.',
+      message: 'Ownership diagnostics: ownership is ambiguous for one or more changed paths.',
       suggestedFix: {
-        action: 'resolve_ownership',
+        action: 'review_ownership_diagnostics',
         details: 'Clarify ownership mappings or split the change set.'
       },
       sourceFields: ['ownershipStatus']
@@ -456,12 +389,12 @@ function buildCanonicalGovernanceErrors(input: {
   } else if (input.ownershipStatus !== 'ok') {
     errors.push({
       code: 'OWNERSHIP_VIOLATION',
-      severity: 'error',
+      severity: 'warning',
       retryable: false,
-      message: `Ownership status is ${input.ownershipStatus}.`,
+      message: `Ownership diagnostics: status is ${input.ownershipStatus}.`,
       suggestedFix: {
-        action: 'resolve_ownership',
-        details: 'Address ownership diagnostics before retrying.'
+        action: 'review_ownership_diagnostics',
+        details: 'Review ownership diagnostics for observability and future mapping cleanup.'
       },
       sourceFields: ['ownershipStatus']
     });
@@ -532,6 +465,11 @@ function buildCanonicalGovernanceErrors(input: {
 }
 
 export function buildGovernanceReport(input: {
+  requestedProfile?: 'lite' | 'build' | 'core';
+  requiredProfile?: 'lite' | 'build' | 'core';
+  finalProfile?: 'lite' | 'build' | 'core';
+  matchedScopes?: string[];
+  routingSource?: string;
   declaredTier: number | null;
   impliedTier: number | null;
   labelTier: number | null;
@@ -607,14 +545,9 @@ export function buildGovernanceReport(input: {
   };
 }): GovernanceReport {
   const modePolicy = evaluateModePolicy({
-    executionModesTouched: input.executionModesTouched,
-    declaredTier: input.declaredTier
+    executionModesTouched: input.executionModesTouched
   });
   const canonicalErrors = buildCanonicalGovernanceErrors({
-    declaredTier: input.declaredTier,
-    impliedTier: input.impliedTier,
-    missingLabels: input.missingLabels,
-    missingEvidenceFields: input.missingEvidenceFields,
     ownershipStatus: input.ownershipStatus,
     swarmOrchestrationStatus: input.swarmOrchestrationStatus ?? 'ok',
     railBindingStatus: input.railBindingStatus ?? 'ok',
@@ -648,6 +581,11 @@ export function buildGovernanceReport(input: {
   };
 
   return {
+    requestedProfile: input.requestedProfile ?? 'lite',
+    requiredProfile: input.requiredProfile ?? 'lite',
+    finalProfile: input.finalProfile ?? 'lite',
+    matchedScopes: sortedUnique(input.matchedScopes ?? []),
+    routingSource: input.routingSource ?? 'fallback',
     declaredTier: input.declaredTier,
     impliedTier: input.impliedTier,
     labelTier: input.labelTier,
@@ -748,11 +686,9 @@ export function getMissingTierLabels(labelTier: Tier | null): string[] {
 
 export function shouldWarnStalePayload(errors: string[]): boolean {
   const patterns = [
-    'Missing governance/evidence.json',
-    'governance/evidence.json',
-    'Risk tier mismatch',
-    'tier-3-approved',
-    'Missing risk tier label'
+    'labels',
+    'governance metadata',
+    'change.json'
   ];
 
   return errors.some((error) => patterns.some((pattern) => error.includes(pattern)));
@@ -764,9 +700,8 @@ export function selectPrimaryAction(actions: string[]): string | null {
   }
 
   const priorities = [
-    'Add exactly one label:',
-    'Add label:',
-    'Update governance/evidence.json',
+    'Split changes into separate PRs',
+    'Review ownership diagnostics',
     'Run: npm run bootstrap:labels',
     'Run: git commit --allow-empty'
   ];

@@ -1,0 +1,16 @@
+{
+  "signalType": "liquidity_drain",
+  "description": "Protocol liquidity decreased beyond configured threshold",
+  "sourceMission": "liquidity-scan",
+  "schema": {
+    "dataset": "string",
+    "slot": "string",
+    "protocol": "string",
+    "liquidityDropPercent": "number"
+  },
+  "deduplicationRules": [
+    "signalType",
+    "dataset",
+    "slot"
+  ]
+}

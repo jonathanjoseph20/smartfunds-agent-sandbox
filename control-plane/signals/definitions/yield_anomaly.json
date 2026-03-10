@@ -1,0 +1,16 @@
+{
+  "signalType": "yield_anomaly",
+  "description": "Yield movement exceeded deterministic anomaly threshold",
+  "sourceMission": "yield-scan",
+  "schema": {
+    "dataset": "string",
+    "slot": "string",
+    "protocol": "string",
+    "yieldChangePercent": "number"
+  },
+  "deduplicationRules": [
+    "signalType",
+    "dataset",
+    "slot"
+  ]
+}

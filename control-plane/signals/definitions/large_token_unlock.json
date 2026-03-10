@@ -1,0 +1,16 @@
+{
+  "signalType": "large_token_unlock",
+  "description": "Large deterministic token unlock event detected",
+  "sourceMission": "token-unlock-scan",
+  "schema": {
+    "dataset": "string",
+    "slot": "string",
+    "protocol": "string",
+    "unlockAmountUsd": "number"
+  },
+  "deduplicationRules": [
+    "signalType",
+    "dataset",
+    "slot"
+  ]
+}

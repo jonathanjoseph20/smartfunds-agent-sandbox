@@ -1,0 +1,16 @@
+{
+  "signalType": "governance_proposal",
+  "description": "Material governance proposal detected",
+  "sourceMission": "governance-scan",
+  "schema": {
+    "dataset": "string",
+    "slot": "string",
+    "protocol": "string",
+    "proposalId": "string"
+  },
+  "deduplicationRules": [
+    "signalType",
+    "dataset",
+    "slot"
+  ]
+}

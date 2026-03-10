@@ -29,7 +29,11 @@ describe('scope-registry', () => {
         core: {
           allowedRepos: ['smartfunds-agent-sandbox'],
           allowedPaths: {
-            'smartfunds-agent-sandbox': ['entities/**', 'control-plane/**']
+            'smartfunds-agent-sandbox': ['runtime/**', 'entities/**', 'control-plane/**']
+          },
+          coreOnlyRepos: ['smartfunds-agent-sandbox'],
+          coreOnlyPaths: {
+            'smartfunds-agent-sandbox': ['runtime/**', 'entities/**', 'control-plane/**']
           }
         },
         lite: {
@@ -38,7 +42,7 @@ describe('scope-registry', () => {
         build: {
           allowedRepos: ['smartfunds-agent-sandbox'],
           allowedPaths: {
-            'smartfunds-agent-sandbox': ['tools/**', 'apps/**', 'docs/**', 'dashboard/**']
+            'smartfunds-agent-sandbox': ['apps/**', 'docs/**', 'dashboard/**']
           }
         }
       }
@@ -55,13 +59,17 @@ describe('scope-registry', () => {
         build: {
           allowedRepos: ['smartfunds-agent-sandbox'],
           allowedPaths: {
-            'smartfunds-agent-sandbox': ['apps/**', 'dashboard/**', 'docs/**', 'tools/**']
+            'smartfunds-agent-sandbox': ['apps/**', 'dashboard/**', 'docs/**']
           }
         },
         core: {
           allowedRepos: ['smartfunds-agent-sandbox'],
           allowedPaths: {
-            'smartfunds-agent-sandbox': ['control-plane/**', 'entities/**']
+            'smartfunds-agent-sandbox': ['control-plane/**', 'entities/**', 'runtime/**']
+          },
+          coreOnlyRepos: ['smartfunds-agent-sandbox'],
+          coreOnlyPaths: {
+            'smartfunds-agent-sandbox': ['control-plane/**', 'entities/**', 'runtime/**']
           }
         }
       }
@@ -120,5 +128,34 @@ describe('scope-registry', () => {
     });
 
     expect(() => loadScopeRegistry(tmpRegistryPath)).toThrow(/invalid path pattern/);
+  });
+
+  it('T-P5 rejects coreOnlyPaths repositories not declared in allowedPaths', () => {
+    writeRegistry({
+      version: 1,
+      profiles: {
+        lite: {
+          mutationAllowed: false
+        },
+        build: {
+          allowedRepos: ['smartfunds-agent-sandbox'],
+          allowedPaths: {
+            'smartfunds-agent-sandbox': ['apps/**']
+          }
+        },
+        core: {
+          allowedRepos: ['smartfunds-agent-sandbox'],
+          allowedPaths: {
+            'smartfunds-agent-sandbox': ['control-plane/**']
+          },
+          coreOnlyRepos: ['smartfunds-agent-sandbox'],
+          coreOnlyPaths: {
+            'another-repo': ['control-plane/**']
+          }
+        }
+      }
+    });
+
+    expect(() => loadScopeRegistry(tmpRegistryPath)).toThrow(/coreOnlyPaths contains repo\(s\) not listed in coreOnlyRepos/);
   });
 });

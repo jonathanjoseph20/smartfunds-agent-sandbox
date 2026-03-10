@@ -9,6 +9,8 @@ export type ScopeRegistryProfile = {
   mutationAllowed?: boolean;
   allowedRepos?: string[];
   allowedPaths?: Record<string, string[]>;
+  coreOnlyRepos?: string[];
+  coreOnlyPaths?: Record<string, string[]>;
 };
 
 export type ScopeRegistry = {
@@ -109,6 +111,8 @@ function parseProfile(value: unknown, profile: PolicyProfile): ScopeRegistryProf
   const mutationAllowed = record.mutationAllowed;
   const allowedRepos = parseRepos(record.allowedRepos, `${label}.allowedRepos`);
   const allowedPaths = parseAllowedPaths(record.allowedPaths, `${label}.allowedPaths`);
+  const coreOnlyRepos = parseRepos(record.coreOnlyRepos, `${label}.coreOnlyRepos`);
+  const coreOnlyPaths = parseAllowedPaths(record.coreOnlyPaths, `${label}.coreOnlyPaths`);
 
   if (mutationAllowed !== undefined && typeof mutationAllowed !== 'boolean') {
     throw new Error(`${label}.mutationAllowed must be a boolean when provided.`);
@@ -126,10 +130,36 @@ function parseProfile(value: unknown, profile: PolicyProfile): ScopeRegistryProf
     }
   }
 
+  if (coreOnlyPaths && coreOnlyRepos) {
+    const repoSet = new Set(coreOnlyRepos);
+    const unexpectedRepos = Object.keys(coreOnlyPaths).filter((repo) => !repoSet.has(repo));
+    if (unexpectedRepos.length > 0) {
+      throw new Error(`${label}.coreOnlyPaths contains repo(s) not listed in coreOnlyRepos: ${sortedUnique(unexpectedRepos).join(', ')}.`);
+    }
+  }
+
+  if (coreOnlyPaths && allowedPaths) {
+    const allowedRepoSet = new Set(Object.keys(allowedPaths));
+    const unexpectedRepos = Object.keys(coreOnlyPaths).filter((repo) => !allowedRepoSet.has(repo));
+    if (unexpectedRepos.length > 0) {
+      throw new Error(`${label}.coreOnlyPaths contains repo(s) not listed in allowedPaths: ${sortedUnique(unexpectedRepos).join(', ')}.`);
+    }
+  }
+
+  if (coreOnlyRepos && allowedRepos) {
+    const allowedRepoSet = new Set(allowedRepos);
+    const unexpectedRepos = coreOnlyRepos.filter((repo) => !allowedRepoSet.has(repo));
+    if (unexpectedRepos.length > 0) {
+      throw new Error(`${label}.coreOnlyRepos contains repo(s) not listed in allowedRepos: ${sortedUnique(unexpectedRepos).join(', ')}.`);
+    }
+  }
+
   return {
     ...(mutationAllowed === undefined ? {} : { mutationAllowed }),
     ...(allowedRepos === undefined ? {} : { allowedRepos }),
-    ...(allowedPaths === undefined ? {} : { allowedPaths })
+    ...(allowedPaths === undefined ? {} : { allowedPaths }),
+    ...(coreOnlyRepos === undefined ? {} : { coreOnlyRepos }),
+    ...(coreOnlyPaths === undefined ? {} : { coreOnlyPaths })
   };
 }
 

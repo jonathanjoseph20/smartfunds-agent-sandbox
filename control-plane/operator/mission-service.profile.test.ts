@@ -253,6 +253,10 @@ describe('mission-service profile routing', () => {
     expect(result).toMatchObject({
       missionId: 'lite-ok',
       status: 'completed',
+      requestedProfile: 'lite',
+      requiredProfile: 'lite',
+      coreScopeMatched: false,
+      coreReasons: [],
       profile: 'lite',
       executionPath: 'lite'
     });
@@ -263,8 +267,12 @@ describe('mission-service profile routing', () => {
     ) as Record<string, unknown>;
 
     expect(missionRunMetadata).toMatchObject({
+      requestedProfile: 'lite',
+      requiredProfile: 'lite',
       profile: 'lite',
       executionPath: 'lite',
+      coreScopeMatched: false,
+      coreReasons: [],
       missionId: 'lite-ok'
     });
 
@@ -324,6 +332,10 @@ describe('mission-service profile routing', () => {
 
     expect(result).toMatchObject({
       missionId: 'governed-default',
+      requestedProfile: 'core',
+      requiredProfile: 'lite',
+      coreScopeMatched: false,
+      coreReasons: [],
       profile: 'core',
       executionPath: 'governed'
     });
@@ -349,6 +361,10 @@ describe('mission-service profile routing', () => {
     expect(result).toMatchObject({
       missionId: 'build-ok',
       status: 'completed',
+      requestedProfile: 'build',
+      requiredProfile: 'build',
+      coreScopeMatched: false,
+      coreReasons: [],
       profile: 'build',
       executionPath: 'build',
       branchName: 'build/build-ok/abcdef123456',
@@ -361,8 +377,12 @@ describe('mission-service profile routing', () => {
       fs.readFileSync(path.join('artifacts', 'build-ok', runId, 'run-metadata.json'), 'utf8')
     ) as Record<string, unknown>;
     expect(metadata).toMatchObject({
+      requestedProfile: 'build',
+      requiredProfile: 'build',
       profile: 'build',
       executionPath: 'build',
+      coreScopeMatched: false,
+      coreReasons: [],
       branchName: 'build/build-ok/abcdef123456',
       prNumber: 42
     });

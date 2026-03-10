@@ -8,9 +8,8 @@
       "allowedRepos": ["smartfunds-agent-sandbox"],
       "allowedPaths": {
         "smartfunds-agent-sandbox": [
-          "dashboard/**",
           "apps/**",
-          "tools/**",
+          "dashboard/**",
           "docs/**"
         ]
       }
@@ -19,8 +18,25 @@
       "allowedRepos": ["smartfunds-agent-sandbox"],
       "allowedPaths": {
         "smartfunds-agent-sandbox": [
+          ".github/workflows/**",
           "control-plane/**",
-          "entities/**"
+          "entities/**",
+          "governance/**",
+          "packages/**",
+          "runtime/**",
+          "scripts/**"
+        ]
+      },
+      "coreOnlyRepos": ["smartfunds-agent-sandbox"],
+      "coreOnlyPaths": {
+        "smartfunds-agent-sandbox": [
+          ".github/workflows/**",
+          "control-plane/**",
+          "entities/**",
+          "governance/**",
+          "packages/**",
+          "runtime/**",
+          "scripts/**"
         ]
       }
     }

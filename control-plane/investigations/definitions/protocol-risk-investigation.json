@@ -1,0 +1,69 @@
+{
+  "investigationDefinitionId": "protocol-risk-investigation",
+  "sourceSignalType": "protocol_risk",
+  "sourceTriggerId": "protocol-risk-investigation",
+  "phases": [
+    {
+      "phaseId": "intake",
+      "kind": "intake",
+      "missionId": "defi-governance-events",
+      "requiredInputs": [
+        "source_signal"
+      ],
+      "produces": [
+        "intake_context"
+      ]
+    },
+    {
+      "phaseId": "gather",
+      "kind": "gather",
+      "missionId": "defi-governance-events",
+      "requiredInputs": [
+        "intake_context"
+      ],
+      "produces": [
+        "risk_evidence"
+      ]
+    },
+    {
+      "phaseId": "analyze",
+      "kind": "analyze",
+      "missionId": "research-market-scan",
+      "requiredInputs": [
+        "risk_evidence"
+      ],
+      "produces": [
+        "risk_assessment"
+      ]
+    },
+    {
+      "phaseId": "synthesize",
+      "kind": "synthesize",
+      "requiredInputs": [
+        "risk_assessment"
+      ],
+      "produces": [
+        "findings_summary"
+      ]
+    },
+    {
+      "phaseId": "finalize",
+      "kind": "finalize",
+      "requiredInputs": [
+        "findings_summary"
+      ],
+      "produces": [
+        "investigation_report"
+      ]
+    }
+  ],
+  "outputArtifacts": [
+    "investigation-report.json",
+    "investigation-report.md"
+  ],
+  "completionCriteria": [
+    "all_phases_completed",
+    "final_report_written"
+  ],
+  "dedupeStrategy": "definition_signal_slot"
+}

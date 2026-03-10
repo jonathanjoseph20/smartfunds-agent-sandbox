@@ -5,6 +5,9 @@ import { canonicalStringify } from '../finance/determinism.ts';
 import { createSignalStore, type SignalStore } from '../signals/signal-store.ts';
 import type { SignalRecord } from '../signals/signal-types.ts';
 
+import { createEvidenceStore } from './evidence-store.ts';
+import { extractEvidenceRecords } from './evidence-extractor.ts';
+import { buildInvestigationConfidenceProjection } from './findings.ts';
 import { computeInvestigationDedupeKey, computeInvestigationRunId, createInvestigationDeduper, type InvestigationDeduper } from './investigation-deduper.ts';
 import {
   assertLegalTransition,
@@ -214,6 +217,7 @@ export function createInvestigationExecutor(options: {
   const deduper = options.deduper ?? createInvestigationDeduper(store);
   const phaseExecutor = options.phaseExecutor ?? executePhase;
   const now = options.now ?? (() => new Date());
+  const evidenceStore = createEvidenceStore({ artifactsRoot: resolvedArtifactsRoot });
 
   function resolveSignal(sourceSignal: string): SignalRecord {
     const signal = signalStore.getSignalByDedupeKey(sourceSignal);
@@ -307,6 +311,45 @@ export function createInvestigationExecutor(options: {
         finalReportPath: reportArtifacts.markdownPath,
         findings: currentRecord.findings
       }
+    });
+  }
+
+  function writeEvidenceProjection(input: {
+    runId: string;
+    definition: InvestigationDefinition;
+    findings: string[];
+  }): void {
+    const evidence = evidenceStore.loadEvidence(input.runId);
+    const projection = buildInvestigationConfidenceProjection({
+      investigationRunId: input.runId,
+      definition: input.definition,
+      findings: input.findings,
+      evidence
+    });
+    const projectionPath = path.join(resolvedArtifactsRoot, input.runId, 'evidence', 'confidence-projection.json');
+    writeCanonicalJson(projectionPath, projection);
+  }
+
+  function extractAndPersistEvidence(input: {
+    runId: string;
+    definition: InvestigationDefinition;
+    phaseId: string;
+    artifactPaths: string[];
+    findings: string[];
+  }): void {
+    const history = store.getInvestigationHistory(input.runId);
+    const extracted = extractEvidenceRecords({
+      investigationRunId: input.runId,
+      phaseId: input.phaseId,
+      artifactPaths: input.artifactPaths,
+      findings: input.findings,
+      history
+    });
+    evidenceStore.mergeEvidence(input.runId, extracted);
+    writeEvidenceProjection({
+      runId: input.runId,
+      definition: input.definition,
+      findings: store.getInvestigation(input.runId).findings
     });
   }
 
@@ -538,6 +581,13 @@ export function createInvestigationExecutor(options: {
             phaseKind: phase.kind,
             findings: uniqueSorted(phaseResult.findings)
           }
+        });
+        extractAndPersistEvidence({
+          runId: input.runId,
+          definition,
+          phaseId: phase.phaseId,
+          artifactPaths: phaseResult.artifacts,
+          findings: phaseResult.findings
         });
         advanced = true;
         continue;

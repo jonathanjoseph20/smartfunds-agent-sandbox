@@ -1,17 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { canonicalStringify } from '../finance/determinism.ts';
+import { main as confidenceMain } from './investigations-confidence.ts';
 import { main as historyMain } from './investigations-history.ts';
 import { main as dueMain } from './investigations-due.ts';
+import { main as evidenceMain } from './investigations-evidence.ts';
+import { main as findingsMain } from './investigations-findings.ts';
 import { main as inspectMain } from './investigations-inspect.ts';
 import { main as listMain } from './investigations-list.ts';
 import { main as reportMain } from './investigations-report.ts';
 
-const { listInvestigations, inspectInvestigation, historyByDate, readReport } = vi.hoisted(() => ({
+const { listInvestigations, inspectInvestigation, historyByDate, readReport, listEvidence, inspectFindings, inspectConfidence } = vi.hoisted(() => ({
   listInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', status: 'completed' }]),
   inspectInvestigation: vi.fn(() => ({ record: { investigationRunId: 'run-1' }, definition: {}, history: [] })),
   historyByDate: vi.fn(() => [{ date: '2026-03-10', investigations: [] }]),
-  readReport: vi.fn(() => ({ reportPath: 'artifacts/investigations/run-1/investigation-report.md', content: '# Investigation Report\n' }))
+  readReport: vi.fn(() => ({ reportPath: 'artifacts/investigations/run-1/investigation-report.md', content: '# Investigation Report\n' })),
+  listEvidence: vi.fn(() => [{ evidenceId: 'e1' }]),
+  inspectFindings: vi.fn(() => [{ findingId: 'f1' }]),
+  inspectConfidence: vi.fn(() => ({ reportConfidence: { confidenceBand: 'medium' } }))
 }));
 const { listDueInvestigations } = vi.hoisted(() => ({
   listDueInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', dueNow: true, dueReason: 'due' }])
@@ -22,7 +28,10 @@ vi.mock('../investigations/investigation-inspection.ts', () => ({
     listInvestigations,
     inspectInvestigation,
     historyByDate,
-    readReport
+    readReport,
+    listEvidence,
+    inspectFindings,
+    inspectConfidence
   }))
 }));
 
@@ -101,6 +110,39 @@ describe('investigations CLI commands', () => {
     expect(code).toBe(0);
     expect(listDueInvestigations).toHaveBeenCalledWith({ schedulerSlot: 'interval_hours:6:2026-03-10T18:00Z' });
     expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(listDueInvestigations())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI8 investigations:evidence prints deterministic evidence projection', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await evidenceMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(listEvidence).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(listEvidence())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI9 investigations:confidence prints deterministic confidence projection', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await confidenceMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectConfidence).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectConfidence())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI10 investigations:findings prints deterministic findings projection', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await findingsMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectFindings).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectFindings())}\n`);
     stdout.mockRestore();
   });
 });

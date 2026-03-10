@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { canonicalStringify } from '../finance/determinism.ts';
 
+import { createEvidenceStore } from './evidence-store.ts';
+import { buildInvestigationConfidenceProjection } from './findings.ts';
 import type {
   InvestigationDefinition,
   InvestigationEventRecord,
@@ -97,6 +99,7 @@ function markdownForReport(input: {
   definition: InvestigationDefinition;
   phaseSummaryRows: Array<{ phaseId: string; kind: string; status: string; findings: string[]; artifacts: string[] }>;
   conclusion: { summary: string; severity: string; nextSteps: string[] };
+  findingsProjection: ReturnType<typeof buildInvestigationConfidenceProjection>;
 }): string {
   const lines = [
     '# Investigation Report',
@@ -133,6 +136,23 @@ function markdownForReport(input: {
     lines.push(`- ${finding}`);
   });
 
+  lines.push('', '## Evidence-Backed Findings');
+  input.findingsProjection.findings.forEach((finding) => {
+    lines.push(`- ${finding.findingId}`);
+    lines.push(`  confidence: ${finding.confidenceBand} (${String(finding.confidenceScore)})`);
+    lines.push(`  reason: ${finding.confidenceReason}`);
+    lines.push(`  supportingEvidenceIds: ${finding.supportingEvidenceIds.join(', ') || 'none'}`);
+    lines.push(`  counterEvidenceIds: ${finding.counterEvidenceIds.join(', ') || 'none'}`);
+    lines.push(`  unresolvedGapIds: ${finding.unresolvedGapIds.join(', ') || 'none'}`);
+  });
+
+  lines.push('', '## Report Confidence');
+  lines.push(`Band: ${input.findingsProjection.reportConfidence.confidenceBand}`);
+  lines.push(`Score: ${String(input.findingsProjection.reportConfidence.confidenceScore)}`);
+  lines.push(`Reason: ${input.findingsProjection.reportConfidence.confidenceReason}`);
+  lines.push(`Strengths: ${input.findingsProjection.reportConfidence.strengths.join(', ') || 'none'}`);
+  lines.push(`Limitations: ${input.findingsProjection.reportConfidence.limitations.join(', ') || 'none'}`);
+
   lines.push('', '## Conclusion');
   lines.push(input.conclusion.summary);
   lines.push(`Severity: ${input.conclusion.severity}`);
@@ -166,6 +186,13 @@ export function writeInvestigationReport(input: {
 
   const conclusion = summarizeConclusion(input.record, signalMetadata);
   const phaseSummaryRows = phaseSummary(input.definition, input.history, input.record.artifactPaths);
+  const evidenceStore = createEvidenceStore({ artifactsRoot: input.artifactsRoot });
+  const findingsProjection = buildInvestigationConfidenceProjection({
+    investigationRunId: input.record.investigationRunId,
+    definition: input.definition,
+    findings: input.record.findings,
+    evidence: evidenceStore.loadEvidence(input.record.investigationRunId)
+  });
   const report = {
     investigationRunId: input.record.investigationRunId,
     investigationDefinitionId: input.record.investigationDefinitionId,
@@ -180,6 +207,9 @@ export function writeInvestigationReport(input: {
     phaseSummary: phaseSummaryRows,
     artifactPaths: input.record.artifactPaths,
     findings: input.record.findings,
+    evidenceBackedFindings: findingsProjection.findings,
+    reportConfidence: findingsProjection.reportConfidence,
+    confidenceByPhase: findingsProjection.confidenceByPhase,
     conclusion: {
       summary: conclusion.summary,
       severity: conclusion.severity
@@ -195,7 +225,8 @@ export function writeInvestigationReport(input: {
     record: input.record,
     definition: input.definition,
     phaseSummaryRows,
-    conclusion
+    conclusion,
+    findingsProjection
   }), 'utf8');
 
   return {

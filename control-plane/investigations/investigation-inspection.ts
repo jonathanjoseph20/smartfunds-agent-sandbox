@@ -1,16 +1,24 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
+import { createEvidenceStore, type EvidenceStore } from './evidence-store.ts';
+import { buildInvestigationConfidenceProjection } from './findings.ts';
 import { createInvestigationRegistry, type InvestigationRegistry } from './investigation-registry.ts';
 import { createInvestigationStore, type InvestigationStore } from './investigation-store.ts';
 
 export function createInvestigationInspection(options: {
   definitionsDir?: string;
   rootDir?: string;
+  artifactsRoot?: string;
   registry?: InvestigationRegistry;
   store?: InvestigationStore;
+  evidenceStore?: EvidenceStore;
 } = {}) {
   const registry = options.registry ?? createInvestigationRegistry({ definitionsDir: options.definitionsDir });
   const store = options.store ?? createInvestigationStore({ rootDir: options.rootDir });
+  const evidenceStore = options.evidenceStore ?? createEvidenceStore({
+    artifactsRoot: options.artifactsRoot ?? path.join('artifacts', 'investigations')
+  });
 
   function listInvestigations(input: {
     status?: string;
@@ -39,6 +47,38 @@ export function createInvestigationInspection(options: {
     return store.listHistory();
   }
 
+  function listEvidence(investigationRunId: string) {
+    store.getInvestigation(investigationRunId);
+    return evidenceStore.loadEvidence(investigationRunId);
+  }
+
+  function inspectFindings(investigationRunId: string) {
+    const record = store.getInvestigation(investigationRunId);
+    const definition = registry.getInvestigation(record.investigationDefinitionId);
+    return buildInvestigationConfidenceProjection({
+      investigationRunId,
+      definition,
+      findings: record.findings,
+      evidence: evidenceStore.loadEvidence(investigationRunId)
+    }).findings;
+  }
+
+  function inspectConfidence(investigationRunId: string) {
+    const record = store.getInvestigation(investigationRunId);
+    const definition = registry.getInvestigation(record.investigationDefinitionId);
+    const projection = buildInvestigationConfidenceProjection({
+      investigationRunId,
+      definition,
+      findings: record.findings,
+      evidence: evidenceStore.loadEvidence(investigationRunId)
+    });
+    return {
+      investigationRunId,
+      reportConfidence: projection.reportConfidence,
+      confidenceByPhase: projection.confidenceByPhase
+    };
+  }
+
   function readReport(investigationRunId: string): { reportPath: string; content: string } {
     const record = store.getInvestigation(investigationRunId);
     if (!record.finalReportPath) {
@@ -59,7 +99,10 @@ export function createInvestigationInspection(options: {
     listInvestigations,
     inspectInvestigation,
     historyByDate,
-    readReport
+    readReport,
+    listEvidence,
+    inspectFindings,
+    inspectConfidence
   };
 }
 

@@ -42,6 +42,24 @@ Read final report:
 npm run investigations:report -- --investigation <investigationRunId>
 ```
 
+Inspect evidence records:
+
+```bash
+npm run investigations:evidence -- --investigation <investigationRunId>
+```
+
+Inspect confidence summary:
+
+```bash
+npm run investigations:confidence -- --investigation <investigationRunId>
+```
+
+Inspect evidence-backed findings:
+
+```bash
+npm run investigations:findings -- --investigation <investigationRunId>
+```
+
 Run scheduler with passive investigation progression:
 
 ```bash

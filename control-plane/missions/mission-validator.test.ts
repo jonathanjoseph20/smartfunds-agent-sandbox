@@ -90,4 +90,18 @@ describe('mission-validator', () => {
       paths: ['apps/**', 'tools/**']
     });
   });
+
+  it('T-SPC-M13 accepts build-specific mutation intents', () => {
+    const mission = validateMissionDefinition(validMission({
+      profile: 'build',
+      mutationIntent: 'ui_change',
+      requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+      targetScope: {
+        repo: 'smartfunds-agent-sandbox',
+        paths: ['dashboard/**']
+      }
+    }));
+
+    expect(mission.mutationIntent).toBe('ui_change');
+  });
 });

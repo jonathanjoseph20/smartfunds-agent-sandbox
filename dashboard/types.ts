@@ -7,6 +7,9 @@ export interface RunSummary {
   profile?: string;
   executionPath?: string;
   artifactCount?: number;
+  branchName?: string;
+  prNumber?: number;
+  prUrl?: string;
 }
 
 export interface ArtifactSummary {
@@ -23,6 +26,10 @@ export interface RunDetails {
   profile?: string;
   executionPath?: string;
   artifactCount?: number;
+  branchName?: string;
+  prNumber?: number;
+  prUrl?: string;
+  mutationSummary?: string[];
   nodes?: string[];
   artifacts: ArtifactSummary[];
 }

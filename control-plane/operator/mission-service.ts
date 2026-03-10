@@ -34,6 +34,7 @@ import {
   resolveExecutionProfile,
   type ExecutionPath
 } from './profile-policy.ts';
+import { executeBuildMission, parseBuildMissionContext } from './build-mission-executor.ts';
 
 type MissionServiceOptions = {
   journal?: ExecutionJournal;
@@ -346,7 +347,7 @@ async function executeMissionByPath(input: {
   executionPath: ExecutionPath;
   profile: string;
   workflowsDir?: string;
-}): Promise<{ runId: string; status: string }> {
+}): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
   const workflow = loadWorkflowDefinitionById(input.workflowId, input.workflowsDir);
 
   if (input.executionPath === 'lite') {
@@ -455,7 +456,10 @@ async function executeMissionByPath(input: {
 
   return {
     runId: runRecord.runId,
-    status: runRecord.status
+    status: runRecord.status,
+    metadata: {
+      artifactCount: artifactFiles.length
+    }
   };
 }
 
@@ -473,6 +477,131 @@ async function executeLiteMission(input: {
     ...input,
     executionPath: 'lite'
   });
+}
+
+async function executeBuildMissionPath(input: {
+  journal: ExecutionJournal;
+  missionId: string;
+  projectId: string;
+  workflowId: string;
+  missionParameters: Record<string, string>;
+  missionContext: Record<string, unknown>;
+  profile: string;
+  targetScope?: { repo: string; paths?: string[] };
+}): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
+  const run = input.journal.createRun({
+    projectId: input.projectId,
+    kind: 'mission',
+    entrypoint: `mission:${input.missionId}`,
+    profile: input.profile,
+    executionPath: 'build'
+  });
+
+  input.journal.appendEvent({
+    runId: run.runId,
+    type: 'PHASE_STARTED',
+    phase: 'implement',
+    payload: {
+      context_snapshot: {
+        missionId: input.missionId,
+        missionParameters: input.missionParameters,
+        metadata: {
+          workflowId: input.workflowId
+        }
+      }
+    }
+  });
+
+  const missionContextData = parseBuildMissionContext(input.missionContext);
+  const targetRepo = input.targetScope?.repo ?? 'smartfunds-agent-sandbox';
+  const targetPaths = input.targetScope?.paths ?? [];
+
+  let buildResult: ReturnType<typeof executeBuildMission>;
+  try {
+    buildResult = executeBuildMission({
+      missionId: input.missionId,
+      runId: run.runId,
+      targetRepo,
+      targetPaths,
+      mutationPlan: missionContextData.mutationPlan,
+      checks: missionContextData.checks
+    });
+  } catch (error) {
+    input.journal.appendEvent({
+      runId: run.runId,
+      type: 'RUN_FAILED',
+      phase: 'release',
+      payload: {
+        context_snapshot: {
+          missionId: input.missionId,
+          missionParameters: input.missionParameters,
+          metadata: {
+            workflowId: input.workflowId
+          }
+        },
+        error: error instanceof Error ? error.message : 'BUILD_TARGET_SCOPE_DENIED'
+      }
+    });
+    throw error;
+  }
+
+  input.journal.appendEvent({
+    runId: run.runId,
+    type: 'RUN_COMPLETED',
+    phase: 'release',
+    payload: {
+      context_snapshot: {
+        missionId: input.missionId,
+        missionParameters: input.missionParameters,
+        metadata: {
+          workflowId: input.workflowId
+        }
+      },
+      build: {
+        branchName: buildResult.branchName,
+        prNumber: buildResult.prNumber ?? null,
+        prUrl: buildResult.prUrl ?? null,
+        mutationSummary: buildResult.mutationSummary
+      }
+    }
+  });
+
+  const artifactFiles = listArtifactsForRun({
+    missionId: input.missionId,
+    runId: run.runId
+  }).filter((file) => file !== 'run-metadata.json');
+
+  writeArtifact({
+    missionId: input.missionId,
+    runId: run.runId,
+    type: 'json',
+    filename: 'run-metadata.json',
+    content: {
+      runId: run.runId,
+      missionId: input.missionId,
+      workflowId: input.workflowId,
+      status: 'completed',
+      profile: input.profile,
+      executionPath: 'build',
+      branchName: buildResult.branchName,
+      prNumber: buildResult.prNumber ?? null,
+      prUrl: buildResult.prUrl ?? null,
+      artifactCount: artifactFiles.length,
+      mutationSummary: [...buildResult.mutationSummary].sort((left, right) => left.localeCompare(right))
+    }
+  });
+
+  return {
+    runId: run.runId,
+    status: 'completed',
+    metadata: {
+      branchName: buildResult.branchName,
+      prNumber: buildResult.prNumber ?? null,
+      prUrl: buildResult.prUrl ?? null,
+      artifactCount: artifactFiles.length,
+      mutationSummary: [...buildResult.mutationSummary].sort((left, right) => left.localeCompare(right))
+    }
+  };
 }
 
 async function executeGovernedMission(input: {
@@ -500,10 +629,14 @@ async function executeMission(input: {
   missionContext: Record<string, unknown>;
   executionPath: ExecutionPath;
   profile: string;
+  targetScope?: { repo: string; paths?: string[] };
   workflowsDir?: string;
-}): Promise<{ runId: string; status: string }> {
+}): Promise<{ runId: string; status: string; metadata?: Record<string, unknown> }> {
   if (input.executionPath === 'lite') {
     return executeLiteMission(input);
+  }
+  if (input.executionPath === 'build') {
+    return executeBuildMissionPath(input);
   }
   return executeGovernedMission(input);
 }
@@ -551,6 +684,7 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       missionContext: mergedContext,
       profile: resolved.profile,
       executionPath: resolved.executionPath,
+      targetScope: mission.targetScope,
       workflowsDir: options.workflowsDir
     });
 
@@ -564,6 +698,14 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       status: mapRunStatusToMissionStatus(executed.status),
       profile: resolved.profile,
       executionPath: resolved.executionPath,
+      ...(resolved.executionPath === 'build' && executed.metadata
+        ? {
+          branchName: executed.metadata.branchName,
+          prNumber: executed.metadata.prNumber,
+          prUrl: executed.metadata.prUrl,
+          mutationSummary: executed.metadata.mutationSummary
+        }
+        : {}),
       teamId: mission.teamId,
       workflowId: mission.workflowId,
       workflowRun: executed.runId,
@@ -592,7 +734,13 @@ export function createMissionService(options: MissionServiceOptions = {}) {
         status: latest ? mapRunStatusToMissionStatus(latest.status) : 'created',
         workflowRun: latest?.runId ?? null,
         profile: latest?.profile ?? mission.profile ?? 'core',
-        executionPath: latest?.executionPath ?? ((mission.profile ?? 'core') === 'lite' ? 'lite' : 'governed'),
+        executionPath: latest?.executionPath ?? (
+          (mission.profile ?? 'core') === 'lite'
+            ? 'lite'
+            : (mission.profile ?? 'core') === 'build'
+              ? 'build'
+              : 'governed'
+        ),
         teamId: mission.teamId,
         workflowId: mission.workflowId
       };

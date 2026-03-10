@@ -172,6 +172,10 @@ function maybeExtractMetadata(runDirectory: string): {
   profile?: string;
   executionPath?: string;
   artifactCount?: number;
+  branchName?: string;
+  prNumber?: number;
+  prUrl?: string;
+  mutationSummary?: string[];
   nodes?: string[];
 } {
   const metadataFileNames = ['run-metadata.json', 'run.json', 'metadata.json', 'summary.json'];
@@ -189,10 +193,16 @@ function maybeExtractMetadata(runDirectory: string): {
       const profile = typeof parsed.profile === 'string' ? parsed.profile : undefined;
       const executionPath = typeof parsed.executionPath === 'string' ? parsed.executionPath : undefined;
       const artifactCount = typeof parsed.artifactCount === 'number' ? parsed.artifactCount : undefined;
+      const branchName = typeof parsed.branchName === 'string' ? parsed.branchName : undefined;
+      const prNumber = typeof parsed.prNumber === 'number' ? parsed.prNumber : undefined;
+      const prUrl = typeof parsed.prUrl === 'string' ? parsed.prUrl : undefined;
+      const mutationSummary = Array.isArray(parsed.mutationSummary) && parsed.mutationSummary.every((entry) => typeof entry === 'string')
+        ? [...parsed.mutationSummary].sort((left, right) => left.localeCompare(right)) as string[]
+        : undefined;
       const nodes = Array.isArray(parsed.nodes) && parsed.nodes.every((entry) => typeof entry === 'string')
         ? parsed.nodes as string[]
         : undefined;
-      return { workflowId, status, profile, executionPath, artifactCount, nodes };
+      return { workflowId, status, profile, executionPath, artifactCount, branchName, prNumber, prUrl, mutationSummary, nodes };
     } catch {
       continue;
     }
@@ -237,7 +247,10 @@ export class ArtifactLoader {
         ...(metadata.status ? { status: metadata.status } : {}),
         ...(metadata.profile ? { profile: metadata.profile } : {}),
         ...(metadata.executionPath ? { executionPath: metadata.executionPath } : {}),
-        ...(typeof metadata.artifactCount === 'number' ? { artifactCount: metadata.artifactCount } : {})
+        ...(typeof metadata.artifactCount === 'number' ? { artifactCount: metadata.artifactCount } : {}),
+        ...(metadata.branchName ? { branchName: metadata.branchName } : {}),
+        ...(typeof metadata.prNumber === 'number' ? { prNumber: metadata.prNumber } : {}),
+        ...(metadata.prUrl ? { prUrl: metadata.prUrl } : {})
       };
     });
   }
@@ -258,6 +271,10 @@ export class ArtifactLoader {
       ...(metadata.profile ? { profile: metadata.profile } : {}),
       ...(metadata.executionPath ? { executionPath: metadata.executionPath } : {}),
       ...(typeof metadata.artifactCount === 'number' ? { artifactCount: metadata.artifactCount } : {}),
+      ...(metadata.branchName ? { branchName: metadata.branchName } : {}),
+      ...(typeof metadata.prNumber === 'number' ? { prNumber: metadata.prNumber } : {}),
+      ...(metadata.prUrl ? { prUrl: metadata.prUrl } : {}),
+      ...(metadata.mutationSummary ? { mutationSummary: metadata.mutationSummary } : {}),
       ...(metadata.nodes ? { nodes: metadata.nodes } : {}),
       artifacts: listArtifacts(runDirectory.runDirectory)
     };

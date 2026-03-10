@@ -19,7 +19,14 @@ const CAPABILITY_CLASSES: CapabilityClass[] = [
 const MUTATION_INTENTS: MutationIntent[] = [
   'artifact',
   'code_change',
+  'control_plane_mutation',
+  'entity_registry_mutation',
+  'financial_rail_mutation',
   'governance_change',
+  'product_update',
+  'protected_infra_mutation',
+  'tooling_change',
+  'ui_change',
   'none'
 ];
 

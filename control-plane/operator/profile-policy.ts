@@ -1,10 +1,10 @@
 import { PROFILE_CAPABILITIES } from '../policy/capabilities.ts';
-import type { CapabilityClass, PolicyProfile } from '../policy/types.ts';
+import type { CapabilityClass, MutationIntent, PolicyProfile } from '../policy/types.ts';
 import { validateProfileRequest } from '../policy/profile-validation.ts';
 import type { MissionDefinition } from '../missions/mission-types.ts';
 import { ProfilePolicyError, type ProfileErrorCode } from './profile-errors.ts';
 
-export type ExecutionPath = 'governed' | 'lite';
+export type ExecutionPath = 'governed' | 'lite' | 'build';
 
 const POLICY_PROFILES: readonly PolicyProfile[] = ['lite', 'build', 'core'] as const;
 
@@ -19,6 +19,22 @@ const LITE_FORBIDDEN_TASK_PATTERNS: Array<{ pattern: RegExp; code: ProfileErrorC
   { pattern: /commit/i, code: 'LITE_REPO_MUTATION_FORBIDDEN', reason: 'Lite missions cannot execute commit workflows.' },
   { pattern: /patch/i, code: 'LITE_REPO_MUTATION_FORBIDDEN', reason: 'Lite missions cannot execute patch workflows.' }
 ];
+
+const BUILD_ALLOWED_MUTATION_INTENTS: readonly MutationIntent[] = [
+  'none',
+  'artifact',
+  'code_change',
+  'ui_change',
+  'product_update',
+  'tooling_change'
+] as const;
+
+const BUILD_PROTECTED_PATH_PREFIXES = [
+  'control-plane/',
+  'entities/',
+  'runtime/',
+  'policies/'
+] as const;
 
 function isPolicyProfile(value: string): value is PolicyProfile {
   return POLICY_PROFILES.includes(value as PolicyProfile);
@@ -44,6 +60,19 @@ function mapCapabilityDenial(capability: CapabilityClass): ProfilePolicyError {
   return new ProfilePolicyError('PROFILE_CAPABILITY_DENIED', `Lite missions cannot request ${capability}.`);
 }
 
+function mapBuildCapabilityDenial(capability: CapabilityClass): ProfilePolicyError {
+  if (capability === 'protected_write') {
+    return new ProfilePolicyError('BUILD_PROTECTED_WRITE_FORBIDDEN', 'Build missions cannot request protected_write.');
+  }
+  if (capability === 'repo_write') {
+    return new ProfilePolicyError('BUILD_REPO_WRITE_REQUIRED', 'Build missions require repo_write.');
+  }
+  if (capability === 'pr_open') {
+    return new ProfilePolicyError('BUILD_PR_OPEN_REQUIRED', 'Build missions require pr_open.');
+  }
+  return new ProfilePolicyError('PROFILE_CAPABILITY_DENIED', `Build missions cannot request ${capability}.`);
+}
+
 function extractDeniedCapability(violations: string[]): CapabilityClass | null {
   const denied = violations
     .find((violation) => violation.startsWith('profile_lite_disallows_') && !violation.includes('mutation_intent'));
@@ -64,6 +93,11 @@ function extractDeniedCapability(violations: string[]): CapabilityClass | null {
   }
 
   return null;
+}
+
+function isBuildProtectedPath(pathValue: string): boolean {
+  const normalized = pathValue.trim();
+  return BUILD_PROTECTED_PATH_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 export function resolveExecutionProfile(input: {
@@ -88,7 +122,11 @@ export function resolveExecutionProfile(input: {
 
   return {
     profile: effective,
-    executionPath: effective === 'lite' ? 'lite' : 'governed',
+    executionPath: effective === 'lite'
+      ? 'lite'
+      : effective === 'build'
+        ? 'build'
+        : 'governed',
     allowedCapabilities: [...PROFILE_CAPABILITIES[effective]].sort((left, right) => left.localeCompare(right))
   };
 }
@@ -97,6 +135,37 @@ export function assertProfileCapabilities(input: {
   mission: MissionDefinition;
   profile: PolicyProfile;
 }): void {
+  if (input.profile === 'build') {
+    if (!input.mission.targetScope || input.mission.targetScope.paths === undefined || input.mission.targetScope.paths.length === 0) {
+      throw new ProfilePolicyError('BUILD_TARGET_SCOPE_DENIED', 'Build missions must declare a targetScope with at least one path.');
+    }
+
+    const requested = new Set(input.mission.requestedCapabilities ?? []);
+    if (!requested.has('repo_write')) {
+      throw new ProfilePolicyError('BUILD_REPO_WRITE_REQUIRED', 'Build missions must request repo_write.');
+    }
+    if (!requested.has('pr_open')) {
+      throw new ProfilePolicyError('BUILD_PR_OPEN_REQUIRED', 'Build missions must request pr_open.');
+    }
+
+    const mutationIntent = input.mission.mutationIntent ?? 'none';
+    if (!BUILD_ALLOWED_MUTATION_INTENTS.includes(mutationIntent)) {
+      throw new ProfilePolicyError(
+        'BUILD_MUTATION_INTENT_FORBIDDEN',
+        `Build missions cannot request mutationIntent=${mutationIntent}.`
+      );
+    }
+
+    const requestedPaths = input.mission.targetScope?.paths ?? [];
+    const protectedPath = requestedPaths.find((entry) => isBuildProtectedPath(entry));
+    if (protectedPath) {
+      throw new ProfilePolicyError(
+        'BUILD_PROTECTED_SCOPE_FORBIDDEN',
+        `Build missions cannot target protected path: ${protectedPath}.`
+      );
+    }
+  }
+
   const validation = validateProfileRequest({
     profile: input.profile,
     requestedCapabilities: input.mission.requestedCapabilities ?? [],
@@ -112,6 +181,49 @@ export function assertProfileCapabilities(input: {
     const deniedCapability = extractDeniedCapability(validation.violations);
     if (deniedCapability) {
       throw mapCapabilityDenial(deniedCapability);
+    }
+  }
+
+  if (input.profile === 'build') {
+    const buildCapabilityDenial = validation.violations
+      .find((violation) => violation.startsWith('profile_build_disallows_') && !violation.includes('mutation_intent'))
+      ?.replace('profile_build_disallows_', '');
+
+    if (
+      buildCapabilityDenial === 'read'
+      || buildCapabilityDenial === 'artifact_write'
+      || buildCapabilityDenial === 'repo_write'
+      || buildCapabilityDenial === 'pr_open'
+      || buildCapabilityDenial === 'protected_write'
+    ) {
+      throw mapBuildCapabilityDenial(buildCapabilityDenial);
+    }
+
+    const deniedPathViolation = validation.violations
+      .find((violation) => violation.startsWith('profile_build_disallows_target_path_'));
+    if (deniedPathViolation) {
+      const deniedPath = deniedPathViolation.replace('profile_build_disallows_target_path_', '');
+      const code = isBuildProtectedPath(deniedPath)
+        ? 'BUILD_PROTECTED_SCOPE_FORBIDDEN'
+        : 'BUILD_TARGET_SCOPE_DENIED';
+      throw new ProfilePolicyError(code, `Build missions cannot target path: ${deniedPath}.`);
+    }
+
+    if (validation.violations.includes('profile_build_disallows_target_repo')) {
+      throw new ProfilePolicyError(
+        'BUILD_TARGET_SCOPE_DENIED',
+        'Build missions cannot target the requested repository.'
+      );
+    }
+
+    const mutationViolation = validation.violations
+      .find((violation) => violation.startsWith('profile_build_disallows_mutation_intent_'));
+    if (mutationViolation) {
+      const deniedIntent = mutationViolation.replace('profile_build_disallows_mutation_intent_', '');
+      throw new ProfilePolicyError(
+        'BUILD_MUTATION_INTENT_FORBIDDEN',
+        `Build missions cannot request mutationIntent=${deniedIntent}.`
+      );
     }
   }
 
@@ -139,4 +251,3 @@ export function assertLiteWorkflowTasks(workflowTasks: string[]): void {
     assertLiteTaskAllowed(task);
   }
 }
-

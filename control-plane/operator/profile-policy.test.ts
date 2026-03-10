@@ -46,6 +46,16 @@ describe('profile-policy', () => {
     expect(resolved.executionPath).toBe('governed');
   });
 
+  it('T-SPC-P6 resolves profile=build to build execution path', () => {
+    const resolved = resolveExecutionProfile({
+      mission: mission({ profile: 'build' })
+    });
+
+    expect(resolved.profile).toBe('build');
+    expect(resolved.executionPath).toBe('build');
+    expect(resolved.allowedCapabilities).toEqual(['artifact_write', 'pr_open', 'read', 'repo_write']);
+  });
+
   it('T-SPB-P4 lite rejects forbidden capability requests', () => {
     expect(() => assertProfileCapabilities({
       mission: mission({
@@ -61,5 +71,99 @@ describe('profile-policy', () => {
     expect(() => assertLiteTaskAllowed('open_pr')).toThrowError('LITE_PR_OPEN_FORBIDDEN');
     expect(() => assertLiteTaskAllowed('protected_write')).toThrowError('LITE_PROTECTED_WRITE_FORBIDDEN');
   });
-});
 
+  it('T-SPC-P7 build requires repo_write and pr_open and rejects protected_write', () => {
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'code_change',
+        requestedCapabilities: ['pr_open', 'read'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['docs/**']
+        }
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_REPO_WRITE_REQUIRED');
+
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'code_change',
+        requestedCapabilities: ['repo_write', 'read'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['docs/**']
+        }
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_PR_OPEN_REQUIRED');
+
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'code_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'protected_write', 'read', 'repo_write'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['docs/**']
+        }
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_PROTECTED_WRITE_FORBIDDEN');
+  });
+
+  it('T-SPC-P8 build enforces mutation intent and protected path boundaries', () => {
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'governance_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['docs/**']
+        }
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_MUTATION_INTENT_FORBIDDEN');
+
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'code_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['control-plane/**']
+        }
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_PROTECTED_SCOPE_FORBIDDEN');
+  });
+
+  it('T-SPC-P9 build accepts allowed scope and intent', () => {
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'ui_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+        targetScope: {
+          repo: 'smartfunds-agent-sandbox',
+          paths: ['dashboard/**']
+        }
+      }),
+      profile: 'build'
+    })).not.toThrow();
+  });
+
+  it('T-SPC-P10 build requires explicit target scope paths', () => {
+    expect(() => assertProfileCapabilities({
+      mission: mission({
+        profile: 'build',
+        mutationIntent: 'code_change',
+        requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write']
+      }),
+      profile: 'build'
+    })).toThrowError('BUILD_TARGET_SCOPE_DENIED');
+  });
+});

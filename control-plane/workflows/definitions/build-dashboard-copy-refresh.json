@@ -1,0 +1,9 @@
+{
+  "workflowId": "build-dashboard-copy-refresh",
+  "nodes": [
+    {
+      "id": "build-placeholder",
+      "task": "output.write_markdown"
+    }
+  ]
+}

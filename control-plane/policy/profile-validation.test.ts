@@ -139,4 +139,19 @@ describe('profile-validation', () => {
       })
     );
   });
+
+  it('T-SPC-PV10 build accepts ui_change mutation intent on allowed scope', () => {
+    const result = validateProfileRequest({
+      profile: 'build',
+      requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+      mutationIntent: 'ui_change',
+      targetScope: {
+        repo: 'smartfunds-agent-sandbox',
+        paths: ['dashboard/ui/index.html']
+      }
+    }, registry);
+
+    expect(result.ok).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
 });

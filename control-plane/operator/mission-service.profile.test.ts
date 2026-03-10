@@ -1,10 +1,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createExecutionJournal } from '../journal/journal.ts';
 import { createMissionService } from './mission-service.ts';
+
+const executeBuildMissionMock = vi.fn();
+
+vi.mock('./build-mission-executor.ts', () => ({
+  executeBuildMission: (...args: unknown[]) => executeBuildMissionMock(...args),
+  parseBuildMissionContext: (value: Record<string, unknown>) => ({
+    mutationPlan: Array.isArray(value.buildMutations)
+      ? value.buildMutations.filter((entry): entry is { path: string; content: string } => (
+        typeof entry === 'object'
+        && entry !== null
+        && typeof (entry as { path?: unknown }).path === 'string'
+        && typeof (entry as { content?: unknown }).content === 'string'
+      ))
+      : [],
+    checks: Array.isArray(value.buildChecks)
+      ? value.buildChecks.filter((entry): entry is { command: string; args?: string[] } => (
+        typeof entry === 'object'
+        && entry !== null
+        && typeof (entry as { command?: unknown }).command === 'string'
+      ))
+      : []
+  })
+}));
 
 const tmpRoot = path.join('control-plane', '__tests__', 'tmp-mission-service-profile');
 const missionsDir = path.join(tmpRoot, 'missions');
@@ -131,6 +154,31 @@ function writeFixtures(): void {
     initialContext: {}
   });
 
+  writeJson(missionsDir, 'build-ok.json', {
+    missionId: 'build-ok',
+    projectId: 'smartfunds-core',
+    teamId: 'smartfunds-research-team',
+    workflowId: 'build-noop-workflow',
+    profile: 'build',
+    mutationIntent: 'code_change',
+    requestedCapabilities: ['artifact_write', 'pr_open', 'read', 'repo_write'],
+    targetScope: {
+      repo: 'smartfunds-agent-sandbox',
+      paths: ['docs/**']
+    },
+    objective: 'build run',
+    successCriteria: ['create pr'],
+    deliverables: ['docs update'],
+    initialContext: {
+      buildMutations: [
+        {
+          path: 'docs/build-mission.md',
+          content: '# Build Mission\n'
+        }
+      ]
+    }
+  });
+
   writeJson(workflowsDir, 'lite-ok-workflow.json', {
     workflowId: 'lite-ok-workflow',
     nodes: [
@@ -160,18 +208,31 @@ function writeFixtures(): void {
       }
     ]
   });
+
+  writeJson(workflowsDir, 'build-noop-workflow.json', {
+    workflowId: 'build-noop-workflow',
+    nodes: []
+  });
 }
 
 beforeEach(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.mkdirSync(tmpRoot, { recursive: true });
   writeFixtures();
+  executeBuildMissionMock.mockReset();
+  executeBuildMissionMock.mockReturnValue({
+    branchName: 'build/build-ok/abcdef123456',
+    prNumber: 42,
+    prUrl: 'https://example.test/repo/pull/42',
+    mutationSummary: ['docs/build-mission.md']
+  });
 });
 
 afterEach(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.rmSync(path.join('artifacts', 'lite-ok'), { recursive: true, force: true });
   fs.rmSync(path.join('artifacts', 'governed-default'), { recursive: true, force: true });
+  fs.rmSync(path.join('artifacts', 'build-ok'), { recursive: true, force: true });
 });
 
 describe('mission-service profile routing', () => {
@@ -269,5 +330,47 @@ describe('mission-service profile routing', () => {
 
     const runs = journal.listRuns();
     expect(runs.some((run) => run.entrypoint.startsWith('workflow:governed-default-workflow:'))).toBe(true);
+  });
+
+  it('T-SPC-M5 routes build mission through build path and persists branch/pr metadata', async () => {
+    const service = createMissionService({
+      journal: createExecutionJournal({ rootDir: journalRoot }),
+      missionsDir,
+      workflowsDir,
+      teamsDir,
+      agentsDir
+    });
+
+    const result = await service.startMission({
+      missionId: 'build-ok',
+      params: {}
+    });
+
+    expect(result).toMatchObject({
+      missionId: 'build-ok',
+      status: 'completed',
+      profile: 'build',
+      executionPath: 'build',
+      branchName: 'build/build-ok/abcdef123456',
+      prNumber: 42
+    });
+    expect(executeBuildMissionMock).toHaveBeenCalledTimes(1);
+
+    const runId = String(result.workflowRun);
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join('artifacts', 'build-ok', runId, 'run-metadata.json'), 'utf8')
+    ) as Record<string, unknown>;
+    expect(metadata).toMatchObject({
+      profile: 'build',
+      executionPath: 'build',
+      branchName: 'build/build-ok/abcdef123456',
+      prNumber: 42
+    });
+
+    const runs = createExecutionJournal({ rootDir: journalRoot }).listRuns();
+    const missionRun = runs.find((run) => run.entrypoint === 'mission:build-ok');
+    expect(missionRun).toBeDefined();
+    expect(missionRun?.executionPath).toBe('build');
+    expect(runs.some((run) => run.entrypoint.startsWith('workflow:build-noop-workflow:'))).toBe(false);
   });
 });

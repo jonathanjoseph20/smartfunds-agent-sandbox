@@ -24,7 +24,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       const artifacts = typeof run.metadata.artifactCount === 'number'
         ? ` artifacts=${String(run.metadata.artifactCount)}`
         : '';
-      process.stdout.write(`${run.runId}  ${run.missionId}${profile}${executionPath}${status}${artifacts}\n`);
+      const branchName = run.metadata.branchName ? ` branch=${run.metadata.branchName}` : '';
+      const prNumber = typeof run.metadata.prNumber === 'number' ? ` pr=${String(run.metadata.prNumber)}` : '';
+      process.stdout.write(
+        `${run.runId}  ${run.missionId}${profile}${executionPath}${status}${artifacts}${branchName}${prNumber}\n`
+      );
     }
 
     return 0;

@@ -50,7 +50,7 @@ export type ExecutionRun = {
   entrypoint: string;
   createdIndex: number;
   profile?: string;
-  executionPath?: 'governed' | 'lite';
+  executionPath?: 'governed' | 'lite' | 'build';
 };
 
 export type ExecutionEvent = {
@@ -89,7 +89,7 @@ export type CreateRunInput = {
   kind: RunKind;
   entrypoint: string;
   profile?: string;
-  executionPath?: 'governed' | 'lite';
+  executionPath?: 'governed' | 'lite' | 'build';
 };
 
 export type AppendEventInput = {

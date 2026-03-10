@@ -73,4 +73,30 @@ describe('mission-run CLI', () => {
 
     stdout.mockRestore();
   });
+
+  it('prints build branch and PR metadata when provided', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    startMission.mockResolvedValueOnce({
+      missionId: 'dashboard-copy-refresh',
+      status: 'completed',
+      profile: 'build',
+      executionPath: 'build',
+      workflowRun: 'run_smartfunds-core_0099',
+      artifactCount: 0,
+      branchName: 'build/dashboard-copy-refresh/1234abcd',
+      prNumber: 88,
+      prUrl: 'https://example.test/repo/pull/88'
+    });
+
+    const code = await main(['--mission', 'dashboard-copy-refresh']);
+    expect(code).toBe(0);
+    const output = stdout.mock.calls.map((call) => String(call[0])).join('');
+    expect(output).toContain('Execution Path: build');
+    expect(output).toContain('Branch: build/dashboard-copy-refresh/1234abcd');
+    expect(output).toContain('PR Number: 88');
+    expect(output).toContain('PR URL: https://example.test/repo/pull/88');
+
+    stdout.mockRestore();
+  });
 });

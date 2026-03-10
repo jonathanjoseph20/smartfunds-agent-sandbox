@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "schedules": [
+    {
+      "scheduleId": "defi-yield-hourly-scan",
+      "missionId": "defi-yield-report",
+      "enabled": true,
+      "cadence": {
+        "type": "interval_hours",
+        "every": 6
+      },
+      "params": {
+        "market": "us"
+      },
+      "maxLaunchesPerSlot": 1
+    },
+    {
+      "scheduleId": "rwa-daily-market-brief",
+      "missionId": "rwa-market-analysis",
+      "enabled": true,
+      "cadence": {
+        "type": "daily",
+        "hourUtc": 13,
+        "minuteUtc": 0
+      },
+      "params": {
+        "market": "us"
+      },
+      "maxLaunchesPerSlot": 1
+    }
+  ]
+}

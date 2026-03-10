@@ -305,6 +305,15 @@ describe('operator integration', () => {
     expect(workflowInspect.success).toBe(true);
     expect(workflowTrace.success).toBe(true);
     expect((workflowTrace.payload as Record<string, unknown>).executionOrder).toEqual(['node-a']);
+
+    const inspectPayload = workflowInspect.payload as Record<string, unknown>;
+    expect(inspectPayload.lifecycleStatus).toBe('succeeded');
+    expect(inspectPayload.attemptCount).toBe(1);
+    expect(inspectPayload.currentAttemptIndex).toBe(0);
+    expect(inspectPayload.retryCount).toBe(0);
+    expect(Array.isArray(inspectPayload.artifacts)).toBe(true);
+    expect(Array.isArray(inspectPayload.attempts)).toBe(true);
+    expect((inspectPayload.runtime as Record<string, unknown>).status).toBe('succeeded');
   });
 
   it('T-OPI3 routes runtime controls through recovery paths', async () => {

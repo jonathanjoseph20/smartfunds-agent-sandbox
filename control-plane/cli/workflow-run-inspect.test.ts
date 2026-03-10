@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   inspectRun: vi.fn(),
   buildWorkflowRunRecord: vi.fn(),
   buildWorkflowNodeRecords: vi.fn(),
-  getRunDiagnosticReport: vi.fn()
+  getRunDiagnosticReport: vi.fn(),
+  listArtifactsForRun: vi.fn(),
+  parseArtifactExpectationsFromEvents: vi.fn(),
+  buildNormalizedRunInspection: vi.fn()
 }));
 
 vi.mock('../journal/journal.ts', () => ({
@@ -17,6 +20,11 @@ vi.mock('../journal/journal.ts', () => ({
 vi.mock('../observability/run-record.ts', () => ({ buildWorkflowRunRecord: mocks.buildWorkflowRunRecord }));
 vi.mock('../observability/node-record.ts', () => ({ buildWorkflowNodeRecords: mocks.buildWorkflowNodeRecords }));
 vi.mock('../observability/diagnostics.ts', () => ({ getRunDiagnosticReport: mocks.getRunDiagnosticReport }));
+vi.mock('../../runtime/output/artifact-listing.ts', () => ({ listArtifactsForRun: mocks.listArtifactsForRun }));
+vi.mock('../operator/run-inspection.ts', () => ({
+  parseArtifactExpectationsFromEvents: mocks.parseArtifactExpectationsFromEvents,
+  buildNormalizedRunInspection: mocks.buildNormalizedRunInspection
+}));
 
 describe('workflow-run-inspect CLI', () => {
   it('prints run inspection payload', async () => {
@@ -48,6 +56,25 @@ describe('workflow-run-inspect CLI', () => {
       finalContextKeys: ['k1'],
       firstInspectTarget: { targetType: 'node', nodeId: 'node-a' }
     });
+    mocks.parseArtifactExpectationsFromEvents.mockReturnValueOnce([]);
+    mocks.listArtifactsForRun.mockReturnValueOnce([]);
+    mocks.buildNormalizedRunInspection.mockReturnValueOnce({
+      runId: 'run_1',
+      missionId: 'm1',
+      workflowId: 'wf',
+      teamId: 't1',
+      status: 'succeeded',
+      attemptCount: 1,
+      currentAttemptIndex: 0,
+      retryCount: 0,
+      artifacts: [],
+      attempts: [{ attemptIndex: 0, status: 'succeeded' }],
+      artifactValidation: {
+        status: 'complete',
+        missingRequired: [],
+        missingOptional: []
+      }
+    });
 
     const code = await main(['--run=run_1']);
 
@@ -61,6 +88,23 @@ describe('workflow-run-inspect CLI', () => {
         teamId: 't1',
         projectId: 'p1',
         status: 'completed'
+      },
+      runtime: {
+        runId: 'run_1',
+        missionId: 'm1',
+        workflowId: 'wf',
+        teamId: 't1',
+        status: 'succeeded',
+        attemptCount: 1,
+        currentAttemptIndex: 0,
+        retryCount: 0,
+        artifacts: [],
+        attempts: [{ attemptIndex: 0, status: 'succeeded' }],
+        artifactValidation: {
+          status: 'complete',
+          missingRequired: [],
+          missingOptional: []
+        }
       },
       nodes: [
         {

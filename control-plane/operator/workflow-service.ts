@@ -4,6 +4,8 @@ import { getRunDiagnosticReport } from '../observability/diagnostics.ts';
 import { buildWorkflowNodeRecords } from '../observability/node-record.ts';
 import { buildWorkflowRunRecord, buildWorkflowRunRecords } from '../observability/run-record.ts';
 import { buildWorkflowTrace } from '../observability/trace-builder.ts';
+import { listArtifactsForRun } from '../../runtime/output/artifact-listing.ts';
+import { buildNormalizedRunInspection, parseArtifactExpectationsFromEvents } from './run-inspection.ts';
 
 type WorkflowServiceOptions = {
   journal?: ExecutionJournal;
@@ -48,12 +50,34 @@ export function createWorkflowService(options: WorkflowServiceOptions = {}) {
       events: inspected.events,
       nodes: nodeRecords
     });
+    const expectedArtifacts = parseArtifactExpectationsFromEvents(inspected.events);
+    const actualArtifactFiles = runRecord.missionId
+      ? listArtifactsForRun({
+        missionId: runRecord.missionId,
+        runId: runRecord.runId
+      }).filter((file) => file !== 'run-metadata.json')
+      : [];
+    const runtime = buildNormalizedRunInspection({
+      run: runRecord,
+      events: inspected.events,
+      nodeStates: nodeRecords,
+      expectedArtifacts,
+      actualArtifactFiles
+    });
 
     return {
       runId: runRecord.runId,
       workflowId: runRecord.workflowId,
       missionId: runRecord.missionId,
       status: runRecord.status,
+      lifecycleStatus: runtime.status,
+      attemptCount: runtime.attemptCount,
+      currentAttemptIndex: runtime.currentAttemptIndex,
+      retryCount: runtime.retryCount,
+      failureClass: runtime.failureClass ?? null,
+      failureReason: runtime.failureReason ?? null,
+      artifacts: runtime.artifacts,
+      attempts: runtime.attempts,
       summary: runRecord.summary,
       nodeStates: nodeRecords.map((node) => ({
         nodeId: node.nodeId,
@@ -74,7 +98,8 @@ export function createWorkflowService(options: WorkflowServiceOptions = {}) {
         safetyViolationNodeIds: diagnostics.safetyViolationNodeIds,
         firstInspectTarget: diagnostics.firstInspectTarget,
         finalContextKeys: diagnostics.finalContextKeys
-      }
+      },
+      runtime
     };
   }
 

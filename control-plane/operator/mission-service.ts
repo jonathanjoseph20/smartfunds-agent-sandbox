@@ -35,6 +35,7 @@ import {
   type ExecutionPath
 } from './profile-policy.ts';
 import { executeBuildMission, parseBuildMissionContext } from './build-mission-executor.ts';
+import { buildNormalizedRunInspection, parseArtifactExpectationsFromEvents } from './run-inspection.ts';
 
 type MissionServiceOptions = {
   journal?: ExecutionJournal;
@@ -444,6 +445,15 @@ async function executeMissionByPath(input: {
     missionId: input.missionId,
     runId: runRecord.runId
   }).filter((file) => file !== 'run-metadata.json');
+  const expectedArtifacts = parseArtifactExpectationsFromEvents(inspected.events);
+  const runtimeInspection = buildNormalizedRunInspection({
+    run: runRecord,
+    events: inspected.events,
+    nodeStates: nodeRecords,
+    expectedArtifacts,
+    actualArtifactFiles: artifactFiles
+  });
+  const resolvedStatus = runtimeInspection.status === 'failed' ? 'failed' : runRecord.status;
 
   writeArtifact({
     missionId: input.missionId,
@@ -454,7 +464,7 @@ async function executeMissionByPath(input: {
       runId: runRecord.runId,
       missionId: input.missionId,
       workflowId: runRecord.workflowId,
-      status: runRecord.status,
+      status: resolvedStatus,
       requestedProfile: input.requestedProfile,
       requiredProfile: input.profileValidation.requiredProfile,
       profile: input.profile,
@@ -462,15 +472,29 @@ async function executeMissionByPath(input: {
       scopeClassification: input.profileValidation.scopeClassification,
       coreScopeMatched: input.profileValidation.coreScopeMatched,
       coreReasons: input.profileValidation.coreReasons,
-      artifactCount: artifactFiles.length
+      artifactCount: artifactFiles.length,
+      runtimeStatus: runtimeInspection.status,
+      attemptCount: runtimeInspection.attemptCount,
+      currentAttemptIndex: runtimeInspection.currentAttemptIndex,
+      retryCount: runtimeInspection.retryCount,
+      failureClass: runtimeInspection.failureClass ?? null,
+      failureReason: runtimeInspection.failureReason ?? null,
+      artifactValidation: runtimeInspection.artifactValidation
     }
   });
 
   return {
     runId: runRecord.runId,
-    status: runRecord.status,
+    status: resolvedStatus,
     metadata: {
-      artifactCount: artifactFiles.length
+      artifactCount: artifactFiles.length,
+      runtimeStatus: runtimeInspection.status,
+      attemptCount: runtimeInspection.attemptCount,
+      currentAttemptIndex: runtimeInspection.currentAttemptIndex,
+      retryCount: runtimeInspection.retryCount,
+      failureClass: runtimeInspection.failureClass ?? null,
+      failureReason: runtimeInspection.failureReason ?? null,
+      artifactValidation: runtimeInspection.artifactValidation
     }
   };
 }

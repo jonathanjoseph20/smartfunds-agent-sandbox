@@ -3,6 +3,33 @@
 ## Why Sprint 70 Exists
 Sprint 70 hardens workflow runtime behavior so node/workflow execution can fail, retry, timeout, recover, and cancel in deterministic and replayable ways.
 
+## Productization Phase 1 Runtime Contract
+Productization Phase 1 adds a normalized operator-facing run inspection contract layered on top of journal/observability projections.
+
+Canonical external lifecycle states:
+- `queued`
+- `starting`
+- `running`
+- `retrying`
+- `succeeded`
+- `failed`
+- `cancelled`
+
+Failure classes exposed for operator diagnostics:
+- `transient_runtime_error`
+- `adapter_error`
+- `artifact_validation_error`
+- `workflow_definition_error`
+- `mission_definition_error`
+- `non_retryable_execution_error`
+
+Inspection payloads now include deterministic:
+- attempt count / current attempt index
+- retry count
+- failure class and failure reason
+- artifact validation summary (required/optional presence)
+- stable attempt history and artifact list ordering
+
 ## Sprint 71 Canonical Integration
 Sprint 71 makes hardened execution the default workflow path.
 

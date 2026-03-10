@@ -36,6 +36,15 @@ const { processLaunch } = vi.hoisted(() => ({
 const { tick } = vi.hoisted(() => ({
   tick: vi.fn(async () => ({ tickTimeUtc: '2026-03-10T13:00:00.000Z', evaluations: [], launches: [] }))
 }));
+const { advanceForSchedulerTick } = vi.hoisted(() => ({
+  advanceForSchedulerTick: vi.fn(() => ({
+    tickTimeUtc: '2026-03-10T13:00:00.000Z',
+    schedulerSlots: [],
+    advancedInvestigations: [],
+    dueBySlot: [],
+    activeCount: 0
+  }))
+}));
 
 vi.mock('../research/inspection.ts', () => ({
   createResearchInspection: vi.fn(() => ({
@@ -69,6 +78,12 @@ vi.mock('../scheduler/service.ts', () => ({
       }
       return tick();
     }
+  }))
+}));
+
+vi.mock('../investigations/investigation-scheduler.ts', () => ({
+  createInvestigationScheduler: vi.fn(() => ({
+    advanceForSchedulerTick
   }))
 }));
 
@@ -119,6 +134,7 @@ describe('research CLI commands', () => {
     expect(code).toBe(0);
     expect(processLaunch).toHaveBeenCalledTimes(1);
     expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('research');
+    expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('investigations');
     stdout.mockRestore();
   });
 });

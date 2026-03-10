@@ -1,0 +1,5 @@
+agentId,missionId,nodeId,retryCount,runId,status,task,workflowId
+compliance-risk-reviewer,rwa-market-analysis,final-review,0,run_smartfunds-core_0005,completed,review,research-analysis-workflow
+compliance-risk-reviewer,rwa-market-analysis,regulatory-scan,0,run_smartfunds-core_0005,completed,regulatory-scan,research-analysis-workflow
+lead-thesis-architect,rwa-market-analysis,thesis-synthesis,0,run_smartfunds-core_0005,completed,synthesis,research-analysis-workflow
+macro-signal-analyst,rwa-market-analysis,market-research,0,run_smartfunds-core_0005,completed,research,research-analysis-workflow

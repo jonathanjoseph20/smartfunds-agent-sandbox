@@ -159,3 +159,8 @@ These surfaces mirror existing signals and triggers inspection patterns and emit
 ## Future Compatibility
 
 This layer is the bounded autonomous investigation substrate for later research-agent and swarm-like systems, without introducing generalized orchestration in Sprint 2.6.
+
+## Sprint 2.7 Integration
+
+Long-running scheduler-aware lifecycle progression is documented in:
+- `docs/architecture/investigation-scheduler-integration.md`

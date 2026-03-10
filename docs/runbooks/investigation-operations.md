@@ -124,3 +124,6 @@ If an investigation is `failed`:
 ## Future Compatibility Note
 
 This layer is the bounded autonomous investigation substrate for later research-agent and swarm-like systems, without yet introducing generalized orchestration.
+
+For scheduler-integrated multi-cycle lifecycle operations, see:
+- `docs/runbooks/long-running-investigations.md`

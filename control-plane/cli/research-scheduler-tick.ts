@@ -1,4 +1,5 @@
 import { canonicalStringify } from '../finance/determinism.ts';
+import { createInvestigationScheduler } from '../investigations/investigation-scheduler.ts';
 import { createResearchRuntime } from '../research/runtime.ts';
 import { createSchedulerService } from '../scheduler/service.ts';
 
@@ -25,6 +26,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     const args = parseArgs(argv);
     const runtime = createResearchRuntime();
+    const investigationScheduler = createInvestigationScheduler();
     const processingOutcomes: ReturnType<typeof runtime.processLaunch>[] = [];
 
     const scheduler = createSchedulerService({
@@ -34,8 +36,24 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     });
 
     const result = await scheduler.tick({ dryRun: args.dryRun });
+    let investigations: Record<string, unknown> = {
+      tickTimeUtc: result.tickTimeUtc,
+      schedulerSlots: [],
+      advancedInvestigations: [],
+      dueBySlot: [],
+      activeCount: 0
+    };
+    try {
+      investigations = investigationScheduler.advanceForSchedulerTick({
+        tickTimeUtc: result.tickTimeUtc,
+        evaluations: result.evaluations
+      }) as unknown as Record<string, unknown>;
+    } catch {
+      // Investigation scheduler integration is passive and must not alter scheduler semantics.
+    }
     printJson({
       ...result,
+      investigations,
       research: processingOutcomes.flat().sort((left, right) => {
         const teamCmp = left.teamId.localeCompare(right.teamId);
         if (teamCmp !== 0) {

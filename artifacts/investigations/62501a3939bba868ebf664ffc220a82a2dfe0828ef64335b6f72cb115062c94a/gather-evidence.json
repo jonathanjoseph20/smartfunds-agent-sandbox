@@ -1,0 +1,1 @@
+{"dataset":"governance_vote_tracker","requiredInputs":["intake_context"],"signalMetadata":{"protocol":"Aave","riskLevel":"high"}}

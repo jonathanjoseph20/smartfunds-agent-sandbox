@@ -1,0 +1,11 @@
+{
+  "watchlist": [
+    "Aave",
+    "Uniswap"
+  ],
+  "riskSignals": [
+    "Monitor reserve-factor volatility",
+    "Watch fee-switch governance split"
+  ],
+  "profile": "lite"
+}

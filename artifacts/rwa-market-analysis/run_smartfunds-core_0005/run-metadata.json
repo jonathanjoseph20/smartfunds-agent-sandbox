@@ -1,0 +1,33 @@
+{
+  "artifactCount": 4,
+  "artifactValidation": {
+    "missingOptional": [],
+    "missingRequired": [],
+    "status": "complete"
+  },
+  "attemptCount": 1,
+  "coreReasons": [],
+  "coreScopeMatched": false,
+  "currentAttemptIndex": 0,
+  "executionPath": "governed",
+  "failureClass": null,
+  "failureReason": null,
+  "missionId": "rwa-market-analysis",
+  "profile": "core",
+  "requestedProfile": "core",
+  "requiredProfile": "lite",
+  "retryCount": 0,
+  "runId": "run_smartfunds-core_0005",
+  "runtimeStatus": "succeeded",
+  "scopeClassification": {
+    "allowedForBuild": true,
+    "coreScopeMatched": false,
+    "matchedBuildPaths": [],
+    "matchedCorePaths": [],
+    "reason": "no_target_scope_provided",
+    "requiredProfile": "lite",
+    "unmatchedPaths": []
+  },
+  "status": "completed",
+  "workflowId": "research-analysis-workflow"
+}

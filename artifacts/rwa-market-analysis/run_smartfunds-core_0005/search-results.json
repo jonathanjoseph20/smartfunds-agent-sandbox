@@ -1,0 +1,41 @@
+{
+  "executionOrder": [
+    "final-review",
+    "market-research",
+    "regulatory-scan",
+    "thesis-synthesis"
+  ],
+  "generatedArtifacts": [
+    "dataset.csv",
+    "report.md",
+    "research-pages.json",
+    "search-results.json"
+  ],
+  "missionId": "rwa-market-analysis",
+  "nodeCount": 4,
+  "nodeStates": [
+    {
+      "nodeId": "final-review",
+      "retryCount": 0,
+      "status": "completed"
+    },
+    {
+      "nodeId": "market-research",
+      "retryCount": 0,
+      "status": "completed"
+    },
+    {
+      "nodeId": "regulatory-scan",
+      "retryCount": 0,
+      "status": "completed"
+    },
+    {
+      "nodeId": "thesis-synthesis",
+      "retryCount": 0,
+      "status": "completed"
+    }
+  ],
+  "runId": "run_smartfunds-core_0005",
+  "status": "completed",
+  "workflowId": "research-analysis-workflow"
+}

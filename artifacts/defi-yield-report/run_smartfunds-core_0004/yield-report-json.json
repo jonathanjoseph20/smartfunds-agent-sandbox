@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "protocol": "Aave",
+      "yield": "5.2%"
+    },
+    {
+      "protocol": "Morpho",
+      "yield": "7.1%"
+    },
+    {
+      "protocol": "Maple",
+      "yield": "8.4%"
+    }
+  ],
+  "profile": "lite"
+}

@@ -55,4 +55,23 @@ describe('artifacts:view script', () => {
     expect(code).toBe(1);
     expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('ARTIFACT_RUN_AMBIGUOUS');
   });
+
+  it('T-SPB-AV4 prints profile metadata when run-metadata.json is present', async () => {
+    const runId = 'run_smartfunds-core_2200';
+    const runDir = path.join(base, 'lite-mission', runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'run-metadata.json'), JSON.stringify({
+      profile: 'lite',
+      executionPath: 'lite',
+      artifactCount: 1
+    }), 'utf8');
+
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = await main(['--run', runId]);
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join('');
+    expect(out).toContain('Profile: lite');
+    expect(out).toContain('Execution Path: lite');
+    expect(out).toContain('Artifact Count: 1');
+  });
 });

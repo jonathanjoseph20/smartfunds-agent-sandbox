@@ -169,9 +169,12 @@ function parseCsv(content: string): { headers: string[]; rows: string[][] } {
 function maybeExtractMetadata(runDirectory: string): {
   workflowId?: string;
   status?: string;
+  profile?: string;
+  executionPath?: string;
+  artifactCount?: number;
   nodes?: string[];
 } {
-  const metadataFileNames = ['run.json', 'run-metadata.json', 'metadata.json', 'summary.json'];
+  const metadataFileNames = ['run-metadata.json', 'run.json', 'metadata.json', 'summary.json'];
 
   for (const fileName of metadataFileNames) {
     const absolute = path.join(runDirectory, fileName);
@@ -183,10 +186,13 @@ function maybeExtractMetadata(runDirectory: string): {
       const parsed = JSON.parse(fs.readFileSync(absolute, 'utf8')) as Record<string, unknown>;
       const workflowId = typeof parsed.workflowId === 'string' ? parsed.workflowId : undefined;
       const status = typeof parsed.status === 'string' ? parsed.status : undefined;
+      const profile = typeof parsed.profile === 'string' ? parsed.profile : undefined;
+      const executionPath = typeof parsed.executionPath === 'string' ? parsed.executionPath : undefined;
+      const artifactCount = typeof parsed.artifactCount === 'number' ? parsed.artifactCount : undefined;
       const nodes = Array.isArray(parsed.nodes) && parsed.nodes.every((entry) => typeof entry === 'string')
         ? parsed.nodes as string[]
         : undefined;
-      return { workflowId, status, nodes };
+      return { workflowId, status, profile, executionPath, artifactCount, nodes };
     } catch {
       continue;
     }
@@ -228,7 +234,10 @@ export class ArtifactLoader {
       return {
         runId: location.runId,
         ...(location.missionId ? { missionId: location.missionId } : {}),
-        ...(metadata.status ? { status: metadata.status } : {})
+        ...(metadata.status ? { status: metadata.status } : {}),
+        ...(metadata.profile ? { profile: metadata.profile } : {}),
+        ...(metadata.executionPath ? { executionPath: metadata.executionPath } : {}),
+        ...(typeof metadata.artifactCount === 'number' ? { artifactCount: metadata.artifactCount } : {})
       };
     });
   }
@@ -246,6 +255,9 @@ export class ArtifactLoader {
       ...(runDirectory.missionId ? { missionId: runDirectory.missionId } : {}),
       ...(metadata.workflowId ? { workflowId: metadata.workflowId } : {}),
       ...(metadata.status ? { status: metadata.status } : {}),
+      ...(metadata.profile ? { profile: metadata.profile } : {}),
+      ...(metadata.executionPath ? { executionPath: metadata.executionPath } : {}),
+      ...(typeof metadata.artifactCount === 'number' ? { artifactCount: metadata.artifactCount } : {}),
       ...(metadata.nodes ? { nodes: metadata.nodes } : {}),
       artifacts: listArtifacts(runDirectory.runDirectory)
     };

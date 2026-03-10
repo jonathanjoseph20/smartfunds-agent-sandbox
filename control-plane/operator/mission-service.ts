@@ -24,7 +24,16 @@ import { loadWorkflowDefinitionById } from '../workflows/workflow-loader.ts';
 import { createSwarmWorkflowExecutor } from '../workflows/workflow-runner.ts';
 import { executeWorkflowRunWithHardening } from '../runtime/hardened-workflow-runtime.ts';
 import { cancelWorkflowRun, reconstructWorkflowStateFromJournal } from '../runtime/recovery-engine.ts';
-import { writeArtifact } from '../../runtime/output/artifact-writer.ts';
+import { ArtifactWriter, writeArtifact, type DeclaredArtifact } from '../../runtime/output/artifact-writer.ts';
+import { createWorkflowDagTaskExecutor } from '../../runtime/runtime-task-executor.ts';
+import { listArtifactsForRun } from '../../runtime/output/artifact-listing.ts';
+import {
+  assertLiteTaskAllowed,
+  assertLiteWorkflowTasks,
+  assertProfileCapabilities,
+  resolveExecutionProfile,
+  type ExecutionPath
+} from './profile-policy.ts';
 
 type MissionServiceOptions = {
   journal?: ExecutionJournal;
@@ -47,6 +56,28 @@ function sortedObject(input: Record<string, string>): Record<string, string> {
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values)).sort((left, right) => left.localeCompare(right));
+}
+
+function toDeclaredArtifacts(value: unknown): DeclaredArtifact[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => entry as Record<string, unknown>)
+    .flatMap((entry) => {
+      const artifactId = typeof entry.artifactId === 'string' ? entry.artifactId.trim() : '';
+      const format = entry.format;
+      if (
+        artifactId.length === 0
+        || (format !== 'csv' && format !== 'xlsx' && format !== 'artifact' && format !== 'markdown')
+      ) {
+        return [];
+      }
+      return [{ artifactId, format } as DeclaredArtifact];
+    })
+    .sort((left, right) => left.artifactId.localeCompare(right.artifactId));
 }
 
 function mergeMissionContext(input: {
@@ -265,32 +296,88 @@ function writeMissionArtifacts(input: {
   });
 }
 
-async function executeMissionWorkflow(input: {
+function createGovernedExecutor(input: {
+  journal: ExecutionJournal;
+  projectId: string;
+  missionMemory: Record<string, unknown>;
+}) {
+  return createSwarmWorkflowExecutor({
+    swarmRunner: createSwarmRunner({ journal: input.journal }),
+    projectId: input.projectId,
+    missionMemory: input.missionMemory
+  });
+}
+
+function createLiteExecutor(input: {
+  runId: string;
+  missionContext: Record<string, unknown>;
+}) {
+  const liteArtifactWriter = new ArtifactWriter(
+    'artifacts',
+    toDeclaredArtifacts(input.missionContext.declaredArtifacts)
+  );
+  const liteExecutor = createWorkflowDagTaskExecutor({
+    runId: input.runId,
+    artifactWriter: liteArtifactWriter
+  });
+
+  return {
+    async execute(params: {
+      missionId: string;
+      workflowId: string;
+      workflowNodeId: string;
+      task: string;
+      previousOutputs: Record<string, unknown>;
+      missionContextMemory?: Record<string, unknown>;
+    }) {
+      assertLiteTaskAllowed(params.task);
+      return liteExecutor.execute(params);
+    }
+  };
+}
+
+async function executeMissionByPath(input: {
   journal: ExecutionJournal;
   missionId: string;
   projectId: string;
   workflowId: string;
   missionParameters: Record<string, string>;
   missionContext: Record<string, unknown>;
+  executionPath: ExecutionPath;
+  profile: string;
   workflowsDir?: string;
 }): Promise<{ runId: string; status: string }> {
   const workflow = loadWorkflowDefinitionById(input.workflowId, input.workflowsDir);
 
+  if (input.executionPath === 'lite') {
+    assertLiteWorkflowTasks(workflow.nodes.map((node) => node.task));
+  }
+
   const run = input.journal.createRun({
     projectId: input.projectId,
     kind: 'mission',
-    entrypoint: `mission:${input.missionId}`
+    entrypoint: `mission:${input.missionId}`,
+    profile: input.profile,
+    executionPath: input.executionPath
   });
 
-  const swarmRunner = createSwarmRunner({ journal: input.journal });
-  const executor = createSwarmWorkflowExecutor({
-    swarmRunner,
-    projectId: input.projectId,
-    missionMemory: {
-      missionParameters: input.missionParameters,
+  const missionMemory = {
+    ...input.missionContext,
+    missionParameters: input.missionParameters,
+    missionContext: input.missionContext,
+    profile: input.profile,
+    executionPath: input.executionPath
+  };
+  const executor = input.executionPath === 'lite'
+    ? createLiteExecutor({
+      runId: run.runId,
       missionContext: input.missionContext
-    }
-  });
+    })
+    : createGovernedExecutor({
+      journal: input.journal,
+      projectId: input.projectId,
+      missionMemory
+    });
 
   await executeWorkflowRunWithHardening({
     journal: input.journal,
@@ -299,8 +386,7 @@ async function executeMissionWorkflow(input: {
     workflow,
     executor,
     missionContextMemory: {
-      missionParameters: input.missionParameters,
-      missionContext: input.missionContext
+      ...missionMemory
     }
   });
 
@@ -329,19 +415,42 @@ async function executeMissionWorkflow(input: {
         return left.nodeId.localeCompare(right.nodeId);
       })
       .map((node) => node.nodeId);
-  writeMissionArtifacts({
+  if (input.executionPath === 'governed') {
+    writeMissionArtifacts({
+      missionId: input.missionId,
+      runId: runRecord.runId,
+      workflowId: runRecord.workflowId,
+      status: runRecord.status,
+      executionOrder,
+      nodeStates,
+      events: inspected.events.map((event) => ({
+        sequence: event.sequence,
+        type: event.type,
+        ...(event.taskId ? { taskId: event.taskId } : {}),
+        ...(event.payload ? { payload: event.payload } : {})
+      }))
+    });
+  }
+
+  const artifactFiles = listArtifactsForRun({
+    missionId: input.missionId,
+    runId: runRecord.runId
+  }).filter((file) => file !== 'run-metadata.json');
+
+  writeArtifact({
     missionId: input.missionId,
     runId: runRecord.runId,
-    workflowId: runRecord.workflowId,
-    status: runRecord.status,
-    executionOrder,
-    nodeStates,
-    events: inspected.events.map((event) => ({
-      sequence: event.sequence,
-      type: event.type,
-      ...(event.taskId ? { taskId: event.taskId } : {}),
-      ...(event.payload ? { payload: event.payload } : {})
-    }))
+    type: 'json',
+    filename: 'run-metadata.json',
+    content: {
+      runId: runRecord.runId,
+      missionId: input.missionId,
+      workflowId: runRecord.workflowId,
+      status: runRecord.status,
+      profile: input.profile,
+      executionPath: input.executionPath,
+      artifactCount: artifactFiles.length
+    }
   });
 
   return {
@@ -350,10 +459,63 @@ async function executeMissionWorkflow(input: {
   };
 }
 
+async function executeLiteMission(input: {
+  journal: ExecutionJournal;
+  missionId: string;
+  projectId: string;
+  workflowId: string;
+  missionParameters: Record<string, string>;
+  missionContext: Record<string, unknown>;
+  profile: string;
+  workflowsDir?: string;
+}): Promise<{ runId: string; status: string }> {
+  return executeMissionByPath({
+    ...input,
+    executionPath: 'lite'
+  });
+}
+
+async function executeGovernedMission(input: {
+  journal: ExecutionJournal;
+  missionId: string;
+  projectId: string;
+  workflowId: string;
+  missionParameters: Record<string, string>;
+  missionContext: Record<string, unknown>;
+  profile: string;
+  workflowsDir?: string;
+}): Promise<{ runId: string; status: string }> {
+  return executeMissionByPath({
+    ...input,
+    executionPath: 'governed'
+  });
+}
+
+async function executeMission(input: {
+  journal: ExecutionJournal;
+  missionId: string;
+  projectId: string;
+  workflowId: string;
+  missionParameters: Record<string, string>;
+  missionContext: Record<string, unknown>;
+  executionPath: ExecutionPath;
+  profile: string;
+  workflowsDir?: string;
+}): Promise<{ runId: string; status: string }> {
+  if (input.executionPath === 'lite') {
+    return executeLiteMission(input);
+  }
+  return executeGovernedMission(input);
+}
+
 export function createMissionService(options: MissionServiceOptions = {}) {
   const journal = buildJournal(options);
 
-  async function startMission(input: { missionId: string; params: Record<string, string> }): Promise<Record<string, unknown>> {
+  async function startMission(input: {
+    missionId: string;
+    params: Record<string, string>;
+    profile?: string;
+  }): Promise<Record<string, unknown>> {
     const profiles = loadAgentProfilesFromDir(options.agentsDir);
     const mission = loadMissionDefinitionById(input.missionId, options.missionsDir);
     const team = loadTeamDefinitionById(mission.teamId, options.teamsDir, profiles);
@@ -371,22 +533,41 @@ export function createMissionService(options: MissionServiceOptions = {}) {
       missionParameters
     });
 
-    const executed = await executeMissionWorkflow({
+    const resolved = resolveExecutionProfile({
+      mission,
+      requestedProfile: input.profile
+    });
+    assertProfileCapabilities({
+      mission,
+      profile: resolved.profile
+    });
+
+    const executed = await executeMission({
       journal,
       missionId: mission.missionId,
       projectId: mission.projectId,
       workflowId: mission.workflowId,
       missionParameters,
       missionContext: mergedContext,
+      profile: resolved.profile,
+      executionPath: resolved.executionPath,
       workflowsDir: options.workflowsDir
     });
+
+    const artifacts = listArtifactsForRun({
+      missionId: mission.missionId,
+      runId: executed.runId
+    }).filter((file) => file !== 'run-metadata.json');
 
     return {
       missionId: mission.missionId,
       status: mapRunStatusToMissionStatus(executed.status),
+      profile: resolved.profile,
+      executionPath: resolved.executionPath,
       teamId: mission.teamId,
       workflowId: mission.workflowId,
       workflowRun: executed.runId,
+      artifactCount: artifacts.length,
       missionParameters,
       contextKeys: Object.keys(mergedContext).sort((left, right) => left.localeCompare(right))
     };
@@ -410,6 +591,8 @@ export function createMissionService(options: MissionServiceOptions = {}) {
         missionId: mission.missionId,
         status: latest ? mapRunStatusToMissionStatus(latest.status) : 'created',
         workflowRun: latest?.runId ?? null,
+        profile: latest?.profile ?? mission.profile ?? 'core',
+        executionPath: latest?.executionPath ?? ((mission.profile ?? 'core') === 'lite' ? 'lite' : 'governed'),
         teamId: mission.teamId,
         workflowId: mission.workflowId
       };
@@ -431,6 +614,8 @@ export function createMissionService(options: MissionServiceOptions = {}) {
           missionId,
           status: latest ? mapRunStatusToMissionStatus(latest.status) : 'created',
           workflowRun: latest?.runId ?? null,
+          profile: latest?.profile ?? null,
+          executionPath: latest?.executionPath ?? null,
           teamId: null,
           workflowId: null
         };
@@ -481,11 +666,15 @@ export function createMissionService(options: MissionServiceOptions = {}) {
     return {
       missionId: mission.missionId,
       status: mapRunStatusToMissionStatus(latest.status),
+      profile: latest.profile,
+      executionPath: latest.executionPath,
       teamId: mission.teamId,
       workflowId: mission.workflowId,
       workflowRuns: linkedRuns.map((record) => ({
         runId: record.runId,
         status: record.status,
+        profile: record.profile,
+        executionPath: record.executionPath,
         retryCount: record.retryCount,
         completedNodeCount: record.completedNodeCount,
         failedNodeCount: record.failedNodeCount,
@@ -649,13 +838,15 @@ export function createMissionService(options: MissionServiceOptions = {}) {
         }).sort(([left], [right]) => left.localeCompare(right))
       );
 
-      const executed = await executeMissionWorkflow({
+      const executed = await executeMission({
         journal,
         missionId: record.missionId,
         projectId: record.template.projectId,
         workflowId: record.template.workflowId,
         missionParameters: {},
         missionContext,
+        profile: 'core',
+        executionPath: 'governed',
         workflowsDir: options.workflowsDir
       });
 

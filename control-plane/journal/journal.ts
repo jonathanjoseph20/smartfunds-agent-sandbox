@@ -22,7 +22,13 @@ function resolveProjectContext(projectId: string): { entity: string; pod: string
 }
 
 export type ExecutionJournal = {
-  createRun: (input: { projectId: string; kind: RunKind; entrypoint: string }) => ExecutionRun;
+  createRun: (input: {
+    projectId: string;
+    kind: RunKind;
+    entrypoint: string;
+    profile?: string;
+    executionPath?: 'governed' | 'lite';
+  }) => ExecutionRun;
   appendEvent: (input: {
     runId: string;
     type: AppendEventInput['type'];
@@ -39,7 +45,13 @@ export type ExecutionJournal = {
 export function createExecutionJournal(options: JournalOptions = {}): ExecutionJournal {
   const storage = options.storage ?? createJournalStorage({ rootDir: options.rootDir });
 
-  function createRun(input: { projectId: string; kind: RunKind; entrypoint: string }): ExecutionRun {
+  function createRun(input: {
+    projectId: string;
+    kind: RunKind;
+    entrypoint: string;
+    profile?: string;
+    executionPath?: 'governed' | 'lite';
+  }): ExecutionRun {
     const context = resolveProjectContext(input.projectId);
 
     return storage.createRun({
@@ -48,7 +60,9 @@ export function createExecutionJournal(options: JournalOptions = {}): ExecutionJ
       entrypoint: input.entrypoint,
       entity: context.entity,
       pod: context.pod,
-      mode: context.mode
+      mode: context.mode,
+      ...(input.profile ? { profile: input.profile } : {}),
+      ...(input.executionPath ? { executionPath: input.executionPath } : {})
     });
   }
 

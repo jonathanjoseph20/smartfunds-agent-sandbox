@@ -7,6 +7,13 @@ export type ResolvedRunDirectory = {
   directory: string;
 };
 
+export type RunArtifactMetadata = {
+  profile?: string;
+  executionPath?: string;
+  status?: string;
+  artifactCount?: number;
+};
+
 export function findRunDirectoriesByRunId(artifactsRoot: string, runId: string): ResolvedRunDirectory[] {
   if (!fs.existsSync(artifactsRoot)) {
     return [];
@@ -78,7 +85,30 @@ export function readFilePreview(filePath: string, maxLines: number): { exists: b
   };
 }
 
-export function collectRunsFromArtifacts(artifactsRoot: string): Array<{ missionId: string; runId: string }> {
+export function readRunMetadata(directory: string): RunArtifactMetadata {
+  const metadataPath = path.join(directory, 'run-metadata.json');
+  if (!fs.existsSync(metadataPath) || !fs.statSync(metadataPath).isFile()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(metadataPath, 'utf8')) as Record<string, unknown>;
+    return {
+      ...(typeof parsed.profile === 'string' ? { profile: parsed.profile } : {}),
+      ...(typeof parsed.executionPath === 'string' ? { executionPath: parsed.executionPath } : {}),
+      ...(typeof parsed.status === 'string' ? { status: parsed.status } : {}),
+      ...(typeof parsed.artifactCount === 'number' ? { artifactCount: parsed.artifactCount } : {})
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function collectRunsFromArtifacts(artifactsRoot: string): Array<{
+  missionId: string;
+  runId: string;
+  metadata: RunArtifactMetadata;
+}> {
   if (!fs.existsSync(artifactsRoot) || !fs.statSync(artifactsRoot).isDirectory()) {
     return [];
   }
@@ -88,7 +118,7 @@ export function collectRunsFromArtifacts(artifactsRoot: string): Array<{ mission
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
 
-  const runs: Array<{ missionId: string; runId: string }> = [];
+  const runs: Array<{ missionId: string; runId: string; metadata: RunArtifactMetadata }> = [];
 
   for (const missionId of missions) {
     const missionDir = path.join(artifactsRoot, missionId);
@@ -102,7 +132,12 @@ export function collectRunsFromArtifacts(artifactsRoot: string): Array<{ mission
         continue;
       }
 
-      runs.push({ missionId, runId });
+      const runDir = path.join(missionDir, runId);
+      runs.push({
+        missionId,
+        runId,
+        metadata: readRunMetadata(runDir)
+      });
     }
   }
 

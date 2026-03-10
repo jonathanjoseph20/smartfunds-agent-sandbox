@@ -34,11 +34,14 @@ async function loadRuns() {
     listEl.innerHTML = payload.map((run) => {
       const mission = run.missionId ? ` mission=${run.missionId}` : '';
       const status = run.status ? ` status=${run.status}` : '';
+      const profile = run.profile ? ` profile=${run.profile}` : '';
+      const executionPath = run.executionPath ? ` path=${run.executionPath}` : '';
+      const artifacts = typeof run.artifactCount === 'number' ? ` artifacts=${run.artifactCount}` : '';
       return `
         <li>
           <button class="run-item" data-run-id="${escapeHtml(run.runId)}">
             <strong>${escapeHtml(run.runId)}</strong><br />
-            <small>${escapeHtml(`${mission}${status}`.trim() || 'metadata unavailable')}</small>
+            <small>${escapeHtml(`${mission}${profile}${executionPath}${status}${artifacts}`.trim() || 'metadata unavailable')}</small>
           </button>
         </li>
       `;

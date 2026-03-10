@@ -1,0 +1,90 @@
+{
+  "missionId": "defi-yield-report",
+  "name": "DeFi Yield Report",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-defi-yield-report",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Produce a deterministic DeFi yield snapshot without repository mutation.",
+  "successCriteria": [
+    "Produce yield-report.md artifact",
+    "Produce yield-report.json artifact"
+  ],
+  "deliverables": [
+    "yield-report.md",
+    "yield-report.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "yield-report",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "yield-report-json",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "extract-yield-grid": {
+        "entities": [
+          {
+            "source": "Aave",
+            "category": "defi-yield",
+            "domain_type": "defi",
+            "credibility": 90,
+            "coverage": 78
+          },
+          {
+            "source": "Morpho",
+            "category": "defi-yield",
+            "domain_type": "defi",
+            "credibility": 86,
+            "coverage": 82
+          },
+          {
+            "source": "Maple",
+            "category": "defi-yield",
+            "domain_type": "defi",
+            "credibility": 84,
+            "coverage": 80
+          }
+        ]
+      },
+      "write-yield-report": {
+        "artifactId": "yield-report",
+        "content": "# DeFi Yield Report\n\n- Aave: 5.2%\n- Morpho: 7.1%\n- Maple: 8.4%\n"
+      },
+      "write-yield-json": {
+        "artifactId": "yield-report-json",
+        "payload": {
+          "entries": [
+            {
+              "protocol": "Aave",
+              "yield": "5.2%"
+            },
+            {
+              "protocol": "Morpho",
+              "yield": "7.1%"
+            },
+            {
+              "protocol": "Maple",
+              "yield": "8.4%"
+            }
+          ],
+          "profile": "lite"
+        }
+      }
+    }
+  },
+  "tags": [
+    "defi",
+    "lite",
+    "research"
+  ]
+}

@@ -53,7 +53,11 @@ function normalizeRun(run: ExecutionRun): ExecutionRun {
     kind: run.kind,
     status: run.status,
     entrypoint: run.entrypoint,
-    createdIndex: run.createdIndex
+    createdIndex: run.createdIndex,
+    ...(typeof run.profile === 'string' ? { profile: run.profile } : {}),
+    ...(run.executionPath === 'governed' || run.executionPath === 'lite'
+      ? { executionPath: run.executionPath }
+      : {})
   };
 }
 
@@ -154,7 +158,9 @@ export function createJournalStorage(options: JournalStorageOptions = {}): Journ
       kind: input.kind,
       status: 'pending',
       entrypoint: input.entrypoint,
-      createdIndex: runs.length + 1
+      createdIndex: runs.length + 1,
+      ...(input.profile ? { profile: input.profile } : {}),
+      ...(input.executionPath ? { executionPath: input.executionPath } : {})
     };
 
     writeRun(run);

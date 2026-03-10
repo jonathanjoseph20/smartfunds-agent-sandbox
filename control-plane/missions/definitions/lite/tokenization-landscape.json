@@ -1,0 +1,64 @@
+{
+  "missionId": "tokenization-landscape",
+  "name": "Tokenization Landscape",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-tokenization-landscape",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Summarize tokenization landscape themes in an artifact-only lite run.",
+  "successCriteria": [
+    "Produce tokenization-landscape.md artifact"
+  ],
+  "deliverables": [
+    "tokenization-landscape.md"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "tokenization-landscape",
+        "format": "markdown"
+      }
+    ],
+    "taskInputsByNode": {
+      "extract-landscape-points": {
+        "entities": [
+          {
+            "source": "issuance rails",
+            "category": "tokenization",
+            "domain_type": "infrastructure",
+            "credibility": 89,
+            "coverage": 82
+          },
+          {
+            "source": "compliance automation",
+            "category": "tokenization",
+            "domain_type": "compliance",
+            "credibility": 91,
+            "coverage": 86
+          },
+          {
+            "source": "secondary liquidity venues",
+            "category": "tokenization",
+            "domain_type": "market-structure",
+            "credibility": 85,
+            "coverage": 79
+          }
+        ]
+      },
+      "write-landscape-report": {
+        "artifactId": "tokenization-landscape",
+        "content": "# Tokenization Landscape\n\n1. Issuance rails\n2. Compliance automation\n3. Secondary liquidity venues\n"
+      }
+    }
+  },
+  "tags": [
+    "landscape",
+    "lite",
+    "tokenization"
+  ]
+}

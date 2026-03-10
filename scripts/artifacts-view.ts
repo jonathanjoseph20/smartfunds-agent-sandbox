@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { listFilesInDirectory, readFilePreview, resolveUniqueRunDirectory } from './artifacts-utils.ts';
+import { listFilesInDirectory, readFilePreview, readRunMetadata, resolveUniqueRunDirectory } from './artifacts-utils.ts';
 
 type ParsedArgs = {
   runId: string;
@@ -45,6 +45,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     const args = parseArgs(argv);
     const resolved = resolveUniqueRunDirectory(path.join('.', 'artifacts'), args.runId);
     const files = listFilesInDirectory(resolved.directory);
+    const metadata = readRunMetadata(resolved.directory);
 
     const report = readFilePreview(path.join(resolved.directory, 'report.md'), 80);
     const dataset = readFilePreview(path.join(resolved.directory, 'dataset.csv'), 20);
@@ -52,6 +53,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     process.stdout.write('=== REPORT ===\n\n');
     process.stdout.write(`Mission ID: ${resolved.missionId}\n`);
     process.stdout.write(`Run ID: ${resolved.runId}\n\n`);
+    if (metadata.profile) {
+      process.stdout.write(`Profile: ${metadata.profile}\n`);
+    }
+    if (metadata.executionPath) {
+      process.stdout.write(`Execution Path: ${metadata.executionPath}\n`);
+    }
+    if (typeof metadata.artifactCount === 'number') {
+      process.stdout.write(`Artifact Count: ${String(metadata.artifactCount)}\n`);
+    }
+    if (metadata.profile || metadata.executionPath || typeof metadata.artifactCount === 'number') {
+      process.stdout.write('\n');
+    }
 
     if (report.exists) {
       process.stdout.write(`${report.content}\n`);

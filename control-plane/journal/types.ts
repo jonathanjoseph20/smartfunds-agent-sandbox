@@ -49,6 +49,8 @@ export type ExecutionRun = {
   status: RunStatus;
   entrypoint: string;
   createdIndex: number;
+  profile?: string;
+  executionPath?: 'governed' | 'lite';
 };
 
 export type ExecutionEvent = {
@@ -86,6 +88,8 @@ export type CreateRunInput = {
   mode: string;
   kind: RunKind;
   entrypoint: string;
+  profile?: string;
+  executionPath?: 'governed' | 'lite';
 };
 
 export type AppendEventInput = {

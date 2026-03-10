@@ -1,0 +1,80 @@
+{
+  "missionId": "research-market-scan",
+  "name": "Research Market Scan",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-research-market-scan",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Generate an artifact-only market scan for operator review.",
+  "successCriteria": [
+    "Produce market-scan.md artifact",
+    "Produce market-summary.json artifact"
+  ],
+  "deliverables": [
+    "market-scan.md",
+    "market-summary.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "market-scan",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "market-summary",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "extract-market-points": {
+        "entities": [
+          {
+            "source": "tokenized treasuries",
+            "category": "rwa",
+            "domain_type": "finance",
+            "credibility": 92,
+            "coverage": 88
+          },
+          {
+            "source": "private credit",
+            "category": "rwa",
+            "domain_type": "finance",
+            "credibility": 90,
+            "coverage": 84
+          },
+          {
+            "source": "real estate debt",
+            "category": "rwa",
+            "domain_type": "finance",
+            "credibility": 87,
+            "coverage": 80
+          }
+        ]
+      },
+      "write-market-scan": {
+        "artifactId": "market-scan",
+        "content": "# Market Scan\n\nTop sectors:\n- Tokenized treasuries\n- Private credit\n- Real estate debt\n"
+      },
+      "write-market-summary": {
+        "artifactId": "market-summary",
+        "payload": {
+          "sectors": [
+            "tokenized treasuries",
+            "private credit",
+            "real estate debt"
+          ],
+          "profile": "lite"
+        }
+      }
+    }
+  },
+  "tags": [
+    "lite",
+    "research"
+  ]
+}

@@ -11,17 +11,27 @@ function loadJsonFiles<T>(dir: string): Array<{ file: string; data: T }> {
     return [];
   }
 
-  return fs.readdirSync(dir)
-    .filter((entry) => entry.endsWith('.json'))
-    .sort((left, right) => left.localeCompare(right))
-    .map((entry) => {
-      const filePath = path.join(dir, entry);
-      const raw = fs.readFileSync(filePath, 'utf8');
-      return {
-        file: entry,
-        data: JSON.parse(raw) as T
-      };
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const loaded: Array<{ file: string; data: T }> = [];
+
+  for (const entry of entries) {
+    const filePath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      loaded.push(...loadJsonFiles<T>(filePath));
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.json')) {
+      continue;
+    }
+    const raw = fs.readFileSync(filePath, 'utf8');
+    loaded.push({
+      file: filePath,
+      data: JSON.parse(raw) as T
     });
+  }
+
+  return loaded.sort((left, right) => left.file.localeCompare(right.file));
 }
 
 export function loadMissionDefinitionsFromDir(dir: string = DEFAULT_MISSIONS_DIR): MissionDefinition[] {

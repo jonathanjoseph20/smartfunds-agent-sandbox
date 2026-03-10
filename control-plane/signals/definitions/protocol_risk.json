@@ -1,0 +1,16 @@
+{
+  "signalType": "protocol_risk",
+  "description": "High-priority protocol risk signal detected",
+  "sourceMission": "risk-scan",
+  "schema": {
+    "dataset": "string",
+    "slot": "string",
+    "protocol": "string",
+    "riskLevel": "string"
+  },
+  "deduplicationRules": [
+    "signalType",
+    "dataset",
+    "slot"
+  ]
+}

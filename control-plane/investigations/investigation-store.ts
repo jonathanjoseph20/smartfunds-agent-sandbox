@@ -7,8 +7,10 @@ import {
   InvestigationError,
   type InvestigationEvent,
   type InvestigationEventRecord,
-  type InvestigationRecord
+  type InvestigationRecord,
+  type InvestigationStatus,
 } from './investigation-types.ts';
+import { isInvestigationStatus } from './investigation-lifecycle.ts';
 
 const DEFAULT_INVESTIGATIONS_ROOT = 'investigations';
 const INVESTIGATION_LOG_FILE = 'investigation-events.json';
@@ -45,6 +47,13 @@ function normalizeStringArray(value: unknown): string[] {
   return [...value].sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeStatus(value: unknown): InvestigationStatus {
+  if (typeof value !== 'string' || !isInvestigationStatus(value)) {
+    throw new InvestigationError('INVESTIGATION_INVALID_STORE', 'Investigation event has invalid status value.');
+  }
+  return value;
+}
+
 function normalizeEventRecord(value: unknown): InvestigationEventRecord {
   if (!isRecord(value)) {
     throw new InvestigationError('INVESTIGATION_INVALID_STORE', 'Investigation event must be an object.');
@@ -75,6 +84,31 @@ function normalizeEventRecord(value: unknown): InvestigationEventRecord {
         slot: String(value.slot),
         associatedMissionReferences: normalizeStringArray(value.associatedMissionReferences)
       });
+    case 'LIFECYCLE_TRANSITION_RECORDED':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        ...(typeof value.phaseId === 'string' ? { phaseId: value.phaseId } : {}),
+        fromStatus: normalizeStatus(value.fromStatus),
+        toStatus: normalizeStatus(value.toStatus),
+        reason: String(value.reason),
+        ...(typeof value.schedulerSlot === 'string' ? { schedulerSlot: value.schedulerSlot } : {}),
+        ...(typeof value.nextEligibleSlot === 'string' ? { nextEligibleSlot: value.nextEligibleSlot } : {}),
+        ...(typeof value.waitingReason === 'string' ? { waitingReason: value.waitingReason } : {}),
+        ...(typeof value.waitCondition === 'string' ? { waitCondition: value.waitCondition } : {}),
+        ...(Number.isInteger(value.retryIndex) ? { retryIndex: Number(value.retryIndex) } : {})
+      });
+    case 'PHASE_SLOT_ADVANCEMENT_RECORDED':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        phaseId: String(value.phaseId),
+        schedulerSlot: String(value.schedulerSlot)
+      });
     case 'PHASE_STARTED':
       return canonicalClone({
         sequence,
@@ -82,7 +116,8 @@ function normalizeEventRecord(value: unknown): InvestigationEventRecord {
         eventType,
         investigationRunId,
         phaseId: String(value.phaseId),
-        phaseKind: String(value.phaseKind)
+        phaseKind: String(value.phaseKind),
+        ...(typeof value.schedulerSlot === 'string' ? { schedulerSlot: value.schedulerSlot } : {})
       });
     case 'PHASE_COMPLETED':
       return canonicalClone({
@@ -93,6 +128,41 @@ function normalizeEventRecord(value: unknown): InvestigationEventRecord {
         phaseId: String(value.phaseId),
         phaseKind: String(value.phaseKind),
         findings: normalizeStringArray(value.findings)
+      });
+    case 'PHASE_RETRY_SCHEDULED':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        phaseId: String(value.phaseId),
+        reason: String(value.reason),
+        retryIndex: Number(value.retryIndex),
+        nextEligibleSlot: String(value.nextEligibleSlot),
+        schedulerSlot: String(value.schedulerSlot)
+      });
+    case 'PHASE_WAITING_FOR_DATA':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        phaseId: String(value.phaseId),
+        reason: String(value.reason),
+        waitCondition: String(value.waitCondition),
+        ...(typeof value.nextEligibleSlot === 'string' ? { nextEligibleSlot: value.nextEligibleSlot } : {}),
+        schedulerSlot: String(value.schedulerSlot)
+      });
+    case 'PHASE_SCHEDULED_RESUME':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        phaseId: String(value.phaseId),
+        reason: String(value.reason),
+        nextEligibleSlot: String(value.nextEligibleSlot),
+        schedulerSlot: String(value.schedulerSlot)
       });
     case 'ARTIFACT_RECORDED':
       return canonicalClone({
@@ -143,6 +213,22 @@ function compareEvent(left: InvestigationEventRecord, right: InvestigationEventR
 }
 
 function compareRecord(left: InvestigationRecord, right: InvestigationRecord): number {
+  const terminalWeight = (status: InvestigationStatus): number => {
+    if (status === 'running') return 0;
+    if (status === 'scheduled_resume') return 1;
+    if (status === 'retry_pending') return 2;
+    if (status === 'awaiting_data') return 3;
+    if (status === 'pending') return 4;
+    if (status === 'blocked') return 5;
+    if (status === 'failed') return 6;
+    if (status === 'cancelled') return 7;
+    return 8;
+  };
+
+  const statusCmp = terminalWeight(left.status) - terminalWeight(right.status);
+  if (statusCmp !== 0) {
+    return statusCmp;
+  }
   const dateCmp = right.logDate.localeCompare(left.logDate);
   if (dateCmp !== 0) {
     return dateCmp;
@@ -179,12 +265,38 @@ function projectRecord(events: InvestigationEventRecord[]): InvestigationRecord 
     completedPhaseIds: [],
     artifactPaths: [],
     associatedMissionReferences: created.associatedMissionReferences,
-    findings: []
+    findings: [],
+    retryCountByPhase: {}
   };
 
   for (const event of ordered) {
     switch (event.eventType) {
       case 'INVESTIGATION_CREATED':
+        break;
+      case 'LIFECYCLE_TRANSITION_RECORDED':
+        record.status = event.toStatus;
+        record.lastAttemptedTransition = `${event.fromStatus}->${event.toStatus}:${event.reason}`;
+        if (event.phaseId) {
+          record.currentPhaseId = event.phaseId;
+        }
+        if (event.nextEligibleSlot) {
+          record.nextEligibleSlot = event.nextEligibleSlot;
+        } else if (event.toStatus === 'running' || event.toStatus === 'completed' || event.toStatus === 'failed') {
+          delete record.nextEligibleSlot;
+        }
+        if (event.waitingReason) {
+          record.waitingReason = event.waitingReason;
+        } else if (event.toStatus !== 'awaiting_data' && event.toStatus !== 'scheduled_resume' && event.toStatus !== 'retry_pending') {
+          delete record.waitingReason;
+        }
+        if (event.waitCondition) {
+          record.waitCondition = event.waitCondition;
+        } else if (event.toStatus !== 'awaiting_data') {
+          delete record.waitCondition;
+        }
+        break;
+      case 'PHASE_SLOT_ADVANCEMENT_RECORDED':
+        record.lastAttemptedTransition = `phase_slot:${event.phaseId}:${event.schedulerSlot}`;
         break;
       case 'PHASE_STARTED':
         record.status = 'running';
@@ -195,6 +307,55 @@ function projectRecord(events: InvestigationEventRecord[]): InvestigationRecord 
         record.currentPhaseId = event.phaseId;
         record.completedPhaseIds = uniqueSorted([...record.completedPhaseIds, event.phaseId]);
         record.findings = uniqueSorted([...record.findings, ...event.findings]);
+        record.lastPhaseResult = {
+          phaseId: event.phaseId,
+          outcome: 'completed',
+          reason: 'phase_completed',
+          findings: uniqueSorted(event.findings)
+        };
+        break;
+      case 'PHASE_RETRY_SCHEDULED':
+        record.status = 'retry_pending';
+        record.currentPhaseId = event.phaseId;
+        record.nextEligibleSlot = event.nextEligibleSlot;
+        record.waitingReason = event.reason;
+        record.retryCountByPhase = {
+          ...record.retryCountByPhase,
+          [event.phaseId]: event.retryIndex
+        };
+        record.lastPhaseResult = {
+          phaseId: event.phaseId,
+          outcome: 'retry_scheduled',
+          reason: event.reason,
+          findings: []
+        };
+        break;
+      case 'PHASE_WAITING_FOR_DATA':
+        record.status = 'awaiting_data';
+        record.currentPhaseId = event.phaseId;
+        record.waitingReason = event.reason;
+        record.waitCondition = event.waitCondition;
+        if (event.nextEligibleSlot) {
+          record.nextEligibleSlot = event.nextEligibleSlot;
+        }
+        record.lastPhaseResult = {
+          phaseId: event.phaseId,
+          outcome: 'awaiting_data',
+          reason: event.reason,
+          findings: []
+        };
+        break;
+      case 'PHASE_SCHEDULED_RESUME':
+        record.status = 'scheduled_resume';
+        record.currentPhaseId = event.phaseId;
+        record.waitingReason = event.reason;
+        record.nextEligibleSlot = event.nextEligibleSlot;
+        record.lastPhaseResult = {
+          phaseId: event.phaseId,
+          outcome: 'scheduled_resume',
+          reason: event.reason,
+          findings: []
+        };
         break;
       case 'ARTIFACT_RECORDED':
         record.artifactPaths = uniqueSorted([...record.artifactPaths, event.artifactPath]);
@@ -203,11 +364,27 @@ function projectRecord(events: InvestigationEventRecord[]): InvestigationRecord 
         record.status = 'completed';
         record.finalReportPath = event.finalReportPath;
         record.findings = uniqueSorted([...record.findings, ...event.findings]);
+        record.lastPhaseResult = {
+          phaseId: record.currentPhaseId ?? 'finalize',
+          outcome: 'completed',
+          reason: 'investigation_completed',
+          findings: uniqueSorted(event.findings)
+        };
+        delete record.nextEligibleSlot;
+        delete record.waitingReason;
+        delete record.waitCondition;
         break;
       case 'INVESTIGATION_FAILED':
         record.status = 'failed';
         record.failureReason = event.reason;
         record.currentPhaseId = event.phaseId;
+        record.lastPhaseResult = {
+          phaseId: event.phaseId,
+          outcome: 'failed',
+          reason: event.reason,
+          findings: []
+        };
+        delete record.nextEligibleSlot;
         break;
       default:
         break;
@@ -316,6 +493,15 @@ export function createInvestigationStore(options: { rootDir?: string } = {}) {
     return [...events].sort(compareEvent);
   }
 
+  function hasPhaseAdvancementForSlot(input: { investigationRunId: string; phaseId: string; schedulerSlot: string }): boolean {
+    const events = groupByRunId().get(input.investigationRunId) ?? [];
+    return events.some((event) => (
+      event.eventType === 'PHASE_SLOT_ADVANCEMENT_RECORDED'
+      && event.phaseId === input.phaseId
+      && event.schedulerSlot === input.schedulerSlot
+    ));
+  }
+
   function hasInvestigationByDedupeKey(dedupeKey: string): boolean {
     return listInvestigations().some((record) => record.dedupeKey === dedupeKey);
   }
@@ -341,6 +527,7 @@ export function createInvestigationStore(options: { rootDir?: string } = {}) {
     listInvestigations,
     getInvestigation,
     getInvestigationHistory,
+    hasPhaseAdvancementForSlot,
     hasInvestigationByDedupeKey,
     listHistory
   };

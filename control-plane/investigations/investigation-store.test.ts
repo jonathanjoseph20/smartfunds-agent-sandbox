@@ -96,4 +96,55 @@ describe('investigation store', () => {
       failureReason: 'forced_phase_failure'
     });
   });
+
+  it('T-INV-S3 projects waiting and retry metadata deterministically', () => {
+    const store = createInvestigationStore({ rootDir: path.join(tmpRoot, 'investigations') });
+
+    store.appendEvent({
+      logDate: '2026-03-10',
+      event: {
+        eventType: 'INVESTIGATION_CREATED',
+        investigationRunId: 'run-3',
+        dedupeKey: 'dedupe-3',
+        investigationDefinitionId: 'liquidity-drain-investigation',
+        sourceSignalReference: 'signal-3',
+        sourceSignalType: 'liquidity_drain',
+        slot: 'interval_hours:6:2026-03-10T12:00Z',
+        associatedMissionReferences: ['defi-liquidity-scan']
+      }
+    });
+    store.appendEvent({
+      logDate: '2026-03-10',
+      event: {
+        eventType: 'PHASE_RETRY_SCHEDULED',
+        investigationRunId: 'run-3',
+        phaseId: 'gather',
+        reason: 'transient_failure',
+        retryIndex: 1,
+        nextEligibleSlot: 'interval_hours:6:2026-03-10T18:00Z',
+        schedulerSlot: 'interval_hours:6:2026-03-10T12:00Z'
+      }
+    });
+    store.appendEvent({
+      logDate: '2026-03-10',
+      event: {
+        eventType: 'LIFECYCLE_TRANSITION_RECORDED',
+        investigationRunId: 'run-3',
+        phaseId: 'gather',
+        fromStatus: 'running',
+        toStatus: 'retry_pending',
+        reason: 'transient_failure',
+        schedulerSlot: 'interval_hours:6:2026-03-10T12:00Z',
+        nextEligibleSlot: 'interval_hours:6:2026-03-10T18:00Z',
+        retryIndex: 1
+      }
+    });
+
+    expect(store.getInvestigation('run-3')).toMatchObject({
+      status: 'retry_pending',
+      currentPhaseId: 'gather',
+      nextEligibleSlot: 'interval_hours:6:2026-03-10T18:00Z',
+      retryCountByPhase: { gather: 1 }
+    });
+  });
 });

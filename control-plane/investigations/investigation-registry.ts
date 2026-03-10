@@ -3,11 +3,14 @@ import path from 'node:path';
 
 import {
   INVESTIGATION_PHASE_KINDS,
+  INVESTIGATION_PHASE_EXECUTION_MODES,
+  INVESTIGATION_RETRY_POLICIES,
   InvestigationError,
   type InvestigationDefinition,
   type InvestigationPhaseDefinition,
   type InvestigationPhaseKind
 } from './investigation-types.ts';
+import { WAIT_CONDITIONS } from './investigation-lifecycle.ts';
 
 export const DEFAULT_INVESTIGATION_DEFINITIONS_DIR = 'control-plane/investigations/definitions';
 
@@ -53,6 +56,11 @@ function validatePhaseDefinition(
   const workflowId = asTrimmedString(value.workflowId) ?? undefined;
   const requiredInputs = asStringArray(value.requiredInputs);
   const produces = asStringArray(value.produces);
+  const executionMode = asTrimmedString(value.executionMode);
+  const minDelaySlots = value.minDelaySlots;
+  const waitCondition = asTrimmedString(value.waitCondition);
+  const maxRetries = value.maxRetries;
+  const retryPolicy = asTrimmedString(value.retryPolicy);
 
   if (!phaseId) {
     throw new InvestigationError(
@@ -78,6 +86,36 @@ function validatePhaseDefinition(
       `Investigation definition ${definitionId} phase ${phaseId} produces must be an array of strings.`
     );
   }
+  if (executionMode && !INVESTIGATION_PHASE_EXECUTION_MODES.includes(executionMode as InvestigationPhaseDefinition['executionMode'])) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} phase ${phaseId} executionMode must be one of ${INVESTIGATION_PHASE_EXECUTION_MODES.join(', ')}.`
+    );
+  }
+  if (minDelaySlots !== undefined && (!Number.isInteger(minDelaySlots) || Number(minDelaySlots) < 0)) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} phase ${phaseId} minDelaySlots must be a non-negative integer.`
+    );
+  }
+  if (waitCondition && !WAIT_CONDITIONS.includes(waitCondition as InvestigationPhaseDefinition['waitCondition'])) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} phase ${phaseId} waitCondition must be one of ${WAIT_CONDITIONS.join(', ')}.`
+    );
+  }
+  if (maxRetries !== undefined && (!Number.isInteger(maxRetries) || Number(maxRetries) < 0)) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} phase ${phaseId} maxRetries must be a non-negative integer.`
+    );
+  }
+  if (retryPolicy && !INVESTIGATION_RETRY_POLICIES.includes(retryPolicy as InvestigationPhaseDefinition['retryPolicy'])) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} phase ${phaseId} retryPolicy must be one of ${INVESTIGATION_RETRY_POLICIES.join(', ')}.`
+    );
+  }
 
   return {
     phaseId,
@@ -85,7 +123,12 @@ function validatePhaseDefinition(
     ...(missionId ? { missionId } : {}),
     ...(workflowId ? { workflowId } : {}),
     requiredInputs,
-    produces
+    produces,
+    ...(executionMode ? { executionMode: executionMode as InvestigationPhaseDefinition['executionMode'] } : {}),
+    ...(minDelaySlots !== undefined ? { minDelaySlots: Number(minDelaySlots) } : {}),
+    ...(waitCondition ? { waitCondition: waitCondition as InvestigationPhaseDefinition['waitCondition'] } : {}),
+    ...(maxRetries !== undefined ? { maxRetries: Number(maxRetries) } : {}),
+    ...(retryPolicy ? { retryPolicy: retryPolicy as InvestigationPhaseDefinition['retryPolicy'] } : {})
   };
 }
 

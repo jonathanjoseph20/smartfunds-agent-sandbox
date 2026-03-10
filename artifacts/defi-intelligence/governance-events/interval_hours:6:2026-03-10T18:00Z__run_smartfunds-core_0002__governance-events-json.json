@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "protocol": "Aave",
+      "proposal": "Proposal 201",
+      "status": "active",
+      "riskSignal": "Monitor reserve-factor volatility"
+    },
+    {
+      "protocol": "Uniswap",
+      "proposal": "Proposal 77",
+      "status": "queued",
+      "riskSignal": "Watch fee-switch governance split"
+    }
+  ],
+  "profile": "lite"
+}

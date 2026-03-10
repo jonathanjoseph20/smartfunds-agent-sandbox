@@ -1,0 +1,33 @@
+{
+  "artifactCount": 2,
+  "artifactValidation": {
+    "missingOptional": [],
+    "missingRequired": [],
+    "status": "complete"
+  },
+  "attemptCount": 1,
+  "coreReasons": [],
+  "coreScopeMatched": false,
+  "currentAttemptIndex": 0,
+  "executionPath": "lite",
+  "failureClass": null,
+  "failureReason": null,
+  "missionId": "defi-yield-report",
+  "profile": "lite",
+  "requestedProfile": "lite",
+  "requiredProfile": "lite",
+  "retryCount": 0,
+  "runId": "run_smartfunds-core_0004",
+  "runtimeStatus": "succeeded",
+  "scopeClassification": {
+    "allowedForBuild": true,
+    "coreScopeMatched": false,
+    "matchedBuildPaths": [],
+    "matchedCorePaths": [],
+    "reason": "no_target_scope_provided",
+    "requiredProfile": "lite",
+    "unmatchedPaths": []
+  },
+  "status": "completed",
+  "workflowId": "lite-defi-yield-report"
+}

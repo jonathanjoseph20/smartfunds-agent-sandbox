@@ -48,6 +48,7 @@
     "investigations:list": "node --experimental-strip-types control-plane/cli/investigations-list.ts",
     "investigations:inspect": "node --experimental-strip-types control-plane/cli/investigations-inspect.ts",
     "investigations:history": "node --experimental-strip-types control-plane/cli/investigations-history.ts",
+    "investigations:due": "node --experimental-strip-types control-plane/cli/investigations-due.ts",
     "investigations:report": "node --experimental-strip-types control-plane/cli/investigations-report.ts",
     "research:scheduler:tick": "node --experimental-strip-types control-plane/cli/research-scheduler-tick.ts",
     "research:teams:list": "node --experimental-strip-types control-plane/cli/research-teams-list.ts",

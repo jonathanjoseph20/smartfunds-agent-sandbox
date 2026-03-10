@@ -1,0 +1,52 @@
+{
+  "events": [
+    {
+      "sequence": 1,
+      "taskId": "market-research",
+      "type": "TASK_STARTED"
+    },
+    {
+      "sequence": 2,
+      "taskId": "market-research",
+      "type": "TASK_COMPLETED"
+    },
+    {
+      "sequence": 3,
+      "taskId": "regulatory-scan",
+      "type": "TASK_STARTED"
+    },
+    {
+      "sequence": 4,
+      "taskId": "regulatory-scan",
+      "type": "TASK_COMPLETED"
+    },
+    {
+      "sequence": 5,
+      "taskId": "thesis-synthesis",
+      "type": "TASK_STARTED"
+    },
+    {
+      "sequence": 6,
+      "taskId": "thesis-synthesis",
+      "type": "TASK_COMPLETED"
+    },
+    {
+      "sequence": 7,
+      "taskId": "final-review",
+      "type": "TASK_STARTED"
+    },
+    {
+      "sequence": 8,
+      "taskId": "final-review",
+      "type": "TASK_COMPLETED"
+    },
+    {
+      "sequence": 9,
+      "taskId": null,
+      "type": "RUN_COMPLETED"
+    }
+  ],
+  "missionId": "rwa-market-analysis",
+  "runId": "run_smartfunds-core_0005",
+  "workflowId": "research-analysis-workflow"
+}

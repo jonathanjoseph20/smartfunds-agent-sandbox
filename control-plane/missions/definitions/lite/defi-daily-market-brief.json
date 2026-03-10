@@ -1,0 +1,60 @@
+{
+  "missionId": "defi-daily-market-brief",
+  "name": "DeFi Daily Market Brief",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-defi-daily-market-brief",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Produce deterministic daily operator-readable DeFi market brief artifacts.",
+  "successCriteria": [
+    "Produce daily-market-brief.md artifact",
+    "Produce daily-market-brief-json artifact"
+  ],
+  "deliverables": [
+    "daily-market-brief.md",
+    "daily-market-brief-json.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "daily-market-brief",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "daily-market-brief-json",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "write-daily-brief": {
+        "artifactId": "daily-market-brief",
+        "content": "# DeFi Daily Market Brief\n\n- Liquidity remains concentrated in lending venues.\n- Yield spread narrowed in major pools.\n- Governance queue remains elevated for two protocols.\n"
+      },
+      "write-daily-brief-json": {
+        "artifactId": "daily-market-brief-json",
+        "payload": {
+          "watchlist": [
+            "Aave",
+            "Uniswap"
+          ],
+          "riskSignals": [
+            "Monitor reserve-factor volatility",
+            "Watch fee-switch governance split"
+          ],
+          "profile": "lite"
+        }
+      }
+    }
+  },
+  "tags": [
+    "defi",
+    "daily-brief",
+    "lite",
+    "research"
+  ]
+}

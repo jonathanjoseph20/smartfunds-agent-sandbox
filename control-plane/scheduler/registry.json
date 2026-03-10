@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "schedules": [
     {
+      "scheduleId": "defi-daily-market-brief",
+      "missionId": "defi-daily-market-brief",
+      "enabled": true,
+      "cadence": {
+        "type": "daily",
+        "hourUtc": 13,
+        "minuteUtc": 0
+      },
+      "params": {
+        "market": "us"
+      },
+      "maxLaunchesPerSlot": 1
+    },
+    {
+      "scheduleId": "defi-governance-hourly-scan",
+      "missionId": "defi-governance-events",
+      "enabled": true,
+      "cadence": {
+        "type": "interval_hours",
+        "every": 6
+      },
+      "params": {
+        "market": "us"
+      },
+      "maxLaunchesPerSlot": 1
+    },
+    {
+      "scheduleId": "defi-liquidity-hourly-scan",
+      "missionId": "defi-liquidity-scan",
+      "enabled": true,
+      "cadence": {
+        "type": "interval_hours",
+        "every": 6
+      },
+      "params": {
+        "market": "us"
+      },
+      "maxLaunchesPerSlot": 1
+    },
+    {
       "scheduleId": "defi-yield-hourly-scan",
       "missionId": "defi-yield-report",
       "enabled": true,

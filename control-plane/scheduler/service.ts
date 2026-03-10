@@ -39,6 +39,7 @@ type SchedulerServiceOptions = {
     agentsDir?: string;
     workflowsDir?: string;
   };
+  onLaunchRecord?: (record: ScheduleLaunchRecord) => Promise<void> | void;
 };
 
 function asErrorMessage(error: unknown): string {
@@ -157,6 +158,13 @@ export function createSchedulerService(options: SchedulerServiceOptions = {}) {
 
       if (latestRecord) {
         launches.push(latestRecord);
+        if (options.onLaunchRecord) {
+          try {
+            await options.onLaunchRecord(latestRecord);
+          } catch {
+            // Optional hook must not alter scheduler launch semantics.
+          }
+        }
       }
     }
 

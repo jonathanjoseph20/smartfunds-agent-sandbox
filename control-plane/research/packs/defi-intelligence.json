@@ -1,0 +1,18 @@
+{
+  "packId": "defi-intelligence",
+  "teamId": "defi-intelligence",
+  "description": "Scheduled DeFi intelligence scan pack.",
+  "schedules": [
+    "defi-daily-market-brief",
+    "defi-governance-hourly-scan",
+    "defi-liquidity-hourly-scan",
+    "defi-yield-hourly-scan"
+  ],
+  "artifactNamespaces": {
+    "defi-daily-market-brief": "daily-briefs",
+    "defi-governance-hourly-scan": "governance-events",
+    "defi-liquidity-hourly-scan": "liquidity-snapshots",
+    "defi-yield-hourly-scan": "yield-snapshots"
+  },
+  "summaryScheduleId": "defi-daily-market-brief"
+}

@@ -1,0 +1,15 @@
+{
+  "workflowId": "lite-defi-governance-events",
+  "nodes": [
+    {
+      "id": "write-governance-events",
+      "task": "output.write_markdown",
+      "phase": "release"
+    },
+    {
+      "id": "write-governance-json",
+      "task": "output.write_artifact",
+      "phase": "release"
+    }
+  ]
+}

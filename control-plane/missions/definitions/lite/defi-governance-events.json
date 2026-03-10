@@ -1,0 +1,66 @@
+{
+  "missionId": "defi-governance-events",
+  "name": "DeFi Governance Events",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-defi-governance-events",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Produce deterministic governance event artifacts for longitudinal tracking.",
+  "successCriteria": [
+    "Produce governance-events.md artifact",
+    "Produce governance-events-json artifact"
+  ],
+  "deliverables": [
+    "governance-events.md",
+    "governance-events-json.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "governance-events",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "governance-events-json",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "write-governance-events": {
+        "artifactId": "governance-events",
+        "content": "# DeFi Governance Events\n\n- Aave Proposal 201: Reserve factor update (active)\n- Uniswap Proposal 77: Fee switch trial (queued)\n"
+      },
+      "write-governance-json": {
+        "artifactId": "governance-events-json",
+        "payload": {
+          "events": [
+            {
+              "protocol": "Aave",
+              "proposal": "Proposal 201",
+              "status": "active",
+              "riskSignal": "Monitor reserve-factor volatility"
+            },
+            {
+              "protocol": "Uniswap",
+              "proposal": "Proposal 77",
+              "status": "queued",
+              "riskSignal": "Watch fee-switch governance split"
+            }
+          ],
+          "profile": "lite"
+        }
+      }
+    }
+  },
+  "tags": [
+    "defi",
+    "governance",
+    "lite",
+    "research"
+  ]
+}

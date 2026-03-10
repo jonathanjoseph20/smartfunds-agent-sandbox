@@ -1,3 +1,10 @@
+import type {
+  CapabilityClass,
+  MutationIntent,
+  PolicyProfile,
+  TargetScope
+} from '../policy/types.ts';
+
 export type MissionPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export type MissionParameterSchema = {
@@ -17,6 +24,10 @@ export type MissionDefinition = {
   successCriteria: string[];
   deliverables: string[];
   initialContext: Record<string, unknown>;
+  profile?: PolicyProfile;
+  mutationIntent?: MutationIntent;
+  requestedCapabilities?: CapabilityClass[];
+  targetScope?: TargetScope;
   parameterSchema?: MissionParameterSchema;
   description?: string;
   priority?: MissionPriority;

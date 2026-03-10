@@ -18,7 +18,13 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
     process.stdout.write('Available Runs\n\n');
     for (const run of runs) {
-      process.stdout.write(`${run.runId}  ${run.missionId}\n`);
+      const profile = run.metadata.profile ? ` profile=${run.metadata.profile}` : '';
+      const executionPath = run.metadata.executionPath ? ` path=${run.metadata.executionPath}` : '';
+      const status = run.metadata.status ? ` status=${run.metadata.status}` : '';
+      const artifacts = typeof run.metadata.artifactCount === 'number'
+        ? ` artifacts=${String(run.metadata.artifactCount)}`
+        : '';
+      process.stdout.write(`${run.runId}  ${run.missionId}${profile}${executionPath}${status}${artifacts}\n`);
     }
 
     return 0;

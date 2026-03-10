@@ -56,4 +56,25 @@ describe('runs:list script', () => {
       'No runs found. Artifacts directory is missing or empty.'
     );
   });
+
+  it('T-SPB-RL4 includes profile and execution path from run metadata when available', async () => {
+    const runId = 'run_smartfunds-core_0009';
+    const runDir = path.join(artifactsRoot, 'lite-mission', runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'run-metadata.json'), JSON.stringify({
+      profile: 'lite',
+      executionPath: 'lite',
+      status: 'completed',
+      artifactCount: 2
+    }), 'utf8');
+
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = await main([]);
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join('');
+    expect(out).toContain('profile=lite');
+    expect(out).toContain('path=lite');
+    expect(out).toContain('status=completed');
+    expect(out).toContain('artifacts=2');
+  });
 });

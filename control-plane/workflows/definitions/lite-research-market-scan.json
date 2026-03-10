@@ -1,0 +1,26 @@
+{
+  "workflowId": "lite-research-market-scan",
+  "nodes": [
+    {
+      "id": "extract-market-points",
+      "task": "tool.list_rank",
+      "phase": "analysis"
+    },
+    {
+      "id": "write-market-scan",
+      "task": "output.write_markdown",
+      "phase": "release",
+      "dependsOn": [
+        "extract-market-points"
+      ]
+    },
+    {
+      "id": "write-market-summary",
+      "task": "output.write_artifact",
+      "phase": "release",
+      "dependsOn": [
+        "extract-market-points"
+      ]
+    }
+  ]
+}

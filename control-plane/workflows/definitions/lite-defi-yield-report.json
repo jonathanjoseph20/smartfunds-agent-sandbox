@@ -1,0 +1,26 @@
+{
+  "workflowId": "lite-defi-yield-report",
+  "nodes": [
+    {
+      "id": "extract-yield-grid",
+      "task": "tool.list_rank",
+      "phase": "analysis"
+    },
+    {
+      "id": "write-yield-report",
+      "task": "output.write_markdown",
+      "phase": "release",
+      "dependsOn": [
+        "extract-yield-grid"
+      ]
+    },
+    {
+      "id": "write-yield-json",
+      "task": "output.write_artifact",
+      "phase": "release",
+      "dependsOn": [
+        "extract-yield-grid"
+      ]
+    }
+  ]
+}

@@ -52,8 +52,11 @@ export async function loadRunDetails(runId) {
     const metaRows = [
       ['runId', payload.runId],
       ['missionId', payload.missionId ?? 'N/A'],
+      ['profile', payload.profile ?? 'N/A'],
+      ['executionPath', payload.executionPath ?? 'N/A'],
       ['workflowId', payload.workflowId ?? 'N/A'],
       ['status', payload.status ?? 'N/A'],
+      ['artifactCount', Number.isFinite(payload.artifactCount) ? String(payload.artifactCount) : 'N/A'],
       ['nodes', Array.isArray(payload.nodes) ? payload.nodes.join(', ') : 'N/A']
     ];
 

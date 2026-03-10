@@ -26,11 +26,24 @@ describe('artifactLoader', () => {
   it('T-S86-AL1 discovers runs deterministically and ignores malformed root entries', () => {
     writeFile(path.join(fixturesRoot, 'mission-b', 'run_0002', 'report.md'), '# two\n');
     writeFile(path.join(fixturesRoot, 'mission-a', 'run_0001', 'report.md'), '# one\n');
+    writeFile(path.join(fixturesRoot, 'mission-a', 'run_0001', 'run-metadata.json'), JSON.stringify({
+      profile: 'lite',
+      executionPath: 'lite',
+      status: 'completed',
+      artifactCount: 2
+    }));
     writeFile(path.join(fixturesRoot, 'z-file.txt'), 'not a run\n');
 
     const loader = new ArtifactLoader(fixturesRoot);
     expect(loader.listRuns()).toEqual([
-      { runId: 'run_0001', missionId: 'mission-a' },
+      {
+        runId: 'run_0001',
+        missionId: 'mission-a',
+        profile: 'lite',
+        executionPath: 'lite',
+        status: 'completed',
+        artifactCount: 2
+      },
       { runId: 'run_0002', missionId: 'mission-b' }
     ]);
   });
@@ -44,15 +57,24 @@ describe('artifactLoader', () => {
     writeFile(path.join(fixturesRoot, 'mission-a', 'run_0100', 'report.md'), '# Report\n');
     writeFile(path.join(fixturesRoot, 'mission-a', 'run_0100', 'dataset.csv'), 'a,b\n1,2\n');
     writeFile(path.join(fixturesRoot, 'mission-a', 'run_0100', 'research-pages.json'), '{"ok":true}\n');
+    writeFile(path.join(fixturesRoot, 'mission-a', 'run_0100', 'run-metadata.json'), JSON.stringify({
+      profile: 'lite',
+      executionPath: 'lite',
+      artifactCount: 3
+    }));
 
     const loader = new ArtifactLoader(fixturesRoot);
     expect(loader.getRunDetails('run_0100')).toEqual({
       runId: 'run_0100',
       missionId: 'mission-a',
+      profile: 'lite',
+      executionPath: 'lite',
+      artifactCount: 3,
       artifacts: [
         { fileName: 'dataset.csv', previewKind: 'csv', sizeBytes: 8 },
         { fileName: 'report.md', previewKind: 'markdown', sizeBytes: 9 },
-        { fileName: 'research-pages.json', previewKind: 'json', sizeBytes: 12 }
+        { fileName: 'research-pages.json', previewKind: 'json', sizeBytes: 12 },
+        { fileName: 'run-metadata.json', previewKind: 'json', sizeBytes: 59 }
       ]
     });
   });

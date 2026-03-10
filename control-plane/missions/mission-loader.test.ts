@@ -14,7 +14,9 @@ function resetTmpDir(): void {
 }
 
 function writeJson(fileName: string, value: unknown): void {
-  fs.writeFileSync(path.join(tmpMissionsDir, fileName), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  const target = path.join(tmpMissionsDir, fileName);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 function createMission(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -46,6 +48,14 @@ describe('mission-loader', () => {
 
     expect(missions).toHaveLength(1);
     expect(missions[0].missionId).toBe('rwa-market-analysis');
+  });
+
+  it('T-M13 loads nested mission definitions deterministically', () => {
+    writeJson('lite/mission-b.json', createMission({ missionId: 'mission-b', workflowId: 'workflow-b' }));
+    writeJson('mission-a.json', createMission({ missionId: 'mission-a', workflowId: 'workflow-a' }));
+
+    const missions = loadMissionDefinitionsFromDir(tmpMissionsDir);
+    expect(missions.map((mission) => mission.missionId)).toEqual(['mission-a', 'mission-b']);
   });
 
   it('T-M5 rejects missing teamId', () => {

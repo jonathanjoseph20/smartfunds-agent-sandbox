@@ -9,6 +9,8 @@ export type WorkflowRunRecord = {
   workflowId: string;
   missionId: string | null;
   teamId: string | null;
+  profile: string | null;
+  executionPath: 'governed' | 'lite' | null;
   projectId: string;
   status: string;
   nodeCount: number;
@@ -143,6 +145,8 @@ export function buildWorkflowRunRecord(input: {
     workflowId: metadata.workflowId,
     missionId: metadata.missionId,
     teamId: metadata.teamId,
+    profile: typeof input.run.profile === 'string' ? input.run.profile : null,
+    executionPath: input.run.executionPath ?? null,
     projectId: input.run.projectId,
     status,
     nodeCount: nodes.length,

@@ -1,0 +1,18 @@
+{
+  "workflowId": "lite-tokenization-landscape",
+  "nodes": [
+    {
+      "id": "extract-landscape-points",
+      "task": "tool.list_rank",
+      "phase": "analysis"
+    },
+    {
+      "id": "write-landscape-report",
+      "task": "output.write_markdown",
+      "phase": "release",
+      "dependsOn": [
+        "extract-landscape-points"
+      ]
+    }
+  ]
+}

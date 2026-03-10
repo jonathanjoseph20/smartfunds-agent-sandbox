@@ -4,6 +4,9 @@ export interface RunSummary {
   runId: string;
   missionId?: string;
   status?: string;
+  profile?: string;
+  executionPath?: string;
+  artifactCount?: number;
 }
 
 export interface ArtifactSummary {
@@ -17,6 +20,9 @@ export interface RunDetails {
   missionId?: string;
   workflowId?: string;
   status?: string;
+  profile?: string;
+  executionPath?: string;
+  artifactCount?: number;
   nodes?: string[];
   artifacts: ArtifactSummary[];
 }

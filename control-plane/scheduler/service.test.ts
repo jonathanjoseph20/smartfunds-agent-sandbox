@@ -114,4 +114,36 @@ describe('scheduler service', () => {
     expect(second.evaluations[0].dueDecision).toBe('already_launched_for_slot');
     expect(missionLauncher).toHaveBeenCalledTimes(1);
   });
+
+  it('T-D4 invokes optional launch hook without changing scheduler outcomes', async () => {
+    const registryPath = writeRegistry({
+      schemaVersion: 1,
+      schedules: [{
+        scheduleId: 'daily-brief',
+        missionId: 'rwa-market-analysis',
+        enabled: true,
+        cadence: { type: 'daily', hourUtc: 13, minuteUtc: 0 }
+      }]
+    });
+
+    const missionLauncher = vi.fn(async () => ({ workflowRun: 'run_smartfunds-core_0001' }));
+    const onLaunchRecord = vi.fn(async () => {});
+
+    const scheduler = createSchedulerService({
+      registryPath,
+      rootDir: path.join(tmpRoot, 'journal'),
+      missionLauncher,
+      onLaunchRecord,
+      now: () => new Date('2026-03-10T13:10:00.000Z')
+    });
+
+    const result = await scheduler.tick();
+    expect(result.launches).toHaveLength(1);
+    expect(result.launches[0].runId).toBe('run_smartfunds-core_0001');
+    expect(onLaunchRecord).toHaveBeenCalledTimes(1);
+    expect(onLaunchRecord).toHaveBeenCalledWith(expect.objectContaining({
+      scheduleId: 'daily-brief',
+      slotId: 'daily:2026-03-10'
+    }));
+  });
 });

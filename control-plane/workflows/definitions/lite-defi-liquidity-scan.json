@@ -1,0 +1,15 @@
+{
+  "workflowId": "lite-defi-liquidity-scan",
+  "nodes": [
+    {
+      "id": "write-liquidity-snapshot",
+      "task": "output.write_markdown",
+      "phase": "release"
+    },
+    {
+      "id": "write-liquidity-json",
+      "task": "output.write_artifact",
+      "phase": "release"
+    }
+  ]
+}

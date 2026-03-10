@@ -1,0 +1,68 @@
+{
+  "missionId": "defi-liquidity-scan",
+  "name": "DeFi Liquidity Scan",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "lite-defi-liquidity-scan",
+  "profile": "lite",
+  "mutationIntent": "none",
+  "requestedCapabilities": [
+    "artifact_write",
+    "read"
+  ],
+  "objective": "Produce deterministic liquidity snapshots for persistent DeFi research datasets.",
+  "successCriteria": [
+    "Produce liquidity-snapshot.md artifact",
+    "Produce liquidity-snapshot-json artifact"
+  ],
+  "deliverables": [
+    "liquidity-snapshot.md",
+    "liquidity-snapshot-json.json"
+  ],
+  "initialContext": {
+    "declaredArtifacts": [
+      {
+        "artifactId": "liquidity-snapshot",
+        "format": "markdown"
+      },
+      {
+        "artifactId": "liquidity-snapshot-json",
+        "format": "artifact"
+      }
+    ],
+    "taskInputsByNode": {
+      "write-liquidity-snapshot": {
+        "artifactId": "liquidity-snapshot",
+        "content": "# DeFi Liquidity Snapshot\n\n- Aave: TVL 11.2B (24h +1.3%)\n- Uniswap: TVL 4.1B (24h -0.8%)\n- Curve: TVL 2.3B (24h +0.4%)\n"
+      },
+      "write-liquidity-json": {
+        "artifactId": "liquidity-snapshot-json",
+        "payload": {
+          "snapshots": [
+            {
+              "protocol": "Aave",
+              "tvl": "11.2B",
+              "delta24h": "+1.3%"
+            },
+            {
+              "protocol": "Curve",
+              "tvl": "2.3B",
+              "delta24h": "+0.4%"
+            },
+            {
+              "protocol": "Uniswap",
+              "tvl": "4.1B",
+              "delta24h": "-0.8%"
+            }
+          ],
+          "profile": "lite"
+        }
+      }
+    }
+  },
+  "tags": [
+    "defi",
+    "lite",
+    "research"
+  ]
+}

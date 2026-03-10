@@ -1,0 +1,13 @@
+{
+  "teamId": "defi-intelligence",
+  "missionPackId": "defi-intelligence",
+  "description": "Persistent DeFi market intelligence research team for scheduled synthesis.",
+  "displayName": "DeFi Intelligence",
+  "datasetKeys": [
+    "governance_vote_tracker",
+    "protocol_tvl_timeseries",
+    "yield_rate_history"
+  ],
+  "summaryArtifactPath": "artifacts/defi-intelligence/daily-briefs",
+  "enabled": true
+}

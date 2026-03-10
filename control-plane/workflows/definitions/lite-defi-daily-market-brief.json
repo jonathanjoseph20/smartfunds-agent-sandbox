@@ -1,0 +1,15 @@
+{
+  "workflowId": "lite-defi-daily-market-brief",
+  "nodes": [
+    {
+      "id": "write-daily-brief",
+      "task": "output.write_markdown",
+      "phase": "release"
+    },
+    {
+      "id": "write-daily-brief-json",
+      "task": "output.write_artifact",
+      "phase": "release"
+    }
+  ]
+}

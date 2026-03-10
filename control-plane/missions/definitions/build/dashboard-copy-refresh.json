@@ -1,0 +1,50 @@
+{
+  "missionId": "dashboard-copy-refresh",
+  "name": "Dashboard Copy Refresh",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "build-dashboard-copy-refresh",
+  "profile": "build",
+  "mutationIntent": "ui_change",
+  "requestedCapabilities": [
+    "artifact_write",
+    "pr_open",
+    "read",
+    "repo_write"
+  ],
+  "targetScope": {
+    "repo": "smartfunds-agent-sandbox",
+    "paths": [
+      "dashboard/**",
+      "docs/**"
+    ]
+  },
+  "objective": "Apply an approved copy-only refresh for dashboard UX in build-safe surfaces.",
+  "successCriteria": [
+    "Open a PR with deterministic runtime provenance",
+    "Restrict changes to dashboard/docs scope",
+    "Exclude runtime artifacts from staged diff"
+  ],
+  "deliverables": [
+    "dashboard/ui/index.html",
+    "docs/runbooks/build-profile-operations.md"
+  ],
+  "initialContext": {
+    "buildMutations": [
+      {
+        "path": "docs/runbooks/build-profile-operations.md",
+        "content": "# Build Profile Operations\\n\\nThis file can be updated by build profile missions in approved scope.\\n"
+      },
+      {
+        "path": "dashboard/ui/index.html",
+        "content": "<!doctype html>\\n<html><body><h1>SmartFunds Dashboard</h1><p>Build profile copy refresh.</p></body></html>\\n"
+      }
+    ],
+    "buildChecks": []
+  },
+  "tags": [
+    "build",
+    "dashboard",
+    "demo-safe"
+  ]
+}

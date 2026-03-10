@@ -78,15 +78,31 @@ function printJson(value: unknown): void {
 function printReadableResult(result: Record<string, unknown>): void {
   const missionId = String(result.missionId ?? 'unknown-mission');
   const profile = String(result.profile ?? 'core');
+  const executionPath = typeof result.executionPath === 'string' ? result.executionPath : null;
   const runId = String(result.workflowRun ?? 'unknown-run');
   const status = String(result.status ?? 'unknown');
+  const branchName = typeof result.branchName === 'string' ? result.branchName : null;
+  const prNumber = typeof result.prNumber === 'number' ? result.prNumber : null;
+  const prUrl = typeof result.prUrl === 'string' ? result.prUrl : null;
   const artifactCount = typeof result.artifactCount === 'number' && Number.isFinite(result.artifactCount)
     ? result.artifactCount
     : 0;
 
   process.stdout.write(`Mission: ${missionId}\n`);
   process.stdout.write(`Profile: ${profile}\n`);
+  if (executionPath) {
+    process.stdout.write(`Execution Path: ${executionPath}\n`);
+  }
   process.stdout.write(`Run: ${runId}\n`);
+  if (branchName) {
+    process.stdout.write(`Branch: ${branchName}\n`);
+  }
+  if (prNumber !== null) {
+    process.stdout.write(`PR Number: ${String(prNumber)}\n`);
+  }
+  if (prUrl) {
+    process.stdout.write(`PR URL: ${prUrl}\n`);
+  }
   process.stdout.write(`Status: ${status}\n`);
   process.stdout.write(`Artifacts: ${String(artifactCount)}\n\n`);
   process.stdout.write('Next:\n');

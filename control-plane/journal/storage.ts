@@ -55,7 +55,7 @@ function normalizeRun(run: ExecutionRun): ExecutionRun {
     entrypoint: run.entrypoint,
     createdIndex: run.createdIndex,
     ...(typeof run.profile === 'string' ? { profile: run.profile } : {}),
-    ...(run.executionPath === 'governed' || run.executionPath === 'lite'
+    ...(run.executionPath === 'governed' || run.executionPath === 'lite' || run.executionPath === 'build'
       ? { executionPath: run.executionPath }
       : {})
   };

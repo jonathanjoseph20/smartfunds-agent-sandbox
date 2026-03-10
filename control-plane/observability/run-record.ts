@@ -10,7 +10,7 @@ export type WorkflowRunRecord = {
   missionId: string | null;
   teamId: string | null;
   profile: string | null;
-  executionPath: 'governed' | 'lite' | null;
+  executionPath: 'governed' | 'lite' | 'build' | null;
   projectId: string;
   status: string;
   nodeCount: number;

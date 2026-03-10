@@ -4,7 +4,19 @@ import type { CapabilityClass, MutationIntent, PolicyProfile } from '../policy/t
 const MISSION_PRIORITIES: MissionPriority[] = ['low', 'medium', 'high', 'critical'];
 const POLICY_PROFILES: PolicyProfile[] = ['lite', 'build', 'core'];
 const CAPABILITY_CLASSES: CapabilityClass[] = ['artifact_write', 'pr_open', 'protected_write', 'read', 'repo_write'];
-const MUTATION_INTENTS: MutationIntent[] = ['none', 'artifact', 'code_change', 'governance_change'];
+const MUTATION_INTENTS: MutationIntent[] = [
+  'none',
+  'artifact',
+  'code_change',
+  'ui_change',
+  'product_update',
+  'tooling_change',
+  'governance_change',
+  'protected_infra_mutation',
+  'financial_rail_mutation',
+  'entity_registry_mutation',
+  'control_plane_mutation'
+];
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;

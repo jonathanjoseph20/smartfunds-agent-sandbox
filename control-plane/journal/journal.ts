@@ -27,7 +27,7 @@ export type ExecutionJournal = {
     kind: RunKind;
     entrypoint: string;
     profile?: string;
-    executionPath?: 'governed' | 'lite';
+    executionPath?: 'governed' | 'lite' | 'build';
   }) => ExecutionRun;
   appendEvent: (input: {
     runId: string;
@@ -50,7 +50,7 @@ export function createExecutionJournal(options: JournalOptions = {}): ExecutionJ
     kind: RunKind;
     entrypoint: string;
     profile?: string;
-    executionPath?: 'governed' | 'lite';
+    executionPath?: 'governed' | 'lite' | 'build';
   }): ExecutionRun {
     const context = resolveProjectContext(input.projectId);
 

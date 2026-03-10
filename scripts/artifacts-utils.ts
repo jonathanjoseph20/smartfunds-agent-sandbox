@@ -12,6 +12,10 @@ export type RunArtifactMetadata = {
   executionPath?: string;
   status?: string;
   artifactCount?: number;
+  branchName?: string;
+  prNumber?: number;
+  prUrl?: string;
+  mutationSummary?: string[];
 };
 
 export function findRunDirectoriesByRunId(artifactsRoot: string, runId: string): ResolvedRunDirectory[] {
@@ -97,7 +101,17 @@ export function readRunMetadata(directory: string): RunArtifactMetadata {
       ...(typeof parsed.profile === 'string' ? { profile: parsed.profile } : {}),
       ...(typeof parsed.executionPath === 'string' ? { executionPath: parsed.executionPath } : {}),
       ...(typeof parsed.status === 'string' ? { status: parsed.status } : {}),
-      ...(typeof parsed.artifactCount === 'number' ? { artifactCount: parsed.artifactCount } : {})
+      ...(typeof parsed.artifactCount === 'number' ? { artifactCount: parsed.artifactCount } : {}),
+      ...(typeof parsed.branchName === 'string' ? { branchName: parsed.branchName } : {}),
+      ...(typeof parsed.prNumber === 'number' ? { prNumber: parsed.prNumber } : {}),
+      ...(typeof parsed.prUrl === 'string' ? { prUrl: parsed.prUrl } : {}),
+      ...(Array.isArray(parsed.mutationSummary)
+        ? {
+          mutationSummary: parsed.mutationSummary
+            .filter((entry): entry is string => typeof entry === 'string')
+            .sort((left, right) => left.localeCompare(right))
+        }
+        : {})
     };
   } catch {
     return {};

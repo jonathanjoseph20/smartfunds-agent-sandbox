@@ -62,7 +62,16 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     if (typeof metadata.artifactCount === 'number') {
       process.stdout.write(`Artifact Count: ${String(metadata.artifactCount)}\n`);
     }
-    if (metadata.profile || metadata.executionPath || typeof metadata.artifactCount === 'number') {
+    if (typeof metadata.branchName === 'string') {
+      process.stdout.write(`Branch: ${metadata.branchName}\n`);
+    }
+    if (typeof metadata.prNumber === 'number') {
+      process.stdout.write(`PR Number: ${String(metadata.prNumber)}\n`);
+    }
+    if (typeof metadata.prUrl === 'string') {
+      process.stdout.write(`PR URL: ${metadata.prUrl}\n`);
+    }
+    if (metadata.profile || metadata.executionPath || typeof metadata.artifactCount === 'number' || metadata.branchName || typeof metadata.prNumber === 'number' || metadata.prUrl) {
       process.stdout.write('\n');
     }
 

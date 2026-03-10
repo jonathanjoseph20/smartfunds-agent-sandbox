@@ -143,4 +143,40 @@ describe('artifactLoader', () => {
       expect((error as ArtifactLoaderError).code).toBe('INVALID_ARTIFACT_PATH');
     }
   });
+
+  it('T-SPC-AL7 exposes build branch/pr metadata and mutation summary from run metadata', () => {
+    writeFile(path.join(fixturesRoot, 'build-mission', 'run_0500', 'report.md'), '# Report\n');
+    writeFile(path.join(fixturesRoot, 'build-mission', 'run_0500', 'run-metadata.json'), JSON.stringify({
+      profile: 'build',
+      executionPath: 'build',
+      branchName: 'build/build-mission/abcd1234',
+      prNumber: 12,
+      prUrl: 'https://example.test/repo/pull/12',
+      mutationSummary: ['docs/a.md', 'dashboard/ui/index.html']
+    }));
+
+    const loader = new ArtifactLoader(fixturesRoot);
+    expect(loader.listRuns()).toEqual([
+      {
+        runId: 'run_0500',
+        missionId: 'build-mission',
+        profile: 'build',
+        executionPath: 'build',
+        branchName: 'build/build-mission/abcd1234',
+        prNumber: 12,
+        prUrl: 'https://example.test/repo/pull/12'
+      }
+    ]);
+
+    expect(loader.getRunDetails('run_0500')).toMatchObject({
+      runId: 'run_0500',
+      missionId: 'build-mission',
+      profile: 'build',
+      executionPath: 'build',
+      branchName: 'build/build-mission/abcd1234',
+      prNumber: 12,
+      prUrl: 'https://example.test/repo/pull/12',
+      mutationSummary: ['dashboard/ui/index.html', 'docs/a.md']
+    });
+  });
 });

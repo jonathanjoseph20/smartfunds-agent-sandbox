@@ -77,4 +77,27 @@ describe('runs:list script', () => {
     expect(out).toContain('status=completed');
     expect(out).toContain('artifacts=2');
   });
+
+  it('T-SPC-RL5 includes branch and PR metadata for build runs', async () => {
+    const runId = 'run_smartfunds-core_0010';
+    const runDir = path.join(artifactsRoot, 'build-mission', runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'run-metadata.json'), JSON.stringify({
+      profile: 'build',
+      executionPath: 'build',
+      status: 'completed',
+      artifactCount: 0,
+      branchName: 'build/build-mission/abc123',
+      prNumber: 77
+    }), 'utf8');
+
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = await main([]);
+    expect(code).toBe(0);
+    const out = stdout.mock.calls.map((call) => String(call[0])).join('');
+    expect(out).toContain('profile=build');
+    expect(out).toContain('path=build');
+    expect(out).toContain('branch=build/build-mission/abc123');
+    expect(out).toContain('pr=77');
+  });
 });

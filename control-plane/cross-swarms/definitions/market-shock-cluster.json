@@ -1,0 +1,44 @@
+{
+  "crossSwarmId": "market-shock-cluster",
+  "displayName": "Market Shock Cluster",
+  "groupType": "market_shock_cluster",
+  "enabled": true,
+  "scope": {
+    "teamIds": [
+      "yield-anomaly-team"
+    ],
+    "subjectKeys": [
+      "aave"
+    ]
+  },
+  "include": {
+    "swarmIds": [
+      "yield-instability-response"
+    ],
+    "teamIds": [
+      "yield-anomaly-team"
+    ],
+    "protocolFamilies": [
+      "aave"
+    ],
+    "assetFamilies": [],
+    "eventFamilies": [
+      "yield"
+    ],
+    "cohortFamilies": [
+      "yield"
+    ]
+  },
+  "requiredMatchDimensions": [
+    "explicit_definition_match",
+    "shared_team_ownership",
+    "shared_event_family",
+    "shared_cohort_family"
+  ],
+  "completionRules": {
+    "requireAllLinkedSwarmsComplete": true,
+    "requireNoBlockedSwarms": true,
+    "requireNoUnresolvedConflicts": true,
+    "requireCoherentReadiness": true
+  }
+}

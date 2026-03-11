@@ -1,0 +1,44 @@
+{
+  "crossSwarmId": "governance-risk-cluster",
+  "displayName": "Governance Risk Cluster",
+  "groupType": "governance_risk_cluster",
+  "enabled": true,
+  "scope": {
+    "teamIds": [
+      "governance-monitoring-team"
+    ],
+    "subjectKeys": [
+      "aave"
+    ]
+  },
+  "include": {
+    "swarmIds": [
+      "governance-anomaly-response"
+    ],
+    "teamIds": [
+      "governance-monitoring-team"
+    ],
+    "protocolFamilies": [
+      "aave"
+    ],
+    "assetFamilies": [],
+    "eventFamilies": [
+      "governance"
+    ],
+    "cohortFamilies": [
+      "governance"
+    ]
+  },
+  "requiredMatchDimensions": [
+    "explicit_definition_match",
+    "shared_team_ownership",
+    "shared_event_family",
+    "shared_cohort_family"
+  ],
+  "completionRules": {
+    "requireAllLinkedSwarmsComplete": true,
+    "requireNoBlockedSwarms": true,
+    "requireNoUnresolvedConflicts": true,
+    "requireCoherentReadiness": true
+  }
+}

@@ -194,6 +194,11 @@
     "missions:status": "node --experimental-strip-types control-plane/cli/missions-status.ts",
     "missions:history": "node --experimental-strip-types control-plane/cli/missions-history.ts",
     "missions:materialize": "node --experimental-strip-types control-plane/cli/missions-materialize.ts",
+    "mission-dags:list": "node --experimental-strip-types control-plane/cli/mission-dags-list.ts",
+    "mission-dags:inspect": "node --experimental-strip-types control-plane/cli/mission-dags-inspect.ts",
+    "mission-dags:status": "node --experimental-strip-types control-plane/cli/mission-dags-status.ts",
+    "mission-dags:history": "node --experimental-strip-types control-plane/cli/mission-dags-history.ts",
+    "mission-dags:materialize": "node --experimental-strip-types control-plane/cli/mission-dags-materialize.ts",
     "mission-templates:list": "node --experimental-strip-types control-plane/cli/mission-templates-list.ts",
     "mission-templates:inspect": "node --experimental-strip-types control-plane/cli/mission-templates-inspect.ts",
     "mission-templates:instantiate": "node --experimental-strip-types control-plane/cli/mission-templates-instantiate.ts"

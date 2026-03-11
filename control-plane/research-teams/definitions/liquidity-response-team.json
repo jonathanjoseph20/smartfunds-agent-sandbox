@@ -1,0 +1,17 @@
+{
+  "teamId": "liquidity-response-team",
+  "displayName": "Liquidity Response Team",
+  "teamType": "liquidity_response",
+  "enabled": true,
+  "attachmentRules": {
+    "cohortTypes": [
+      "liquidity-monitoring"
+    ],
+    "subjectFamilies": [
+      "protocol"
+    ],
+    "topicCategories": [
+      "liquidity"
+    ]
+  }
+}

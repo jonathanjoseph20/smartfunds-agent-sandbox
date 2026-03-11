@@ -1,0 +1,17 @@
+{
+  "teamId": "governance-monitoring-team",
+  "displayName": "Governance Monitoring Team",
+  "teamType": "governance_monitoring",
+  "enabled": true,
+  "attachmentRules": {
+    "cohortTypes": [
+      "governance-risk"
+    ],
+    "subjectFamilies": [
+      "protocol"
+    ],
+    "topicCategories": [
+      "governance"
+    ]
+  }
+}

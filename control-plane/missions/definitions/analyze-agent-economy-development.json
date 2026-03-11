@@ -1,0 +1,25 @@
+{
+  "missionType": "analyze-agent-economy-development",
+  "displayName": "Analyze Agent Economy Development",
+  "enabled": true,
+  "description": "Analyze ecosystem evolution and business opportunities in agent-driven economies.",
+  "defaultObjective": "Provide founder-facing options for entering or expanding in agent-economy markets.",
+  "defaultDeliverables": [
+    "ecosystem_memo",
+    "business_model_opportunities",
+    "token_incentive_observations"
+  ],
+  "allowedSourceKinds": [
+    "memo",
+    "research",
+    "signal",
+    "synthesis"
+  ],
+  "defaultPriority": "normal",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "agents",
+    "ecosystem",
+    "pre_execution"
+  ]
+}

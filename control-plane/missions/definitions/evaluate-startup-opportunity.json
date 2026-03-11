@@ -1,0 +1,26 @@
+{
+  "missionType": "evaluate-startup-opportunity",
+  "displayName": "Evaluate Startup Opportunity",
+  "enabled": true,
+  "description": "Assess an early-stage startup opportunity using available market and execution signals.",
+  "defaultObjective": "Determine whether the startup opportunity should proceed to structured diligence.",
+  "defaultDeliverables": [
+    "executive_summary",
+    "opportunity_matrix",
+    "market_map",
+    "recommendation_memo"
+  ],
+  "allowedSourceKinds": [
+    "memo",
+    "note",
+    "research",
+    "synthesis"
+  ],
+  "defaultPriority": "normal",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "founder",
+    "opportunity",
+    "pre_execution"
+  ]
+}

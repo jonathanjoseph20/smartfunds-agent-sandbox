@@ -1,0 +1,25 @@
+{
+  "missionType": "generate-product-spec",
+  "displayName": "Generate Product Spec",
+  "enabled": true,
+  "description": "Draft a product specification package based on founder intent and linked intelligence.",
+  "defaultObjective": "Produce a review-ready product specification with implementation boundaries.",
+  "defaultDeliverables": [
+    "product_spec",
+    "mvp_scope",
+    "architecture_notes"
+  ],
+  "allowedSourceKinds": [
+    "memo",
+    "note",
+    "research",
+    "synthesis"
+  ],
+  "defaultPriority": "high",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "product",
+    "specification",
+    "pre_execution"
+  ]
+}

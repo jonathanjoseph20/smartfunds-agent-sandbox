@@ -1,0 +1,25 @@
+{
+  "missionType": "produce-market-memo",
+  "displayName": "Produce Market Memo",
+  "enabled": true,
+  "description": "Produce a bounded market memo from linked evidence and syntheses.",
+  "defaultObjective": "Summarize current market posture and key opportunities/risks for founder review.",
+  "defaultDeliverables": [
+    "market_summary",
+    "risk_opportunity_brief",
+    "linked_source_digest"
+  ],
+  "allowedSourceKinds": [
+    "memo",
+    "research",
+    "synthesis",
+    "signal"
+  ],
+  "defaultPriority": "normal",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "market",
+    "memo",
+    "pre_execution"
+  ]
+}

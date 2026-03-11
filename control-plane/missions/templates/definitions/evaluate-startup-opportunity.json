@@ -1,0 +1,37 @@
+{
+  "templateId": "evaluate-startup-opportunity",
+  "missionType": "evaluate-startup-opportunity",
+  "displayName": "Evaluate Startup Opportunity",
+  "description": "Evaluate whether a development creates a scalable venture opportunity.",
+  "parameters": {
+    "sector": {
+      "type": "string",
+      "required": true
+    },
+    "target_customer": {
+      "type": "string",
+      "required": false
+    },
+    "trigger_event": {
+      "type": "string",
+      "required": false
+    }
+  },
+  "defaultObjectiveTemplate": "Evaluate whether developments in {{sector}} create a scalable startup opportunity.",
+  "defaultDeliverablesTemplate": [
+    "executive-summary",
+    "market-map",
+    "product-concept"
+  ],
+  "allowedSourceKinds": [
+    "market-intelligence",
+    "portfolio-action"
+  ],
+  "recommendedTeams": [
+    "venture-opportunity-team"
+  ],
+  "tags": [
+    "analysis",
+    "venture"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "templateId": "structure-tokenized-offering",
+  "missionType": "structure-tokenized-offering",
+  "displayName": "Structure Tokenized Offering",
+  "description": "Structure a tokenized offering blueprint from core issuer constraints.",
+  "parameters": {
+    "asset_type": {
+      "type": "string",
+      "required": true
+    },
+    "investor_type": {
+      "type": "string",
+      "required": false
+    },
+    "jurisdiction": {
+      "type": "string",
+      "required": false
+    }
+  },
+  "defaultObjectiveTemplate": "Structure a tokenized offering for {{asset_type}}.",
+  "defaultDeliverablesTemplate": [
+    "structure-memo",
+    "risk-summary",
+    "issuance-outline"
+  ],
+  "allowedSourceKinds": [
+    "portfolio-action",
+    "venture-brief",
+    "market-intelligence"
+  ],
+  "recommendedTeams": [
+    "tokenization-structuring-team"
+  ],
+  "tags": [
+    "tokenization",
+    "structuring"
+  ]
+}

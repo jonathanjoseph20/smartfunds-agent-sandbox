@@ -1,0 +1,37 @@
+{
+  "templateId": "produce-market-memo",
+  "missionType": "produce-market-memo",
+  "displayName": "Produce Market Memo",
+  "description": "Produce a bounded market memo from founder-selected market inputs.",
+  "parameters": {
+    "geography": {
+      "type": "string",
+      "required": false
+    },
+    "market_topic": {
+      "type": "string",
+      "required": true
+    },
+    "timeframe": {
+      "type": "string",
+      "required": false
+    }
+  },
+  "defaultObjectiveTemplate": "Produce a structured market memo on {{market_topic}}.",
+  "defaultDeliverablesTemplate": [
+    "executive-summary",
+    "market-map",
+    "risks-and-drivers"
+  ],
+  "allowedSourceKinds": [
+    "market-intelligence",
+    "research-synthesis"
+  ],
+  "recommendedTeams": [
+    "market-intelligence-team"
+  ],
+  "tags": [
+    "market",
+    "research"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "synthesisType": "protocol-incident-synthesis",
+  "description": "Bounded protocol-level synthesis for liquidity drain incident investigations.",
+  "supportedDimensions": [
+    "protocol",
+    "signal_type"
+  ],
+  "sourceSignalTypes": [
+    "liquidity_drain"
+  ],
+  "sourceInvestigationDefinitionIds": [
+    "liquidity-drain-investigation"
+  ]
+}

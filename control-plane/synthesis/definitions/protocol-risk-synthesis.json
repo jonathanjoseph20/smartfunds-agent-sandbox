@@ -1,0 +1,14 @@
+{
+  "synthesisType": "protocol-risk-synthesis",
+  "description": "Bounded protocol-level synthesis for protocol risk investigations.",
+  "supportedDimensions": [
+    "protocol",
+    "signal_type"
+  ],
+  "sourceSignalTypes": [
+    "protocol_risk"
+  ],
+  "sourceInvestigationDefinitionIds": [
+    "protocol-risk-investigation"
+  ]
+}

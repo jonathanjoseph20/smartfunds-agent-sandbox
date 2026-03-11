@@ -1,0 +1,14 @@
+{
+  "swarmId": "protocol-risk-response",
+  "displayName": "Protocol Risk Response Swarm",
+  "teamId": "defi-risk-team",
+  "investigationTemplates": [
+    "protocol-risk-investigation",
+    "liquidity-drain-investigation",
+    "governance-proposal-investigation"
+  ],
+  "completionRules": {
+    "requireAllInvestigationsComplete": true,
+    "requireResolvedConflicts": true
+  }
+}

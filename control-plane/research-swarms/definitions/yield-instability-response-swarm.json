@@ -1,0 +1,13 @@
+{
+  "swarmId": "yield-instability-response",
+  "displayName": "Yield Instability Response Swarm",
+  "teamId": "yield-anomaly-team",
+  "investigationTemplates": [
+    "yield-anomaly-investigation",
+    "liquidity-drain-investigation"
+  ],
+  "completionRules": {
+    "requireAllInvestigationsComplete": true,
+    "requireResolvedConflicts": true
+  }
+}

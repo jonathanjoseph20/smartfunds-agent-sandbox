@@ -1,0 +1,13 @@
+{
+  "swarmId": "liquidity-shock-response",
+  "displayName": "Liquidity Shock Response Swarm",
+  "teamId": "liquidity-response-team",
+  "investigationTemplates": [
+    "liquidity-drain-investigation",
+    "protocol-risk-investigation"
+  ],
+  "completionRules": {
+    "requireAllInvestigationsComplete": true,
+    "requireResolvedConflicts": true
+  }
+}

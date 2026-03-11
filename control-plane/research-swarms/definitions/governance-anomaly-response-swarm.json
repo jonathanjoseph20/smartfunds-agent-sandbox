@@ -1,0 +1,13 @@
+{
+  "swarmId": "governance-anomaly-response",
+  "displayName": "Governance Anomaly Response Swarm",
+  "teamId": "governance-monitoring-team",
+  "investigationTemplates": [
+    "governance-proposal-investigation",
+    "protocol-risk-investigation"
+  ],
+  "completionRules": {
+    "requireAllInvestigationsComplete": true,
+    "requireResolvedConflicts": true
+  }
+}

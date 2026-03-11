@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { InvestigationCompletionStatus } from './completion-types.ts';
 import type {
   ConfidenceSnapshot,
   FindingSnapshot,
@@ -46,7 +47,8 @@ function normalizeRevisionRecord(value: unknown): InvestigationRevisionRecord {
     findingsSnapshotPath: value.findingsSnapshotPath,
     confidenceSnapshotPath: value.confidenceSnapshotPath,
     ...(typeof value.deltaPath === 'string' ? { deltaPath: value.deltaPath } : {}),
-    ...(typeof value.continuitySummaryPath === 'string' ? { continuitySummaryPath: value.continuitySummaryPath } : {})
+    ...(typeof value.continuitySummaryPath === 'string' ? { continuitySummaryPath: value.continuitySummaryPath } : {}),
+    ...(typeof value.completionStatusPath === 'string' ? { completionStatusPath: value.completionStatusPath } : {})
   };
 }
 
@@ -111,6 +113,13 @@ export function createInvestigationRevisionStore(options: {
     return parseJson<InvestigationContinuitySummary>(revision.continuitySummaryPath);
   }
 
+  function loadCompletionStatus(revision: InvestigationRevisionRecord): InvestigationCompletionStatus | null {
+    if (!revision.completionStatusPath || !fs.existsSync(revision.completionStatusPath)) {
+      return null;
+    }
+    return parseJson<InvestigationCompletionStatus>(revision.completionStatusPath);
+  }
+
   function orderedRevisionHistory(investigationRunId: string): InvestigationRevisionRecord[] {
     return listRevisions(investigationRunId);
   }
@@ -122,6 +131,7 @@ export function createInvestigationRevisionStore(options: {
     loadConfidenceSnapshot,
     loadDelta,
     loadContinuitySummary,
+    loadCompletionStatus,
     orderedRevisionHistory
   };
 }

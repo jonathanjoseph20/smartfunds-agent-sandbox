@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { canonicalStringify } from '../finance/determinism.ts';
 
+import type { InvestigationCompletionStatus } from './completion-types.ts';
 import type { ConfidenceSummary, InvestigationFinding } from './evidence-types.ts';
 import type {
   ConfidenceSnapshot,
@@ -74,6 +75,7 @@ function revisionSummaryMarkdown(input: {
     `- confidenceSnapshotPath: ${input.record.confidenceSnapshotPath}`,
     `- deltaPath: ${input.record.deltaPath ?? 'pending'}`,
     `- continuitySummaryPath: ${input.record.continuitySummaryPath ?? 'pending'}`,
+    `- completionStatusPath: ${input.record.completionStatusPath ?? 'pending'}`,
   ];
 
   if (input.record.slotReference) {
@@ -184,6 +186,15 @@ export function createInvestigationRevisionBuilder(options: {
     return filePath;
   }
 
+  function persistCompletionStatus(input: {
+    revisionDir: string;
+    status: InvestigationCompletionStatus;
+  }): string {
+    const filePath = path.join(input.revisionDir, 'completion-status.json');
+    writeCanonicalJson(filePath, input.status);
+    return filePath;
+  }
+
   function finalizeRevisionSummary(input: {
     revisionDir: string;
     record: InvestigationRevisionRecord;
@@ -204,6 +215,7 @@ export function createInvestigationRevisionBuilder(options: {
     createRevisionSnapshot,
     persistDelta,
     persistContinuitySummary,
+    persistCompletionStatus,
     finalizeRevisionSummary
   };
 }

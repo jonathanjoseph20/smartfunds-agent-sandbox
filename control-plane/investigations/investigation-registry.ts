@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { InvestigationCompletionCriteria } from './completion-types.ts';
 import {
   INVESTIGATION_PHASE_KINDS,
   INVESTIGATION_PHASE_EXECUTION_MODES,
@@ -132,6 +133,69 @@ function validatePhaseDefinition(
   };
 }
 
+function validateCompletionCriteriaConfig(
+  value: unknown,
+  definitionId: string
+): InvestigationCompletionCriteria {
+  if (!isRecord(value)) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig must be an object.`
+    );
+  }
+
+  const requiredPhaseIds = value.requiredPhaseIds === undefined ? undefined : asStringArray(value.requiredPhaseIds);
+  if (value.requiredPhaseIds !== undefined && !requiredPhaseIds) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig.requiredPhaseIds must be an array of strings.`
+    );
+  }
+
+  const minimumConfidenceBand = asTrimmedString(value.minimumConfidenceBand);
+  if (minimumConfidenceBand && minimumConfidenceBand !== 'medium' && minimumConfidenceBand !== 'high') {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig.minimumConfidenceBand must be medium or high.`
+    );
+  }
+
+  if (value.requireNoCriticalGaps !== undefined && typeof value.requireNoCriticalGaps !== 'boolean') {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig.requireNoCriticalGaps must be a boolean.`
+    );
+  }
+
+  const requireConvergenceState = asTrimmedString(value.requireConvergenceState);
+  if (requireConvergenceState && requireConvergenceState !== 'converging' && requireConvergenceState !== 'stable') {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig.requireConvergenceState must be converging or stable.`
+    );
+  }
+
+  if (
+    value.minimumSupportingEvidenceCount !== undefined
+    && (!Number.isInteger(value.minimumSupportingEvidenceCount) || Number(value.minimumSupportingEvidenceCount) < 0)
+  ) {
+    throw new InvestigationError(
+      'INVESTIGATION_INVALID_DEFINITION',
+      `Investigation definition ${definitionId} completionCriteriaConfig.minimumSupportingEvidenceCount must be a non-negative integer.`
+    );
+  }
+
+  return {
+    ...(requiredPhaseIds ? { requiredPhaseIds: [...requiredPhaseIds].sort((left, right) => left.localeCompare(right)) } : {}),
+    ...(minimumConfidenceBand ? { minimumConfidenceBand: minimumConfidenceBand as 'medium' | 'high' } : {}),
+    ...(value.requireNoCriticalGaps !== undefined ? { requireNoCriticalGaps: value.requireNoCriticalGaps } : {}),
+    ...(requireConvergenceState ? { requireConvergenceState: requireConvergenceState as 'converging' | 'stable' } : {}),
+    ...(value.minimumSupportingEvidenceCount !== undefined
+      ? { minimumSupportingEvidenceCount: Number(value.minimumSupportingEvidenceCount) }
+      : {})
+  };
+}
+
 export function validateInvestigationDefinition(
   value: unknown,
   sourceLabel = '<inline>'
@@ -148,6 +212,9 @@ export function validateInvestigationDefinition(
   const sourceTriggerId = asTrimmedString(value.sourceTriggerId) ?? undefined;
   const outputArtifacts = asStringArray(value.outputArtifacts);
   const completionCriteria = asStringArray(value.completionCriteria);
+  const completionCriteriaConfig = value.completionCriteriaConfig === undefined
+    ? undefined
+    : validateCompletionCriteriaConfig(value.completionCriteriaConfig, investigationDefinitionId ?? sourceLabel);
   const dedupeStrategy = asTrimmedString(value.dedupeStrategy);
 
   if (!investigationDefinitionId) {
@@ -213,6 +280,7 @@ export function validateInvestigationDefinition(
     phases,
     outputArtifacts,
     completionCriteria,
+    ...(completionCriteriaConfig ? { completionCriteriaConfig } : {}),
     dedupeStrategy: 'definition_signal_slot'
   };
 }

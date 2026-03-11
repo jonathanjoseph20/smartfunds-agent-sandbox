@@ -1,5 +1,6 @@
 import { canonicalStringify } from '../finance/determinism.ts';
 import { createResearchInspection } from '../research/inspection.ts';
+import { createResearchTeamInspection } from '../research-teams/research-team-inspection.ts';
 
 function printJson(value: unknown): void {
   process.stdout.write(`${canonicalStringify(value)}\n`);
@@ -7,14 +8,21 @@ function printJson(value: unknown): void {
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   try {
-    if (argv.length > 0) {
-      throw new Error(`UNKNOWN_ARGUMENT: ${argv[0]}`);
+    if (argv.length === 0) {
+      const inspection = createResearchInspection();
+      const teams = inspection.listTeams();
+      printJson(teams);
+      return 0;
     }
 
-    const inspection = createResearchInspection();
-    const teams = inspection.listTeams();
-    printJson(teams);
-    return 0;
+    if (argv.length === 1 && argv[0] === '--bounded') {
+      const inspection = createResearchTeamInspection();
+      const teams = inspection.listTeams();
+      printJson(teams);
+      return 0;
+    }
+
+    throw new Error(`UNKNOWN_ARGUMENT: ${argv[0]}`);
   } catch (error) {
     printJson({ error: (error as Error).message });
     return 1;

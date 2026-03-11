@@ -1,0 +1,20 @@
+{
+  "teamId": "defi-risk-team",
+  "displayName": "DeFi Risk Research Team",
+  "teamType": "risk_monitoring",
+  "enabled": true,
+  "attachmentRules": {
+    "cohortIds": [
+      "aave-risk"
+    ],
+    "cohortTypes": [
+      "protocol-risk"
+    ],
+    "subjectFamilies": [
+      "protocol"
+    ],
+    "topicCategories": [
+      "risk"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "teamId": "yield-anomaly-team",
+  "displayName": "Yield Anomaly Team",
+  "teamType": "yield_monitoring",
+  "enabled": true,
+  "attachmentRules": {
+    "cohortTypes": [
+      "yield-anomaly"
+    ],
+    "subjectFamilies": [
+      "protocol"
+    ],
+    "topicCategories": [
+      "yield"
+    ]
+  }
+}

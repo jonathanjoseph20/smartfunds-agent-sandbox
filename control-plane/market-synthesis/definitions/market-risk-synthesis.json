@@ -1,0 +1,13 @@
+{
+  "marketSynthesisId": "market-risk-synthesis",
+  "displayName": "Market Risk Synthesis",
+  "synthesisType": "market_risk",
+  "enabled": true,
+  "crossSwarmMatchingRules": {
+    "eventFamilies": ["market", "protocol", "governance", "liquidity", "yield"],
+    "responseFamilies": ["market", "protocol", "governance", "liquidity"]
+  },
+  "scopeConstraints": {
+    "minCrossSwarms": 2
+  }
+}

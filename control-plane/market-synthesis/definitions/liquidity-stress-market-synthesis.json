@@ -1,0 +1,14 @@
+{
+  "marketSynthesisId": "liquidity-stress-market-synthesis",
+  "displayName": "Liquidity Stress Market Synthesis",
+  "synthesisType": "liquidity_stress",
+  "enabled": true,
+  "crossSwarmMatchingRules": {
+    "eventFamilies": ["liquidity", "market"],
+    "protocolFamilies": ["aave", "compound"],
+    "responseFamilies": ["liquidity", "market"]
+  },
+  "scopeConstraints": {
+    "minCrossSwarms": 1
+  }
+}

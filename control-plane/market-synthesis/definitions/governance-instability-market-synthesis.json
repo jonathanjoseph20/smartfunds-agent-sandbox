@@ -1,0 +1,13 @@
+{
+  "marketSynthesisId": "governance-instability-market-synthesis",
+  "displayName": "Governance Instability Market Synthesis",
+  "synthesisType": "governance_instability",
+  "enabled": true,
+  "crossSwarmMatchingRules": {
+    "eventFamilies": ["governance", "market"],
+    "responseFamilies": ["governance", "market"]
+  },
+  "scopeConstraints": {
+    "minCrossSwarms": 1
+  }
+}

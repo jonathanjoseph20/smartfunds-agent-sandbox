@@ -1,0 +1,14 @@
+{
+  "marketSynthesisId": "yield-instability-market-synthesis",
+  "displayName": "Yield Instability Market Synthesis",
+  "synthesisType": "yield_instability",
+  "enabled": true,
+  "crossSwarmMatchingRules": {
+    "eventFamilies": ["yield", "market"],
+    "protocolFamilies": ["aave", "curve"],
+    "responseFamilies": ["market", "protocol"]
+  },
+  "scopeConstraints": {
+    "minCrossSwarms": 1
+  }
+}

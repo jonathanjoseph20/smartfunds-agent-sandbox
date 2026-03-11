@@ -1,0 +1,12 @@
+{
+  "cohortId": "aave-liquidity",
+  "cohortType": "liquidity-monitoring",
+  "subjectKey": "aave",
+  "linkRules": {
+    "sharedProtocol": true,
+    "sharedAsset": false,
+    "sharedEventFamily": false,
+    "sharedTriggerFamily": false,
+    "cohortDefinitionMatch": true
+  }
+}

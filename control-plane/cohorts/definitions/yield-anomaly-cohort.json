@@ -1,0 +1,12 @@
+{
+  "cohortId": "aave-yield",
+  "cohortType": "yield-anomaly",
+  "subjectKey": "aave",
+  "linkRules": {
+    "sharedProtocol": true,
+    "sharedAsset": false,
+    "sharedEventFamily": false,
+    "sharedTriggerFamily": false,
+    "cohortDefinitionMatch": true
+  }
+}

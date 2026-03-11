@@ -7,6 +7,19 @@ import { computeConfidenceTrend } from './confidence-trend.ts';
 import { createInvestigationRegistry, type InvestigationRegistry } from './investigation-registry.ts';
 import { createInvestigationRevisionStore, type InvestigationRevisionStore } from './investigation-revision-store.ts';
 import { createInvestigationStore, type InvestigationStore } from './investigation-store.ts';
+import type { InvestigationCompletionStatus } from './completion-types.ts';
+
+function defaultCompletionStatus(investigationRunId: string): InvestigationCompletionStatus {
+  return {
+    investigationRunId,
+    readinessState: 'inconclusive',
+    convergenceState: 'inconclusive',
+    healthState: 'inconclusive',
+    blockingReasons: [],
+    strengths: [],
+    limitations: []
+  };
+}
 
 export function createInvestigationInspection(options: {
   definitionsDir?: string;
@@ -143,17 +156,23 @@ export function createInvestigationInspection(options: {
   function inspectContinuitySummary(investigationRunId: string) {
     const revisions = listRevisions(investigationRunId);
     if (revisions.length === 0) {
+      const completion = defaultCompletionStatus(investigationRunId);
       return {
         investigationRunId,
         revisionCount: 0,
         continuityState: 'inconclusive',
         confidenceTrend: 'flat',
         majorChanges: [],
-        unresolvedLimitations: []
+        unresolvedLimitations: [],
+        readinessState: completion.readinessState,
+        convergenceState: completion.convergenceState,
+        healthState: completion.healthState,
+        blockingReasons: completion.blockingReasons
       };
     }
     const latest = revisions[revisions.length - 1];
     const summary = revisionStore.loadContinuitySummary(latest);
+    const completion = revisionStore.loadCompletionStatus(latest) ?? defaultCompletionStatus(investigationRunId);
     if (!summary) {
       return {
         investigationRunId,
@@ -161,10 +180,45 @@ export function createInvestigationInspection(options: {
         continuityState: 'inconclusive',
         confidenceTrend: inspectTrend(investigationRunId).confidenceTrend,
         majorChanges: [],
-        unresolvedLimitations: []
+        unresolvedLimitations: [],
+        readinessState: completion.readinessState,
+        convergenceState: completion.convergenceState,
+        healthState: completion.healthState,
+        blockingReasons: completion.blockingReasons
       };
     }
-    return summary;
+    return {
+      ...summary,
+      readinessState: completion.readinessState,
+      convergenceState: completion.convergenceState,
+      healthState: completion.healthState,
+      blockingReasons: completion.blockingReasons
+    };
+  }
+
+  function inspectCompletionStatus(investigationRunId: string): InvestigationCompletionStatus {
+    const revisions = listRevisions(investigationRunId);
+    if (revisions.length === 0) {
+      return defaultCompletionStatus(investigationRunId);
+    }
+    const latest = revisions[revisions.length - 1];
+    return revisionStore.loadCompletionStatus(latest) ?? defaultCompletionStatus(investigationRunId);
+  }
+
+  function inspectConvergenceState(investigationRunId: string) {
+    const status = inspectCompletionStatus(investigationRunId);
+    return {
+      investigationRunId,
+      convergenceState: status.convergenceState
+    };
+  }
+
+  function inspectHealthState(investigationRunId: string) {
+    const status = inspectCompletionStatus(investigationRunId);
+    return {
+      investigationRunId,
+      healthState: status.healthState
+    };
   }
 
   return {
@@ -179,7 +233,10 @@ export function createInvestigationInspection(options: {
     listRevisions,
     inspectLatestDelta,
     inspectTrend,
-    inspectContinuitySummary
+    inspectContinuitySummary,
+    inspectCompletionStatus,
+    inspectConvergenceState,
+    inspectHealthState
   };
 }
 

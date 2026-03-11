@@ -191,6 +191,19 @@ function normalizeEventRecord(value: unknown): InvestigationEventRecord {
         phaseId: String(value.phaseId),
         reason: String(value.reason)
       });
+    case 'INVESTIGATION_FINALIZATION_SIGNAL_EMITTED':
+      return canonicalClone({
+        sequence,
+        logDate,
+        eventType,
+        investigationRunId,
+        signalType: String(value.signalType),
+        signalFingerprint: String(value.signalFingerprint),
+        toReadinessState: String(value.toReadinessState),
+        toHealthState: String(value.toHealthState),
+        ...(typeof value.fromReadinessState === 'string' ? { fromReadinessState: value.fromReadinessState } : {}),
+        ...(typeof value.fromHealthState === 'string' ? { fromHealthState: value.fromHealthState } : {})
+      });
     default:
       throw new InvestigationError(
         'INVESTIGATION_INVALID_STORE',

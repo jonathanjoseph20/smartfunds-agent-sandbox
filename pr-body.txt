@@ -1,0 +1,32 @@
+tier-3
+
+```evidence
+Sprint: 2.9 — Investigation Continuity and Report Revision Framework
+
+Summary:
+Adds deterministic revision tracking for investigations so operators can inspect how findings, evidence, and confidence evolve across scheduler cycles.
+
+Key additions:
+- Revision snapshot builder (append-only revision directories)
+- Deterministic delta engine for finding/evidence/confidence changes
+- Confidence trend evaluation across revisions
+- Continuity state evaluation (stable/evolving/materially_changed/inconclusive)
+- CLI inspection surfaces for revision history, deltas, trends, and summaries
+
+Safety:
+- Fully deterministic (canonicalStringify, stable ordering)
+- Append-only revision artifacts
+- No scheduler or lifecycle semantic changes
+- No orchestration, swarms, or coordination logic introduced
+
+Tests:
+- Revision snapshot creation and append-only behavior
+- Delta classification (added/removed/confidence/support/counter/gap)
+- Continuity classification and confidence trends
+- Multi-cycle investigation integration test
+- CLI inspection tests
+
+Docs:
+- investigation-continuity-framework.md
+- revision-aware-investigations.md
+```

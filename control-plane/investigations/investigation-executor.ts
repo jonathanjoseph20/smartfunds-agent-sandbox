@@ -8,6 +8,8 @@ import type { SignalRecord } from '../signals/signal-types.ts';
 import { createEvidenceStore } from './evidence-store.ts';
 import { extractEvidenceRecords } from './evidence-extractor.ts';
 import { buildInvestigationConfidenceProjection } from './findings.ts';
+import { buildInvestigationCompletionStatus, evidenceMetricsFromCounts } from './completion-status.ts';
+import { emitFinalizationSignalOnTransition, finalizationSignalFingerprint } from './finalization-signal-emitter.ts';
 import { computeInvestigationDedupeKey, computeInvestigationRunId, createInvestigationDeduper, type InvestigationDeduper } from './investigation-deduper.ts';
 import { evaluateInvestigationContinuity } from './investigation-continuity.ts';
 import { computeInvestigationDelta } from './investigation-delta-engine.ts';
@@ -340,6 +342,7 @@ export function createInvestigationExecutor(options: {
     runId: string;
     definition: InvestigationDefinition;
     schedulerSlot: string;
+    logDate: string;
   }): void {
     const record = store.getInvestigation(input.runId);
     const evidence = evidenceStore.loadEvidence(input.runId);
@@ -351,6 +354,7 @@ export function createInvestigationExecutor(options: {
     });
     const priorRevisions = revisionStore.listRevisions(input.runId);
     const priorRevision = priorRevisions.length > 0 ? priorRevisions[priorRevisions.length - 1] : undefined;
+    const priorCompletionStatus = priorRevision ? revisionStore.loadCompletionStatus(priorRevision) : null;
     const created = revisionBuilder.createRevisionSnapshot({
       investigationRunId: input.runId,
       slotReference: input.schedulerSlot,
@@ -384,12 +388,71 @@ export function createInvestigationExecutor(options: {
       revisionDir: created.revisionDir,
       summary: continuitySummary
     });
+    const allDeltas = [
+      ...priorRevisions
+        .map((revision) => revisionStore.loadDelta(revision))
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+      delta
+    ];
+    const completionStatus = buildInvestigationCompletionStatus({
+      investigationRunId: input.runId,
+      lifecycle: {
+        status: record.status,
+        completedPhaseIds: [...record.completedPhaseIds].sort((left, right) => left.localeCompare(right)),
+        ...(record.waitingReason ? { waitingReason: record.waitingReason } : {})
+      },
+      criteria: input.definition.completionCriteriaConfig,
+      revisions: [...priorRevisions, created.record],
+      deltas: allDeltas,
+      confidenceSnapshots,
+      evidence: evidenceMetricsFromCounts({
+        supportingEvidenceCount: evidence.filter((entry) => entry.evidenceType !== 'counter_evidence' && entry.evidenceType !== 'unresolved_gap').length,
+        counterEvidenceCount: evidence.filter((entry) => entry.evidenceType === 'counter_evidence').length,
+        unresolvedGapCount: evidence.filter((entry) => entry.evidenceType === 'unresolved_gap').length
+      }),
+      history: store.getInvestigationHistory(input.runId)
+    });
+    const completionStatusPath = revisionBuilder.persistCompletionStatus({
+      revisionDir: created.revisionDir,
+      status: completionStatus
+    });
+    const seenFingerprints = new Set(
+      store.getInvestigationHistory(input.runId)
+        .filter((event) => event.eventType === 'INVESTIGATION_FINALIZATION_SIGNAL_EMITTED')
+        .map((event) => event.signalFingerprint)
+    );
+    const signal = emitFinalizationSignalOnTransition({
+      investigationRunId: input.runId,
+      currentStatus: completionStatus,
+      ...(priorCompletionStatus ? { previousStatus: priorCompletionStatus } : {}),
+      seenFingerprints
+    });
+    if (signal) {
+      store.appendEvent({
+        logDate: input.logDate,
+        event: {
+          eventType: 'INVESTIGATION_FINALIZATION_SIGNAL_EMITTED',
+          investigationRunId: input.runId,
+          signalType: signal.signalType,
+          signalFingerprint: finalizationSignalFingerprint({
+            investigationRunId: input.runId,
+            signalType: signal.signalType,
+            status: completionStatus
+          }),
+          ...(signal.fromReadinessState ? { fromReadinessState: signal.fromReadinessState } : {}),
+          toReadinessState: signal.toReadinessState,
+          ...(signal.fromHealthState ? { fromHealthState: signal.fromHealthState } : {}),
+          toHealthState: signal.toHealthState
+        }
+      });
+    }
     revisionBuilder.finalizeRevisionSummary({
       revisionDir: created.revisionDir,
       record: {
         ...created.record,
         deltaPath,
-        continuitySummaryPath
+        continuitySummaryPath,
+        completionStatusPath
       },
       continuitySummary
     });
@@ -751,7 +814,8 @@ export function createInvestigationExecutor(options: {
       persistRevisionArtifacts({
         runId: input.runId,
         definition,
-        schedulerSlot: input.schedulerSlot
+        schedulerSlot: input.schedulerSlot,
+        logDate: input.logDate
       });
     }
 

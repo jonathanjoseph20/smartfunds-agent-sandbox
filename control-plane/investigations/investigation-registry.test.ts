@@ -54,4 +54,41 @@ describe('investigation registry', () => {
 
     expect(definition.investigationDefinitionId).toBe('yield-anomaly-investigation');
   });
+
+  it('T-INV-R4 accepts optional structured completion criteria without breaking legacy completionCriteria', () => {
+    const defsDir = path.join(tmpRoot, 'definitions-with-completion-config');
+    writeJson(path.join(defsDir, 'definition.json'), {
+      investigationDefinitionId: 'completion-config-investigation',
+      sourceSignalType: 'liquidity_drain',
+      sourceTriggerId: 'completion-config-trigger',
+      phases: [
+        { phaseId: 'intake', kind: 'intake', requiredInputs: [], produces: [] },
+        { phaseId: 'gather', kind: 'gather', requiredInputs: [], produces: [] },
+        { phaseId: 'analyze', kind: 'analyze', requiredInputs: [], produces: [] },
+        { phaseId: 'synthesize', kind: 'synthesize', requiredInputs: [], produces: [] },
+        { phaseId: 'finalize', kind: 'finalize', requiredInputs: [], produces: [] }
+      ],
+      outputArtifacts: ['investigation-report.json'],
+      completionCriteria: ['all_phases_completed'],
+      completionCriteriaConfig: {
+        requiredPhaseIds: ['intake', 'gather'],
+        minimumConfidenceBand: 'high',
+        requireNoCriticalGaps: true,
+        requireConvergenceState: 'stable',
+        minimumSupportingEvidenceCount: 2
+      },
+      dedupeStrategy: 'definition_signal_slot'
+    });
+
+    const registry = createInvestigationRegistry({ definitionsDir: defsDir });
+    const definition = registry.getInvestigation('completion-config-investigation');
+    expect(definition.completionCriteria).toEqual(['all_phases_completed']);
+    expect(definition.completionCriteriaConfig).toEqual({
+      requiredPhaseIds: ['gather', 'intake'],
+      minimumConfidenceBand: 'high',
+      requireNoCriticalGaps: true,
+      requireConvergenceState: 'stable',
+      minimumSupportingEvidenceCount: 2
+    });
+  });
 });

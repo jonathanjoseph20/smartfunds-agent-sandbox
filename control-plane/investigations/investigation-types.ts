@@ -1,4 +1,5 @@
 import type { InvestigationFailureDisposition, InvestigationWaitCondition } from './investigation-lifecycle.ts';
+import type { InvestigationCompletionCriteria } from './completion-types.ts';
 
 export const INVESTIGATION_PHASE_KINDS = [
   'intake',
@@ -49,6 +50,7 @@ export type InvestigationDefinition = {
   phases: InvestigationPhaseDefinition[];
   outputArtifacts: string[];
   completionCriteria: string[];
+  completionCriteriaConfig?: InvestigationCompletionCriteria;
   dedupeStrategy: 'definition_signal_slot';
 };
 
@@ -190,6 +192,47 @@ export type InvestigationEvent =
     investigationRunId: string;
     phaseId: string;
     reason: string;
+  }
+  | {
+    eventType: 'INVESTIGATION_FINALIZATION_SIGNAL_EMITTED';
+    investigationRunId: string;
+    signalType:
+      | 'investigation_ready_to_finalize'
+      | 'investigation_completed'
+      | 'investigation_inconclusive'
+      | 'investigation_stalled'
+      | 'investigation_confidence_degraded';
+    signalFingerprint: string;
+    toReadinessState:
+      | 'ready_to_finalize'
+      | 'still_evolving'
+      | 'blocked'
+      | 'inconclusive'
+      | 'complete'
+      | 'unhealthy';
+    toHealthState:
+      | 'healthy'
+      | 'waiting_normally'
+      | 'retrying'
+      | 'blocked_by_missing_evidence'
+      | 'degraded_by_counter_evidence'
+      | 'stalled'
+      | 'inconclusive';
+    fromReadinessState?:
+      | 'ready_to_finalize'
+      | 'still_evolving'
+      | 'blocked'
+      | 'inconclusive'
+      | 'complete'
+      | 'unhealthy';
+    fromHealthState?:
+      | 'healthy'
+      | 'waiting_normally'
+      | 'retrying'
+      | 'blocked_by_missing_evidence'
+      | 'degraded_by_counter_evidence'
+      | 'stalled'
+      | 'inconclusive';
   };
 
 export type InvestigationEventRecord = InvestigationEvent & {

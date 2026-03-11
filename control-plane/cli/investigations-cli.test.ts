@@ -11,10 +11,14 @@ import { main as listMain } from './investigations-list.ts';
 import { main as deltaMain } from './investigations-delta.ts';
 import { main as reportMain } from './investigations-report.ts';
 import { main as revisionsMain } from './investigations-revisions.ts';
+import { main as completionMain } from './investigations-completion.ts';
+import { main as convergenceMain } from './investigations-convergence.ts';
+import { main as healthMain } from './investigations-health.ts';
+import { main as statusMain } from './investigations-status.ts';
 import { main as summaryMain } from './investigations-summary.ts';
 import { main as trendMain } from './investigations-trend.ts';
 
-const { listInvestigations, inspectInvestigation, historyByDate, readReport, listEvidence, inspectFindings, inspectConfidence, listRevisions, inspectLatestDelta, inspectTrend, inspectContinuitySummary } = vi.hoisted(() => ({
+const { listInvestigations, inspectInvestigation, historyByDate, readReport, listEvidence, inspectFindings, inspectConfidence, listRevisions, inspectLatestDelta, inspectTrend, inspectContinuitySummary, inspectCompletionStatus, inspectConvergenceState, inspectHealthState } = vi.hoisted(() => ({
   listInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', status: 'completed' }]),
   inspectInvestigation: vi.fn(() => ({ record: { investigationRunId: 'run-1' }, definition: {}, history: [] })),
   historyByDate: vi.fn(() => [{ date: '2026-03-10', investigations: [] }]),
@@ -25,7 +29,27 @@ const { listInvestigations, inspectInvestigation, historyByDate, readReport, lis
   listRevisions: vi.fn(() => [{ revisionId: 'revision-0001', revisionNumber: 1 }]),
   inspectLatestDelta: vi.fn(() => ({ revisionId: 'revision-0002', delta: { deltas: [] } })),
   inspectTrend: vi.fn(() => ({ confidenceTrend: 'improving' })),
-  inspectContinuitySummary: vi.fn(() => ({ continuityState: 'evolving', confidenceTrend: 'mixed', revisionCount: 2, unresolvedLimitations: [] }))
+  inspectContinuitySummary: vi.fn(() => ({
+    continuityState: 'evolving',
+    confidenceTrend: 'mixed',
+    revisionCount: 2,
+    unresolvedLimitations: [],
+    readinessState: 'still_evolving',
+    convergenceState: 'still_evolving',
+    healthState: 'healthy',
+    blockingReasons: []
+  })),
+  inspectCompletionStatus: vi.fn(() => ({
+    investigationRunId: 'run-1',
+    readinessState: 'ready_to_finalize',
+    convergenceState: 'converging',
+    healthState: 'healthy',
+    blockingReasons: [],
+    strengths: [],
+    limitations: []
+  })),
+  inspectConvergenceState: vi.fn(() => ({ investigationRunId: 'run-1', convergenceState: 'converging' })),
+  inspectHealthState: vi.fn(() => ({ investigationRunId: 'run-1', healthState: 'healthy' }))
 }));
 const { listDueInvestigations } = vi.hoisted(() => ({
   listDueInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', dueNow: true, dueReason: 'due' }])
@@ -43,7 +67,10 @@ vi.mock('../investigations/investigation-inspection.ts', () => ({
     listRevisions,
     inspectLatestDelta,
     inspectTrend,
-    inspectContinuitySummary
+    inspectContinuitySummary,
+    inspectCompletionStatus,
+    inspectConvergenceState,
+    inspectHealthState
   }))
 }));
 
@@ -199,6 +226,50 @@ describe('investigations CLI commands', () => {
     expect(code).toBe(0);
     expect(inspectContinuitySummary).toHaveBeenCalledWith('run-1');
     expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectContinuitySummary())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI15 investigations:status prints completion status', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await statusMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectCompletionStatus).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectCompletionStatus())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI16 investigations:convergence prints convergence state', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await convergenceMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectConvergenceState).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectConvergenceState())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI17 investigations:health prints health state', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await healthMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectHealthState).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectHealthState())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI18 investigations:completion prints completion payload', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await completionMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectCompletionStatus).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectCompletionStatus())}\n`);
     stdout.mockRestore();
   });
 });

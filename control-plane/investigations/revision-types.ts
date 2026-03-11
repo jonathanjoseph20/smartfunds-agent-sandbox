@@ -12,6 +12,7 @@ export interface InvestigationRevisionRecord {
   confidenceSnapshotPath: string;
   deltaPath?: string;
   continuitySummaryPath?: string;
+  completionStatusPath?: string;
 }
 
 export interface FindingSnapshot {

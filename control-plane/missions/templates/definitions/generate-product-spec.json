@@ -1,0 +1,38 @@
+{
+  "templateId": "generate-product-spec",
+  "missionType": "generate-product-spec",
+  "displayName": "Generate Product Spec",
+  "description": "Generate a structured product specification from a scoped product concept.",
+  "parameters": {
+    "platform": {
+      "type": "string",
+      "required": false
+    },
+    "product_concept": {
+      "type": "string",
+      "required": true
+    },
+    "target_user": {
+      "type": "string",
+      "required": false
+    }
+  },
+  "defaultObjectiveTemplate": "Generate a product specification for {{product_concept}}.",
+  "defaultDeliverablesTemplate": [
+    "product-spec",
+    "mvp-scope",
+    "architecture-outline"
+  ],
+  "allowedSourceKinds": [
+    "startup-evaluation",
+    "market-intelligence",
+    "portfolio-action"
+  ],
+  "recommendedTeams": [
+    "product-design-team"
+  ],
+  "tags": [
+    "product",
+    "specification"
+  ]
+}

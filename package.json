@@ -193,7 +193,10 @@
     "missions:inspect": "node --experimental-strip-types control-plane/cli/missions-inspect.ts",
     "missions:status": "node --experimental-strip-types control-plane/cli/missions-status.ts",
     "missions:history": "node --experimental-strip-types control-plane/cli/missions-history.ts",
-    "missions:materialize": "node --experimental-strip-types control-plane/cli/missions-materialize.ts"
+    "missions:materialize": "node --experimental-strip-types control-plane/cli/missions-materialize.ts",
+    "mission-templates:list": "node --experimental-strip-types control-plane/cli/mission-templates-list.ts",
+    "mission-templates:inspect": "node --experimental-strip-types control-plane/cli/mission-templates-inspect.ts",
+    "mission-templates:instantiate": "node --experimental-strip-types control-plane/cli/mission-templates-instantiate.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

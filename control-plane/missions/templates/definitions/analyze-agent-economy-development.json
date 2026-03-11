@@ -1,0 +1,38 @@
+{
+  "templateId": "analyze-agent-economy-development",
+  "missionType": "analyze-agent-economy-development",
+  "displayName": "Analyze Agent Economy Development",
+  "description": "Analyze an agent economy development for strategic implications and monetization viability.",
+  "parameters": {
+    "development_topic": {
+      "type": "string",
+      "required": true
+    },
+    "ecosystem": {
+      "type": "string",
+      "required": false
+    },
+    "monetization_model": {
+      "type": "string",
+      "required": false
+    }
+  },
+  "defaultObjectiveTemplate": "Analyze the implications of {{development_topic}} in the agent economy.",
+  "defaultDeliverablesTemplate": [
+    "executive-summary",
+    "ecosystem-map",
+    "monetization-analysis"
+  ],
+  "allowedSourceKinds": [
+    "market-intelligence",
+    "research-synthesis",
+    "portfolio-action"
+  ],
+  "recommendedTeams": [
+    "agent-economy-team"
+  ],
+  "tags": [
+    "agent-economy",
+    "analysis"
+  ]
+}

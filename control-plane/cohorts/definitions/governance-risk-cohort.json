@@ -1,0 +1,12 @@
+{
+  "cohortId": "aave-governance",
+  "cohortType": "governance-risk",
+  "subjectKey": "aave",
+  "linkRules": {
+    "sharedProtocol": true,
+    "sharedAsset": false,
+    "sharedEventFamily": false,
+    "sharedTriggerFamily": false,
+    "cohortDefinitionMatch": true
+  }
+}

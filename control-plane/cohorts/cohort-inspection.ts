@@ -2,12 +2,15 @@ import { createCohortLinker, type CohortLinker } from './cohort-linker.ts';
 import { createCohortMaterializer, type CohortMaterializer } from './cohort-materializer.ts';
 import { createCohortProjection, type CohortProjectionEngine } from './cohort-projection.ts';
 import { createCohortRegistry, type CohortRegistry } from './cohort-registry.ts';
+import { createCohortProgramInspection, type CohortProgramInspection } from './programs/program-inspection.ts';
 
 export function createCohortInspection(options: {
   registry?: CohortRegistry;
   linker?: CohortLinker;
   projection?: CohortProjectionEngine;
   materializer?: CohortMaterializer;
+  programInspection?: CohortProgramInspection;
+  cohortProgramDefinitionsDir?: string;
   definitionsDir?: string;
   investigationsRootDir?: string;
   signalsRootDir?: string;
@@ -43,6 +46,17 @@ export function createCohortInspection(options: {
   const materializer = options.materializer ?? createCohortMaterializer({
     projection,
     definitionsDir: options.definitionsDir,
+    investigationsRootDir: options.investigationsRootDir,
+    signalsRootDir: options.signalsRootDir,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    cohortArtifactsRoot: options.cohortArtifactsRoot
+  });
+  const programInspection = options.programInspection ?? createCohortProgramInspection({
+    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+    cohortDefinitionsDir: options.definitionsDir,
     investigationsRootDir: options.investigationsRootDir,
     signalsRootDir: options.signalsRootDir,
     synthesisDefinitionsDir: options.synthesisDefinitionsDir,
@@ -99,13 +113,39 @@ export function createCohortInspection(options: {
     return materializer.materializeOne(cohortId);
   }
 
+  function listCohortPrograms(cohortId: string) {
+    return programInspection.listPrograms({ cohortId });
+  }
+
+  function inspectCohortProgramStatus(cohortId: string, slot?: string) {
+    return programInspection.inspectProgramStatus({
+      cohortId,
+      ...(slot ? { slot } : {})
+    });
+  }
+
+  function inspectCohortProgramHistory(cohortId: string) {
+    return programInspection.inspectProgramHistory({ cohortId });
+  }
+
+  function runCohortProgram(programId: string, slot?: string) {
+    return programInspection.runProgram({
+      programId,
+      ...(slot ? { slot } : {})
+    });
+  }
+
   return {
     listCohorts,
     inspectCohort,
     inspectStatus,
     inspectLinks,
     projectCohort,
-    materializeCohort
+    materializeCohort,
+    listCohortPrograms,
+    inspectCohortProgramStatus,
+    inspectCohortProgramHistory,
+    runCohortProgram
   };
 }
 

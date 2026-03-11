@@ -1,0 +1,22 @@
+{
+  "programId": "yield-anomaly-monitor",
+  "cohortId": "aave-yield",
+  "displayName": "Yield Anomaly Monitor",
+  "description": "Monitors sustained yield anomalies for the Aave yield cohort.",
+  "cadence": "signal_driven",
+  "enabled": true,
+  "lifecycleState": "active",
+  "investigationTemplates": [
+    "yield-anomaly-investigation"
+  ],
+  "launchConditions": [
+    {
+      "kind": "signal_type",
+      "signalType": "yield_anomaly"
+    },
+    {
+      "kind": "cohort_health",
+      "health": "degraded"
+    }
+  ]
+}

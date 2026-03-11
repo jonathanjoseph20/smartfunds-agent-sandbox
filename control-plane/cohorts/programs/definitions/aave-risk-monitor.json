@@ -1,0 +1,29 @@
+{
+  "programId": "aave-risk-monitor",
+  "cohortId": "aave-risk",
+  "displayName": "Aave Risk Monitor",
+  "description": "Monitors protocol risk conditions for the Aave risk cohort.",
+  "cadence": "daily",
+  "enabled": true,
+  "lifecycleState": "active",
+  "investigationTemplates": [
+    "protocol-risk-investigation"
+  ],
+  "launchConditions": [
+    {
+      "kind": "cadence"
+    },
+    {
+      "kind": "signal_type",
+      "signalType": "protocol_risk"
+    },
+    {
+      "kind": "cohort_health",
+      "health": "degraded"
+    },
+    {
+      "kind": "cohort_health",
+      "health": "conflicted"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "teamId": "defi-risk-team",
+  "routingRules": [
+    {
+      "cohort": "aave-risk",
+      "investigationTemplate": "protocol-risk-investigation"
+    }
+  ],
+  "priorityRules": {
+    "escalated": "high",
+    "conflicted": "critical",
+    "failure": "high"
+  },
+  "stabilizationRules": {
+    "requiredHealthySlots": 3,
+    "requireResolvedInvestigations": true,
+    "requireClearedConflicts": true
+  }
+}

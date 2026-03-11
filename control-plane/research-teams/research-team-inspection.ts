@@ -22,6 +22,10 @@ import {
   createResearchTeamStatusEvaluator,
   type ResearchTeamStatusEvaluator
 } from './research-team-status.ts';
+import {
+  createTeamCoordinationInspection,
+  type TeamCoordinationInspection
+} from './coordination/team-coordination-inspection.ts';
 import type { ResearchTeamHistoryEntry } from './research-team-types.ts';
 
 function toEventType(activityState: string): ResearchTeamHistoryEntry['eventType'] {
@@ -63,7 +67,10 @@ export function createResearchTeamInspection(options: {
   projection?: ResearchTeamProjectionEngine;
   historyStore?: ResearchTeamHistoryStore;
   materializer?: ResearchTeamMaterializer;
+  coordinationInspection?: TeamCoordinationInspection;
   artifactsRoot?: string;
+  policyDefinitionsDir?: string;
+  coordinationArtifactsRoot?: string;
   teamDefinitionsDir?: string;
   cohortDefinitionsDir?: string;
   cohortProgramDefinitionsDir?: string;
@@ -130,6 +137,21 @@ export function createResearchTeamInspection(options: {
     signalsRootDir: options.signalsRootDir,
     synthesisDefinitionsDir: options.synthesisDefinitionsDir,
     synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    now: options.now
+  });
+  const coordinationInspection = options.coordinationInspection ?? createTeamCoordinationInspection({
+    teamDefinitionsDir: options.teamDefinitionsDir,
+    policyDefinitionsDir: options.policyDefinitionsDir,
+    cohortDefinitionsDir: options.cohortDefinitionsDir,
+    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+    cohortArtifactsRoot: options.cohortArtifactsRoot,
+    investigationsRootDir: options.investigationsRootDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    signalsRootDir: options.signalsRootDir,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    coordinationArtifactsRoot: options.coordinationArtifactsRoot,
     now: options.now
   });
 
@@ -203,6 +225,26 @@ export function createResearchTeamInspection(options: {
     });
   }
 
+  function inspectCoordination(teamId: string) {
+    return coordinationInspection.inspectCoordination(teamId);
+  }
+
+  function inspectCoordinationPolicy(teamId: string) {
+    return coordinationInspection.inspectPolicy(teamId);
+  }
+
+  function inspectCoordinationPriorities(teamId: string) {
+    return coordinationInspection.inspectPriorities(teamId);
+  }
+
+  function inspectCoordinationStabilization(teamId: string) {
+    return coordinationInspection.inspectStabilization(teamId);
+  }
+
+  function evaluateCoordination(input: { teamId: string; slotReference?: string }) {
+    return coordinationInspection.evaluateCoordination(input);
+  }
+
   return {
     listTeams,
     inspectTeam,
@@ -210,7 +252,12 @@ export function createResearchTeamInspection(options: {
     inspectLinks,
     inspectHistory,
     evaluateTeam,
-    materializeTeam
+    materializeTeam,
+    inspectCoordination,
+    inspectCoordinationPolicy,
+    inspectCoordinationPriorities,
+    inspectCoordinationStabilization,
+    evaluateCoordination
   };
 }
 

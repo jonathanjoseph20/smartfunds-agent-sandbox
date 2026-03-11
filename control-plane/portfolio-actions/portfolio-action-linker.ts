@@ -245,36 +245,46 @@ export function createPortfolioActionLinker(options: {
   const registry = options.registry ?? createPortfolioActionRegistry({
     definitionsDir: options.definitionsDir ?? options.portfolioActionDefinitionsDir,
   });
+  let portfolioInspection = options.portfolioInspection;
+  let cachedLinks: LinkedPortfolioActionUnit[] | undefined;
 
-  const portfolioInspection = options.portfolioInspection ?? createPortfolioInspection({
-    portfolioDefinitionsDir: options.portfolioDefinitionsDir,
-    marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
-    crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
-    swarmDefinitionsDir: options.swarmDefinitionsDir,
-    teamDefinitionsDir: options.teamDefinitionsDir,
-    cohortDefinitionsDir: options.cohortDefinitionsDir,
-    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
-    cohortArtifactsRoot: options.cohortArtifactsRoot,
-    investigationsRootDir: options.investigationsRootDir,
-    investigationArtifactsRoot: options.investigationArtifactsRoot,
-    investigationDefinitionsDir: options.investigationDefinitionsDir,
-    signalsRootDir: options.signalsRootDir,
-    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
-    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
-    policyDefinitionsDir: options.policyDefinitionsDir,
-    coordinationArtifactsRoot: options.coordinationArtifactsRoot,
-    teamSwarmArtifactsRoot: options.teamSwarmArtifactsRoot,
-    swarmArtifactsRoot: options.swarmArtifactsRoot,
-    crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
-    marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
-    portfolioArtifactsRoot: options.portfolioArtifactsRoot,
-    now: options.now,
-  });
+  function getPortfolioInspection(): PortfolioInspection {
+    portfolioInspection ??= createPortfolioInspection({
+      portfolioDefinitionsDir: options.portfolioDefinitionsDir,
+      marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
+      crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
+      swarmDefinitionsDir: options.swarmDefinitionsDir,
+      teamDefinitionsDir: options.teamDefinitionsDir,
+      cohortDefinitionsDir: options.cohortDefinitionsDir,
+      cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+      cohortArtifactsRoot: options.cohortArtifactsRoot,
+      investigationsRootDir: options.investigationsRootDir,
+      investigationArtifactsRoot: options.investigationArtifactsRoot,
+      investigationDefinitionsDir: options.investigationDefinitionsDir,
+      signalsRootDir: options.signalsRootDir,
+      synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+      synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+      policyDefinitionsDir: options.policyDefinitionsDir,
+      coordinationArtifactsRoot: options.coordinationArtifactsRoot,
+      teamSwarmArtifactsRoot: options.teamSwarmArtifactsRoot,
+      swarmArtifactsRoot: options.swarmArtifactsRoot,
+      crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
+      marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
+      portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      now: options.now,
+    });
+
+    return portfolioInspection;
+  }
 
   function buildLinks(): LinkedPortfolioActionUnit[] {
-    const contexts = buildPortfolioContexts(portfolioInspection);
+    if (cachedLinks) {
+      return cachedLinks;
+    }
 
-    return registry
+    const contexts = buildPortfolioContexts(getPortfolioInspection());
+
+    cachedLinks = registry
       .getActionDefinitions()
       .map((definition) => {
         const linked = definition.enabled
@@ -311,6 +321,8 @@ export function createPortfolioActionLinker(options: {
         } satisfies LinkedPortfolioActionUnit;
       })
       .sort((left, right) => left.actionId.localeCompare(right.actionId));
+
+    return cachedLinks;
   }
 
   return {

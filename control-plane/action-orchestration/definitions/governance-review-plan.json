@@ -1,0 +1,10 @@
+{
+  "actionPlanId": "governance-review-plan",
+  "displayName": "Governance Exposure Review Plan",
+  "planType": "governance_review",
+  "enabled": true,
+  "matchingRules": {
+    "routeCategories": ["review", "escalate"],
+    "riskThemes": ["governance_risk_rising", "protocol_risk"]
+  }
+}

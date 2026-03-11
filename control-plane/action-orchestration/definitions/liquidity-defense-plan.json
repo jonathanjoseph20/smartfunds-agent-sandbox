@@ -1,0 +1,10 @@
+{
+  "actionPlanId": "liquidity-defense-plan",
+  "displayName": "Liquidity Defense Plan",
+  "planType": "liquidity_defense",
+  "enabled": true,
+  "matchingRules": {
+    "routeCategories": ["escalate", "prepare_allocation_review", "monitor"],
+    "riskThemes": ["liquidity_stress", "liquidity_imbalance"]
+  }
+}

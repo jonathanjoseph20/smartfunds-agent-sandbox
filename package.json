@@ -180,7 +180,15 @@
     "portfolio-actions:readiness": "node --experimental-strip-types control-plane/cli/portfolio-actions-readiness.ts",
     "portfolio-actions:priority": "node --experimental-strip-types control-plane/cli/portfolio-actions-priority.ts",
     "portfolio-actions:history": "node --experimental-strip-types control-plane/cli/portfolio-actions-history.ts",
-    "portfolio-actions:materialize": "node --experimental-strip-types control-plane/cli/portfolio-actions-materialize.ts"
+    "portfolio-actions:materialize": "node --experimental-strip-types control-plane/cli/portfolio-actions-materialize.ts",
+    "action-orchestration:list": "node --experimental-strip-types control-plane/cli/action-orchestration-list.ts",
+    "action-orchestration:inspect": "node --experimental-strip-types control-plane/cli/action-orchestration-inspect.ts",
+    "action-orchestration:status": "node --experimental-strip-types control-plane/cli/action-orchestration-status.ts",
+    "action-orchestration:links": "node --experimental-strip-types control-plane/cli/action-orchestration-links.ts",
+    "action-orchestration:readiness": "node --experimental-strip-types control-plane/cli/action-orchestration-readiness.ts",
+    "action-orchestration:priority": "node --experimental-strip-types control-plane/cli/action-orchestration-priority.ts",
+    "action-orchestration:history": "node --experimental-strip-types control-plane/cli/action-orchestration-history.ts",
+    "action-orchestration:materialize": "node --experimental-strip-types control-plane/cli/action-orchestration-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

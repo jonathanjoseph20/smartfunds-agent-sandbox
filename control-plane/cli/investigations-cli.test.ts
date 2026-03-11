@@ -8,16 +8,24 @@ import { main as evidenceMain } from './investigations-evidence.ts';
 import { main as findingsMain } from './investigations-findings.ts';
 import { main as inspectMain } from './investigations-inspect.ts';
 import { main as listMain } from './investigations-list.ts';
+import { main as deltaMain } from './investigations-delta.ts';
 import { main as reportMain } from './investigations-report.ts';
+import { main as revisionsMain } from './investigations-revisions.ts';
+import { main as summaryMain } from './investigations-summary.ts';
+import { main as trendMain } from './investigations-trend.ts';
 
-const { listInvestigations, inspectInvestigation, historyByDate, readReport, listEvidence, inspectFindings, inspectConfidence } = vi.hoisted(() => ({
+const { listInvestigations, inspectInvestigation, historyByDate, readReport, listEvidence, inspectFindings, inspectConfidence, listRevisions, inspectLatestDelta, inspectTrend, inspectContinuitySummary } = vi.hoisted(() => ({
   listInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', status: 'completed' }]),
   inspectInvestigation: vi.fn(() => ({ record: { investigationRunId: 'run-1' }, definition: {}, history: [] })),
   historyByDate: vi.fn(() => [{ date: '2026-03-10', investigations: [] }]),
   readReport: vi.fn(() => ({ reportPath: 'artifacts/investigations/run-1/investigation-report.md', content: '# Investigation Report\n' })),
   listEvidence: vi.fn(() => [{ evidenceId: 'e1' }]),
   inspectFindings: vi.fn(() => [{ findingId: 'f1' }]),
-  inspectConfidence: vi.fn(() => ({ reportConfidence: { confidenceBand: 'medium' } }))
+  inspectConfidence: vi.fn(() => ({ reportConfidence: { confidenceBand: 'medium' } })),
+  listRevisions: vi.fn(() => [{ revisionId: 'revision-0001', revisionNumber: 1 }]),
+  inspectLatestDelta: vi.fn(() => ({ revisionId: 'revision-0002', delta: { deltas: [] } })),
+  inspectTrend: vi.fn(() => ({ confidenceTrend: 'improving' })),
+  inspectContinuitySummary: vi.fn(() => ({ continuityState: 'evolving', confidenceTrend: 'mixed', revisionCount: 2, unresolvedLimitations: [] }))
 }));
 const { listDueInvestigations } = vi.hoisted(() => ({
   listDueInvestigations: vi.fn(() => [{ investigationRunId: 'run-1', dueNow: true, dueReason: 'due' }])
@@ -31,7 +39,11 @@ vi.mock('../investigations/investigation-inspection.ts', () => ({
     readReport,
     listEvidence,
     inspectFindings,
-    inspectConfidence
+    inspectConfidence,
+    listRevisions,
+    inspectLatestDelta,
+    inspectTrend,
+    inspectContinuitySummary
   }))
 }));
 
@@ -143,6 +155,50 @@ describe('investigations CLI commands', () => {
     expect(code).toBe(0);
     expect(inspectFindings).toHaveBeenCalledWith('run-1');
     expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectFindings())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI11 investigations:revisions prints deterministic revision history', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await revisionsMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(listRevisions).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(listRevisions())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI12 investigations:delta prints latest delta payload', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await deltaMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectLatestDelta).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectLatestDelta())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI13 investigations:trend prints confidence trend', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await trendMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectTrend).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectTrend())}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-INV-CLI14 investigations:summary prints continuity summary', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await summaryMain(['--investigation', 'run-1']);
+
+    expect(code).toBe(0);
+    expect(inspectContinuitySummary).toHaveBeenCalledWith('run-1');
+    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(inspectContinuitySummary())}\n`);
     stdout.mockRestore();
   });
 });

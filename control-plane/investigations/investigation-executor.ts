@@ -9,6 +9,8 @@ import { createEvidenceStore } from './evidence-store.ts';
 import { extractEvidenceRecords } from './evidence-extractor.ts';
 import { buildInvestigationConfidenceProjection } from './findings.ts';
 import { computeInvestigationDedupeKey, computeInvestigationRunId, createInvestigationDeduper, type InvestigationDeduper } from './investigation-deduper.ts';
+import { evaluateInvestigationContinuity } from './investigation-continuity.ts';
+import { computeInvestigationDelta } from './investigation-delta-engine.ts';
 import {
   assertLegalTransition,
   classifyPhaseFailure,
@@ -21,6 +23,8 @@ import {
 } from './investigation-lifecycle.ts';
 import { createInvestigationRegistry, type InvestigationRegistry } from './investigation-registry.ts';
 import { writeInvestigationReport } from './investigation-report.ts';
+import { createInvestigationRevisionBuilder } from './investigation-revision-builder.ts';
+import { createInvestigationRevisionStore } from './investigation-revision-store.ts';
 import { createInvestigationStore, type InvestigationStore } from './investigation-store.ts';
 import {
   InvestigationAwaitingDataError,
@@ -218,6 +222,8 @@ export function createInvestigationExecutor(options: {
   const phaseExecutor = options.phaseExecutor ?? executePhase;
   const now = options.now ?? (() => new Date());
   const evidenceStore = createEvidenceStore({ artifactsRoot: resolvedArtifactsRoot });
+  const revisionBuilder = createInvestigationRevisionBuilder({ artifactsRoot: resolvedArtifactsRoot });
+  const revisionStore = createInvestigationRevisionStore({ artifactsRoot: resolvedArtifactsRoot });
 
   function resolveSignal(sourceSignal: string): SignalRecord {
     const signal = signalStore.getSignalByDedupeKey(sourceSignal);
@@ -328,6 +334,65 @@ export function createInvestigationExecutor(options: {
     });
     const projectionPath = path.join(resolvedArtifactsRoot, input.runId, 'evidence', 'confidence-projection.json');
     writeCanonicalJson(projectionPath, projection);
+  }
+
+  function persistRevisionArtifacts(input: {
+    runId: string;
+    definition: InvestigationDefinition;
+    schedulerSlot: string;
+  }): void {
+    const record = store.getInvestigation(input.runId);
+    const evidence = evidenceStore.loadEvidence(input.runId);
+    const projection = buildInvestigationConfidenceProjection({
+      investigationRunId: input.runId,
+      definition: input.definition,
+      findings: record.findings,
+      evidence
+    });
+    const priorRevisions = revisionStore.listRevisions(input.runId);
+    const priorRevision = priorRevisions.length > 0 ? priorRevisions[priorRevisions.length - 1] : undefined;
+    const created = revisionBuilder.createRevisionSnapshot({
+      investigationRunId: input.runId,
+      slotReference: input.schedulerSlot,
+      reportPath: record.finalReportPath ?? path.join(resolvedArtifactsRoot, input.runId, 'investigation-report.md'),
+      findings: projection.findings,
+      reportConfidence: projection.reportConfidence
+    });
+    const priorFindings = priorRevision ? revisionStore.loadFindingsSnapshot(priorRevision) : undefined;
+    const delta = computeInvestigationDelta({
+      investigationRunId: input.runId,
+      revisionId: created.record.revisionId,
+      ...(priorRevision ? { previousRevisionId: priorRevision.revisionId } : {}),
+      ...(priorFindings ? { priorFindings } : {}),
+      nextFindings: created.findingsSnapshot
+    });
+    const deltaPath = revisionBuilder.persistDelta({
+      revisionDir: created.revisionDir,
+      delta
+    });
+    const confidenceSnapshots = [
+      ...priorRevisions.map((revision) => revisionStore.loadConfidenceSnapshot(revision)),
+      created.confidenceSnapshot
+    ];
+    const continuitySummary = evaluateInvestigationContinuity({
+      investigationRunId: input.runId,
+      revisions: [...priorRevisions, created.record],
+      latestDelta: delta,
+      confidenceSnapshots
+    });
+    const continuitySummaryPath = revisionBuilder.persistContinuitySummary({
+      revisionDir: created.revisionDir,
+      summary: continuitySummary
+    });
+    revisionBuilder.finalizeRevisionSummary({
+      revisionDir: created.revisionDir,
+      record: {
+        ...created.record,
+        deltaPath,
+        continuitySummaryPath
+      },
+      continuitySummary
+    });
   }
 
   function extractAndPersistEvidence(input: {
@@ -680,6 +745,14 @@ export function createInvestigationExecutor(options: {
         advanced = true;
         break;
       }
+    }
+
+    if (advanced) {
+      persistRevisionArtifacts({
+        runId: input.runId,
+        definition,
+        schedulerSlot: input.schedulerSlot
+      });
     }
 
     return {

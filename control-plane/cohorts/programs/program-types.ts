@@ -1,17 +1,20 @@
 export const COHORT_PROGRAM_CADENCES = ['hourly', 'daily', 'weekly', 'signal_driven'] as const;
 export const COHORT_PROGRAM_LIFECYCLE_STATES = ['pending', 'active', 'paused', 'completed'] as const;
 export const COHORT_LIFECYCLE_STATES = ['inactive', 'monitoring', 'investigating', 'escalated', 'stable'] as const;
-export const PROGRAM_LAUNCH_CONDITION_KINDS = ['cadence', 'signal_type', 'cohort_health'] as const;
+export const PROGRAM_LAUNCH_CONDITION_KINDS = ['cadence', 'signal_type', 'cohort_health', 'cohort_escalation'] as const;
+export const COHORT_ESCALATION_STATES = ['none', 'elevated', 'escalated', 'critical'] as const;
 
 export type CohortProgramCadence = typeof COHORT_PROGRAM_CADENCES[number];
 export type CohortProgramLifecycleState = typeof COHORT_PROGRAM_LIFECYCLE_STATES[number];
 export type CohortLifecycleState = typeof COHORT_LIFECYCLE_STATES[number];
 export type ProgramLaunchConditionKind = typeof PROGRAM_LAUNCH_CONDITION_KINDS[number];
+export type CohortEscalationState = typeof COHORT_ESCALATION_STATES[number];
 
 export type ProgramLaunchCondition =
   | { kind: 'cadence' }
   | { kind: 'signal_type'; signalType: string }
-  | { kind: 'cohort_health'; health: 'degraded' | 'conflicted' | 'unstable' };
+  | { kind: 'cohort_health'; health: 'degraded' | 'conflicted' | 'unstable' }
+  | { kind: 'cohort_escalation'; escalationState: Exclude<CohortEscalationState, 'none'> };
 
 export type CohortProgramDefinition = {
   programId: string;

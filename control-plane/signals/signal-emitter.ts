@@ -100,6 +100,7 @@ export function createSignalEmitter(options: {
   triggerEngine?: TriggerEngine;
   investigationExecutor?: InvestigationExecutor;
   onTriggerLaunchRequests?: (requests: Array<{ missionId: string; triggerId: string; sourceSignal: string }>) => void;
+  onSignalPersisted?: (signal: SignalRecord) => void;
 } = {}) {
   const resolvedSignalsRootDir = path.resolve(options.signalsRootDir ?? 'signals');
   const baseRuntimeRoot = path.dirname(resolvedSignalsRootDir);
@@ -148,6 +149,14 @@ export function createSignalEmitter(options: {
         status: 'duplicate',
         signal: record
       };
+    }
+
+    if (options.onSignalPersisted) {
+      try {
+        options.onSignalPersisted(record);
+      } catch {
+        // Signal callbacks are passive and must not alter signal emission semantics.
+      }
     }
 
     try {

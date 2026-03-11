@@ -1,0 +1,1 @@
+{"dataset":"cohort_program:aave-risk-monitor","requiredInputs":["intake_context"],"signalMetadata":{"cohortId":"aave-risk","launchConditionKind":"cadence","programId":"aave-risk-monitor","protocol":"aave"}}

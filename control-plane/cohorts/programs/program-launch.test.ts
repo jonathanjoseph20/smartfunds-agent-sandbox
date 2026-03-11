@@ -263,4 +263,47 @@ describe('cohort program launch logic', () => {
     expect(run.eligibility.eligible).toBe(true);
     expect(run.matchedConditionKinds).toContain('cohort_health');
   });
+
+  it('T-CP-LAUNCH6 cohort escalation launch condition is eligible deterministically', () => {
+    const scope = 'escalation-only';
+    const defsDir = path.join(tmpRoot, scope, 'defs');
+
+    seedProgramDefinition(defsDir, {
+      programId: 'escalation-program',
+      cohortId: 'aave-risk',
+      displayName: 'Escalation Program',
+      cadence: 'signal_driven',
+      enabled: true,
+      lifecycleState: 'active',
+      investigationTemplates: ['protocol-risk-investigation'],
+      launchConditions: [{ kind: 'cohort_escalation', escalationState: 'critical' }]
+    });
+
+    const root = path.join(tmpRoot, scope);
+    const engine = createCohortProgramLaunchEngine({
+      cohortProgramDefinitionsDir: defsDir,
+      cohortArtifactsRoot: path.join(root, 'artifacts', 'cohorts'),
+      investigationArtifactsRoot: path.join(root, 'artifacts', 'investigations'),
+      investigationsRootDir: path.join(root, 'investigations'),
+      signalsRootDir: path.join(root, 'signals'),
+      escalationInspection: {
+        inspectOne: () => ({
+          cohortId: 'aave-risk',
+          escalationState: 'critical',
+          escalationReasons: ['cohort_health_unstable'],
+          linkedSignals: [],
+          linkedSyntheses: [],
+          linkedInvestigations: [],
+          linkedProgramIds: ['escalation-program'],
+          slotOrReference: 'daily:2026-03-11'
+        })
+      } as any,
+      now: () => new Date('2026-03-11T12:15:00.000Z')
+    });
+
+    const run = engine.runProgram({ programId: 'escalation-program', slot: 'daily:2026-03-11' });
+
+    expect(run.eligibility.eligible).toBe(true);
+    expect(run.matchedConditionKinds).toContain('cohort_escalation');
+  });
 });

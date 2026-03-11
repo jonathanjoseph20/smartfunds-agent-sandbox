@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+  COHORT_ESCALATION_STATES,
   COHORT_PROGRAM_CADENCES,
   COHORT_PROGRAM_LIFECYCLE_STATES,
   PROGRAM_LAUNCH_CONDITION_KINDS,
@@ -101,16 +102,35 @@ function validateLaunchCondition(value: unknown, sourceLabel: string, index: num
   }
 
   const health = asTrimmedString(value.health);
-  if (!health || (health !== 'degraded' && health !== 'conflicted' && health !== 'unstable')) {
+  if (kindRaw === 'cohort_health') {
+    if (!health || (health !== 'degraded' && health !== 'conflicted' && health !== 'unstable')) {
+      throw new CohortProgramError(
+        'COHORT_PROGRAM_INVALID_DEFINITION',
+        `Cohort program definition ${sourceLabel} launchConditions[${String(index)}].health must be one of degraded, conflicted, unstable.`
+      );
+    }
+
+    return {
+      kind: 'cohort_health',
+      health
+    };
+  }
+
+  const escalationState = asTrimmedString(value.escalationState);
+  if (
+    !escalationState
+    || !COHORT_ESCALATION_STATES.includes(escalationState as typeof COHORT_ESCALATION_STATES[number])
+    || escalationState === 'none'
+  ) {
     throw new CohortProgramError(
       'COHORT_PROGRAM_INVALID_DEFINITION',
-      `Cohort program definition ${sourceLabel} launchConditions[${String(index)}].health must be one of degraded, conflicted, unstable.`
+      `Cohort program definition ${sourceLabel} launchConditions[${String(index)}].escalationState must be one of elevated, escalated, critical.`
     );
   }
 
   return {
-    kind: 'cohort_health',
-    health
+    kind: 'cohort_escalation',
+    escalationState: escalationState as Exclude<typeof COHORT_ESCALATION_STATES[number], 'none'>
   };
 }
 
@@ -126,6 +146,9 @@ function compareLaunchCondition(left: ProgramLaunchCondition, right: ProgramLaun
 
   if (left.kind === 'cohort_health' && right.kind === 'cohort_health') {
     return left.health.localeCompare(right.health);
+  }
+  if (left.kind === 'cohort_escalation' && right.kind === 'cohort_escalation') {
+    return left.escalationState.localeCompare(right.escalationState);
   }
 
   return 0;

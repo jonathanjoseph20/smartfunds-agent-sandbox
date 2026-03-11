@@ -7,6 +7,7 @@ import { computeSignalDedupeKey } from '../../signals/signal-deduper.ts';
 
 import { createCohortProjection, type CohortProjectionEngine } from '../cohort-projection.ts';
 import { createCohortRegistry, type CohortRegistry } from '../cohort-registry.ts';
+import { createCohortEscalationInspection, type CohortEscalationInspection } from '../escalation/cohort-escalation-inspection.ts';
 
 import { evaluateProgramCadence, programCadenceLaunchSlot } from './program-cadence.ts';
 import { createProgramHistoryStore, type ProgramHistoryStore } from './program-history-store.ts';
@@ -30,7 +31,8 @@ function compareConditionKind(left: ProgramLaunchConditionKind, right: ProgramLa
   const rank = (kind: ProgramLaunchConditionKind): number => {
     if (kind === 'cadence') return 0;
     if (kind === 'signal_type') return 1;
-    return 2;
+    if (kind === 'cohort_health') return 2;
+    return 3;
   };
   return rank(left) - rank(right);
 }
@@ -110,6 +112,7 @@ export function createCohortProgramLaunchEngine(options: {
   investigationRegistry?: InvestigationRegistry;
   signalStore?: SignalStore;
   investigationStore?: InvestigationStore;
+  escalationInspection?: CohortEscalationInspection;
   now?: () => Date;
   cohortProgramDefinitionsDir?: string;
   cohortDefinitionsDir?: string;
@@ -154,6 +157,18 @@ export function createCohortProgramLaunchEngine(options: {
   const investigationStore = options.investigationStore ?? createInvestigationStore({
     rootDir: options.investigationsRootDir
   });
+  const escalationInspection = options.escalationInspection ?? createCohortEscalationInspection({
+    cohortDefinitionsDir: options.cohortDefinitionsDir,
+    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+    cohortArtifactsRoot: options.cohortArtifactsRoot,
+    investigationsRootDir: options.investigationsRootDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    signalsRootDir: options.signalsRootDir,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    now
+  });
 
   function conditionMatchesSignal(input: {
     cohortSubject: string;
@@ -178,6 +193,7 @@ export function createCohortProgramLaunchEngine(options: {
     currentSlot: string;
     cadenceDue: boolean;
     cohortHealthState: string;
+    cohortEscalationState: 'none' | 'elevated' | 'escalated' | 'critical';
     cohortSubject: string;
     lifecycleState: CohortProgramDefinition['lifecycleState'];
   }): ProgramLaunchEligibility {
@@ -212,6 +228,11 @@ export function createCohortProgramLaunchEngine(options: {
 
       if (condition.kind === 'cohort_health' && condition.health === input.cohortHealthState) {
         matched.push('cohort_health');
+        continue;
+      }
+
+      if (condition.kind === 'cohort_escalation' && condition.escalationState === input.cohortEscalationState) {
+        matched.push('cohort_escalation');
       }
     }
 
@@ -358,6 +379,10 @@ export function createCohortProgramLaunchEngine(options: {
 
     const history = historyStore.load({ cohortId: definition.cohortId, programId: definition.programId });
     const cohort = cohortProjection.projectOne(definition.cohortId).cohort;
+    const escalation = escalationInspection.inspectOne({
+      cohortId: definition.cohortId,
+      slotOrReference: input.slot ?? ''
+    });
     const lifecycleState = projectProgramLifecycleState({
       definition,
       historyEntries: history.entries
@@ -375,6 +400,7 @@ export function createCohortProgramLaunchEngine(options: {
       currentSlot: cadence.currentSlot,
       cadenceDue: cadence.cadenceDue,
       cohortHealthState: cohort.healthState,
+      cohortEscalationState: escalation.escalationState,
       cohortSubject,
       lifecycleState
     });

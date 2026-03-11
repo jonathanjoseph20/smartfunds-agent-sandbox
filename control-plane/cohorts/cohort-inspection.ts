@@ -2,6 +2,8 @@ import { createCohortLinker, type CohortLinker } from './cohort-linker.ts';
 import { createCohortMaterializer, type CohortMaterializer } from './cohort-materializer.ts';
 import { createCohortProjection, type CohortProjectionEngine } from './cohort-projection.ts';
 import { createCohortRegistry, type CohortRegistry } from './cohort-registry.ts';
+import { createCohortEscalationInspection, type CohortEscalationInspection } from './escalation/cohort-escalation-inspection.ts';
+import { createProgramAutomationInspection, type ProgramAutomationInspection } from './programs/program-automation-inspection.ts';
 import { createCohortProgramInspection, type CohortProgramInspection } from './programs/program-inspection.ts';
 
 export function createCohortInspection(options: {
@@ -10,6 +12,8 @@ export function createCohortInspection(options: {
   projection?: CohortProjectionEngine;
   materializer?: CohortMaterializer;
   programInspection?: CohortProgramInspection;
+  escalationInspection?: CohortEscalationInspection;
+  automationInspection?: ProgramAutomationInspection;
   cohortProgramDefinitionsDir?: string;
   definitionsDir?: string;
   investigationsRootDir?: string;
@@ -55,6 +59,28 @@ export function createCohortInspection(options: {
     cohortArtifactsRoot: options.cohortArtifactsRoot
   });
   const programInspection = options.programInspection ?? createCohortProgramInspection({
+    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+    cohortDefinitionsDir: options.definitionsDir,
+    investigationsRootDir: options.investigationsRootDir,
+    signalsRootDir: options.signalsRootDir,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    cohortArtifactsRoot: options.cohortArtifactsRoot
+  });
+  const escalationInspection = options.escalationInspection ?? createCohortEscalationInspection({
+    cohortDefinitionsDir: options.definitionsDir,
+    cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
+    investigationsRootDir: options.investigationsRootDir,
+    signalsRootDir: options.signalsRootDir,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+    cohortArtifactsRoot: options.cohortArtifactsRoot
+  });
+  const automationInspection = options.automationInspection ?? createProgramAutomationInspection({
     cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
     cohortDefinitionsDir: options.definitionsDir,
     investigationsRootDir: options.investigationsRootDir,
@@ -135,6 +161,30 @@ export function createCohortInspection(options: {
     });
   }
 
+  function evaluateCohortPrograms(input: { cohortId?: string; slot: string }) {
+    return automationInspection.evaluatePrograms(input);
+  }
+
+  function inspectCohortAutomationStatus(input: { cohortId: string; slot: string }) {
+    return automationInspection.inspectAutomationStatus(input);
+  }
+
+  function inspectCohortProgramAutomationHistory(input: { cohortId: string; programId?: string }) {
+    return automationInspection.inspectProgramHistory(input);
+  }
+
+  function inspectCohortEscalation(input: { cohortId: string; slotOrReference?: string }) {
+    return escalationInspection.inspectOne(input);
+  }
+
+  function evaluateCohortEscalation(input: { cohortId: string; slotOrReference?: string }) {
+    return escalationInspection.evaluateOne(input);
+  }
+
+  function inspectCohortEscalationHistory(cohortId: string) {
+    return escalationInspection.inspectHistory({ cohortId });
+  }
+
   return {
     listCohorts,
     inspectCohort,
@@ -145,7 +195,13 @@ export function createCohortInspection(options: {
     listCohortPrograms,
     inspectCohortProgramStatus,
     inspectCohortProgramHistory,
-    runCohortProgram
+    runCohortProgram,
+    evaluateCohortPrograms,
+    inspectCohortAutomationStatus,
+    inspectCohortProgramAutomationHistory,
+    inspectCohortEscalation,
+    evaluateCohortEscalation,
+    inspectCohortEscalationHistory
   };
 }
 

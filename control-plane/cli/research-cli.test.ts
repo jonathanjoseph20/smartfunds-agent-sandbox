@@ -34,7 +34,18 @@ const { processLaunch } = vi.hoisted(() => ({
 }));
 
 const { tick } = vi.hoisted(() => ({
-  tick: vi.fn(async () => ({ tickTimeUtc: '2026-03-10T13:00:00.000Z', evaluations: [], launches: [] }))
+  tick: vi.fn(async () => ({
+    tickTimeUtc: '2026-03-10T13:00:00.000Z',
+    evaluations: [{
+      scheduleId: 'defi-yield-hourly-scan',
+      missionId: 'defi-yield-report',
+      enabled: true,
+      dueDecision: 'due',
+      cadenceDescription: 'interval_hours(6)',
+      currentSlotId: 'interval_hours:6:2026-03-10T12:00Z'
+    }],
+    launches: []
+  }))
 }));
 const { advanceForSchedulerTick } = vi.hoisted(() => ({
   advanceForSchedulerTick: vi.fn(() => ({
@@ -44,6 +55,13 @@ const { advanceForSchedulerTick } = vi.hoisted(() => ({
     dueBySlot: [],
     activeCount: 0
   }))
+}));
+const { listCohorts, evaluateCohortEscalation, evaluateCohortPrograms, inspectCohortEscalation, inspectCohortAutomationStatus } = vi.hoisted(() => ({
+  listCohorts: vi.fn(() => [{ cohortId: 'aave-risk', cohortType: 'protocol-risk', subjectKey: 'protocol:aave' }]),
+  evaluateCohortEscalation: vi.fn(() => ({ projection: { cohortId: 'aave-risk', slotOrReference: 'interval_hours:6:2026-03-10T12:00Z' }, historyAppended: true })),
+  evaluateCohortPrograms: vi.fn(() => [{ status: { cohortId: 'aave-risk', programId: 'aave-risk-monitor', evaluationState: 'due' }, historyAppended: true }]),
+  inspectCohortEscalation: vi.fn(() => ({ cohortId: 'aave-risk', slotOrReference: 'interval_hours:6:2026-03-10T12:00Z' })),
+  inspectCohortAutomationStatus: vi.fn(() => [{ cohortId: 'aave-risk', programId: 'aave-risk-monitor', evaluationState: 'due' }])
 }));
 
 vi.mock('../research/inspection.ts', () => ({
@@ -84,6 +102,16 @@ vi.mock('../scheduler/service.ts', () => ({
 vi.mock('../investigations/investigation-scheduler.ts', () => ({
   createInvestigationScheduler: vi.fn(() => ({
     advanceForSchedulerTick
+  }))
+}));
+
+vi.mock('../cohorts/cohort-inspection.ts', () => ({
+  createCohortInspection: vi.fn(() => ({
+    listCohorts,
+    evaluateCohortEscalation,
+    evaluateCohortPrograms,
+    inspectCohortEscalation,
+    inspectCohortAutomationStatus
   }))
 }));
 
@@ -133,8 +161,12 @@ describe('research CLI commands', () => {
     const code = await researchTickMain([]);
     expect(code).toBe(0);
     expect(processLaunch).toHaveBeenCalledTimes(1);
+    expect(evaluateCohortEscalation).toHaveBeenCalled();
+    expect(evaluateCohortPrograms).toHaveBeenCalled();
     expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('research');
     expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('investigations');
+    expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('cohortAutomation');
+    expect(stdout.mock.calls.map((call) => String(call[0])).join('')).toContain('cohortEscalation');
     stdout.mockRestore();
   });
 });

@@ -31,6 +31,8 @@ export function resolveCohortProgramArtifactPaths(input: { cohortId: string; pro
   dirPath: string;
   statusJsonPath: string;
   historyJsonPath: string;
+  automationStatusJsonPath: string;
+  automationHistoryJsonPath: string;
   reportMarkdownPath: string;
 } {
   const dirPath = resolveCohortProgramArtifactDir(input);
@@ -38,6 +40,8 @@ export function resolveCohortProgramArtifactPaths(input: { cohortId: string; pro
     dirPath,
     statusJsonPath: path.join(dirPath, 'program-status.json'),
     historyJsonPath: path.join(dirPath, 'program-history.json'),
+    automationStatusJsonPath: path.join(dirPath, 'program-automation-status.json'),
+    automationHistoryJsonPath: path.join(dirPath, 'program-automation-history.json'),
     reportMarkdownPath: path.join(dirPath, 'program-report.md')
   };
 }

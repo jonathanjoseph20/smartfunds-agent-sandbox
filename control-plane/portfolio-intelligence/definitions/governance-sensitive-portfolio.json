@@ -1,0 +1,18 @@
+{
+  "portfolioId": "governance-sensitive-portfolio",
+  "displayName": "Governance Sensitive Portfolio",
+  "portfolioType": "governance",
+  "enabled": true,
+  "matchingRules": {
+    "eventFamilies": [
+      "governance"
+    ],
+    "synthesisTypes": [
+      "governance_instability",
+      "market_risk"
+    ]
+  },
+  "readinessRules": {
+    "requireAllLinkedSynthesesReady": true
+  }
+}

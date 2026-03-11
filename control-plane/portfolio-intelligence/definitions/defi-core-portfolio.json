@@ -1,0 +1,24 @@
+{
+  "portfolioId": "defi-core-portfolio",
+  "displayName": "DeFi Core Portfolio",
+  "portfolioType": "defi",
+  "enabled": true,
+  "matchingRules": {
+    "protocolFamilies": [
+      "aave",
+      "curve",
+      "uniswap"
+    ],
+    "assetFamilies": [
+      "eth",
+      "stablecoin"
+    ],
+    "eventFamilies": [
+      "market",
+      "protocol"
+    ]
+  },
+  "readinessRules": {
+    "requireAllLinkedSynthesesReady": true
+  }
+}

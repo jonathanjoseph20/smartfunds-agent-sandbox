@@ -1,0 +1,26 @@
+{
+  "missionType": "structure-tokenized-offering",
+  "displayName": "Structure Tokenized Offering",
+  "enabled": true,
+  "description": "Assemble a deterministic structuring packet for a tokenized offering initiative.",
+  "defaultObjective": "Prepare legal/process structuring recommendations for founder checkpoint review.",
+  "defaultDeliverables": [
+    "structuring_memo",
+    "legal_issue_list",
+    "process_roadmap",
+    "payment_rail_requirements"
+  ],
+  "allowedSourceKinds": [
+    "legal",
+    "memo",
+    "policy",
+    "research"
+  ],
+  "defaultPriority": "high",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "tokenization",
+    "structuring",
+    "pre_execution"
+  ]
+}

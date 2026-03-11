@@ -157,7 +157,14 @@
     "cross-swarms:links": "node --experimental-strip-types control-plane/cli/cross-swarms-links.ts",
     "cross-swarms:readiness": "node --experimental-strip-types control-plane/cli/cross-swarms-readiness.ts",
     "cross-swarms:history": "node --experimental-strip-types control-plane/cli/cross-swarms-history.ts",
-    "cross-swarms:materialize": "node --experimental-strip-types control-plane/cli/cross-swarms-materialize.ts"
+    "cross-swarms:materialize": "node --experimental-strip-types control-plane/cli/cross-swarms-materialize.ts",
+    "market-synthesis:list": "node --experimental-strip-types control-plane/cli/market-synthesis-list.ts",
+    "market-synthesis:inspect": "node --experimental-strip-types control-plane/cli/market-synthesis-inspect.ts",
+    "market-synthesis:status": "node --experimental-strip-types control-plane/cli/market-synthesis-status.ts",
+    "market-synthesis:links": "node --experimental-strip-types control-plane/cli/market-synthesis-links.ts",
+    "market-synthesis:readiness": "node --experimental-strip-types control-plane/cli/market-synthesis-readiness.ts",
+    "market-synthesis:history": "node --experimental-strip-types control-plane/cli/market-synthesis-history.ts",
+    "market-synthesis:materialize": "node --experimental-strip-types control-plane/cli/market-synthesis-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

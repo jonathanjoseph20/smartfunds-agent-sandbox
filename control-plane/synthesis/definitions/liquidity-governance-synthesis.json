@@ -1,0 +1,16 @@
+{
+  "synthesisType": "liquidity-governance-synthesis",
+  "description": "Bounded protocol-level synthesis combining liquidity drain and governance proposal investigations.",
+  "supportedDimensions": [
+    "protocol",
+    "signal_type"
+  ],
+  "sourceSignalTypes": [
+    "liquidity_drain",
+    "governance_proposal"
+  ],
+  "sourceInvestigationDefinitionIds": [
+    "governance-proposal-investigation",
+    "liquidity-drain-investigation"
+  ]
+}

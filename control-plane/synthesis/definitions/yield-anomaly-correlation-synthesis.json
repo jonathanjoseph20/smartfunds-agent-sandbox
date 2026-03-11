@@ -1,0 +1,14 @@
+{
+  "synthesisType": "yield-anomaly-correlation-synthesis",
+  "description": "Bounded protocol-level synthesis for yield anomaly investigations.",
+  "supportedDimensions": [
+    "protocol",
+    "signal_type"
+  ],
+  "sourceSignalTypes": [
+    "yield_anomaly"
+  ],
+  "sourceInvestigationDefinitionIds": [
+    "yield-anomaly-investigation"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "actionPlanId": "risk-reduction-plan",
+  "displayName": "Portfolio Risk Reduction Plan",
+  "planType": "risk_reduction",
+  "enabled": true,
+  "matchingRules": {
+    "routeCategories": ["escalate", "prepare_allocation_review", "review"],
+    "riskThemes": ["liquidity_stress", "volatility_regime_shift", "protocol_risk"]
+  }
+}

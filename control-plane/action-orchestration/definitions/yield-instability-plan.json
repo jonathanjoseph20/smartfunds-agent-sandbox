@@ -1,0 +1,10 @@
+{
+  "actionPlanId": "yield-instability-plan",
+  "displayName": "Yield Instability Stabilization Plan",
+  "planType": "yield_instability",
+  "enabled": true,
+  "matchingRules": {
+    "routeCategories": ["review", "prepare_allocation_review", "monitor"],
+    "riskThemes": ["yield_instability", "yield_regime_shift"]
+  }
+}

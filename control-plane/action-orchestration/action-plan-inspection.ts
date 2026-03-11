@@ -1,67 +1,74 @@
 import {
-  createPortfolioHistoryStore,
-  type PortfolioHistoryStore,
-} from './portfolio-history-store.ts';
+  createActionPlanHistoryStore,
+  type ActionPlanHistoryStore,
+} from './action-plan-history-store.ts';
 import {
-  createPortfolioLinker,
-  type PortfolioLinker,
-} from './portfolio-linker.ts';
+  createActionPlanLinker,
+  type ActionPlanLinker,
+} from './action-plan-linker.ts';
 import {
-  createPortfolioMaterializer,
-  type PortfolioMaterializer,
-} from './portfolio-materializer.ts';
+  createActionPlanMaterializer,
+  type ActionPlanMaterializer,
+} from './action-plan-materializer.ts';
 import {
-  createPortfolioProjection,
-  type PortfolioProjectionEngine,
-} from './portfolio-projection.ts';
+  createActionPlanProjection,
+  type ActionPlanProjectionEngine,
+} from './action-plan-projection.ts';
 import {
-  createPortfolioRegistry,
-  type PortfolioRegistry,
-} from './portfolio-registry.ts';
+  createActionPlanRegistry,
+  type ActionPlanRegistry,
+} from './action-plan-registry.ts';
 import {
-  createPortfolioRiskAggregator,
-  type PortfolioRiskAggregator,
-} from './portfolio-risk.ts';
-import {
-  createPortfolioStatusProjection,
-  type PortfolioStatusProjectionEngine,
-} from './portfolio-status.ts';
+  createActionPlanStatusProjection,
+  type ActionPlanStatusProjectionEngine,
+} from './action-plan-status.ts';
 
 function toReadinessReason(readinessState: string, blockers: string[]): string {
   if (readinessState === 'blocked') {
-    return blockers.join('|') || 'portfolio_readiness_blocked';
+    return blockers.join('|') || 'action_plan_readiness_blocked';
   }
+
   if (readinessState === 'coherent') {
-    return 'portfolio_readiness_coherent';
+    return 'action_plan_readiness_coherent';
   }
+
   if (readinessState === 'analyzing') {
-    return 'portfolio_readiness_analyzing';
+    return 'action_plan_readiness_analyzing';
   }
-  return 'portfolio_readiness_pending';
+
+  return 'action_plan_readiness_pending';
 }
 
 function toLifecycleReason(lifecycleState: string): string {
   if (lifecycleState === 'progressing') {
-    return 'portfolio_lifecycle_progressing';
+    return 'action_plan_lifecycle_progressing';
   }
+
   if (lifecycleState === 'active') {
-    return 'portfolio_lifecycle_active';
+    return 'action_plan_lifecycle_active';
   }
+
   if (lifecycleState === 'initializing') {
-    return 'portfolio_lifecycle_initializing';
+    return 'action_plan_lifecycle_initializing';
   }
-  return 'portfolio_initialized';
+
+  if (lifecycleState === 'stabilizing') {
+    return 'action_plan_lifecycle_stabilizing';
+  }
+
+  return 'action_plan_initialized';
 }
 
-export function createPortfolioInspection(options: {
-  registry?: PortfolioRegistry;
-  linker?: PortfolioLinker;
-  statusProjection?: PortfolioStatusProjectionEngine;
-  riskAggregator?: PortfolioRiskAggregator;
-  projection?: PortfolioProjectionEngine;
-  materializer?: PortfolioMaterializer;
-  historyStore?: PortfolioHistoryStore;
+export function createActionPlanInspection(options: {
+  registry?: ActionPlanRegistry;
+  linker?: ActionPlanLinker;
+  statusProjection?: ActionPlanStatusProjectionEngine;
+  projection?: ActionPlanProjectionEngine;
+  materializer?: ActionPlanMaterializer;
+  historyStore?: ActionPlanHistoryStore;
   definitionsDir?: string;
+  actionPlanDefinitionsDir?: string;
+  portfolioActionDefinitionsDir?: string;
   portfolioDefinitionsDir?: string;
   marketSynthesisDefinitionsDir?: string;
   crossSwarmDefinitionsDir?: string;
@@ -83,26 +90,29 @@ export function createPortfolioInspection(options: {
   crossSwarmArtifactsRoot?: string;
   marketSynthesisArtifactsRoot?: string;
   portfolioArtifactsRoot?: string;
+  portfolioActionArtifactsRoot?: string;
+  actionPlanArtifactsRoot?: string;
   now?: () => Date;
 } = {}) {
-  const definitionsDir = options.definitionsDir ?? options.portfolioDefinitionsDir;
+  const definitionsDir = options.definitionsDir ?? options.actionPlanDefinitionsDir;
 
-  const registry = options.registry ?? createPortfolioRegistry({ definitionsDir });
+  const registry = options.registry ?? createActionPlanRegistry({ definitionsDir });
 
   let linker = options.linker;
   let statusProjection = options.statusProjection;
-  let riskAggregator = options.riskAggregator;
   let projection = options.projection;
   let materializer = options.materializer;
 
-  const historyStore = options.historyStore ?? createPortfolioHistoryStore({
-    artifactsRoot: options.portfolioArtifactsRoot,
+  const historyStore = options.historyStore ?? createActionPlanHistoryStore({
+    artifactsRoot: options.actionPlanArtifactsRoot,
   });
 
-  function getLinker(): PortfolioLinker {
-    linker ??= createPortfolioLinker({
+  function getLinker(): ActionPlanLinker {
+    linker ??= createActionPlanLinker({
       registry,
       definitionsDir,
+      portfolioActionDefinitionsDir: options.portfolioActionDefinitionsDir,
+      portfolioDefinitionsDir: options.portfolioDefinitionsDir,
       marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
       crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
       swarmDefinitionsDir: options.swarmDefinitionsDir,
@@ -122,16 +132,20 @@ export function createPortfolioInspection(options: {
       swarmArtifactsRoot: options.swarmArtifactsRoot,
       crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
       marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
+      portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      portfolioActionArtifactsRoot: options.portfolioActionArtifactsRoot,
       now: options.now,
     });
     return linker;
   }
 
-  function getStatusProjection(): PortfolioStatusProjectionEngine {
-    statusProjection ??= createPortfolioStatusProjection({
+  function getStatusProjection(): ActionPlanStatusProjectionEngine {
+    statusProjection ??= createActionPlanStatusProjection({
       registry,
       linker: getLinker(),
       definitionsDir,
+      portfolioActionDefinitionsDir: options.portfolioActionDefinitionsDir,
+      portfolioDefinitionsDir: options.portfolioDefinitionsDir,
       marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
       crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
       swarmDefinitionsDir: options.swarmDefinitionsDir,
@@ -151,47 +165,21 @@ export function createPortfolioInspection(options: {
       swarmArtifactsRoot: options.swarmArtifactsRoot,
       crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
       marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
+      portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      portfolioActionArtifactsRoot: options.portfolioActionArtifactsRoot,
       now: options.now,
     });
     return statusProjection;
   }
 
-  function getRiskAggregator(): PortfolioRiskAggregator {
-    riskAggregator ??= createPortfolioRiskAggregator({
-      registry,
-      linker: getLinker(),
-      definitionsDir,
-      marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
-      crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
-      swarmDefinitionsDir: options.swarmDefinitionsDir,
-      teamDefinitionsDir: options.teamDefinitionsDir,
-      cohortDefinitionsDir: options.cohortDefinitionsDir,
-      cohortProgramDefinitionsDir: options.cohortProgramDefinitionsDir,
-      cohortArtifactsRoot: options.cohortArtifactsRoot,
-      investigationsRootDir: options.investigationsRootDir,
-      investigationArtifactsRoot: options.investigationArtifactsRoot,
-      investigationDefinitionsDir: options.investigationDefinitionsDir,
-      signalsRootDir: options.signalsRootDir,
-      synthesisDefinitionsDir: options.synthesisDefinitionsDir,
-      synthesisArtifactsRoot: options.synthesisArtifactsRoot,
-      policyDefinitionsDir: options.policyDefinitionsDir,
-      coordinationArtifactsRoot: options.coordinationArtifactsRoot,
-      teamSwarmArtifactsRoot: options.teamSwarmArtifactsRoot,
-      swarmArtifactsRoot: options.swarmArtifactsRoot,
-      crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
-      marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
-      now: options.now,
-    });
-    return riskAggregator;
-  }
-
-  function getProjection(): PortfolioProjectionEngine {
-    projection ??= createPortfolioProjection({
+  function getProjection(): ActionPlanProjectionEngine {
+    projection ??= createActionPlanProjection({
       registry,
       statusProjection: getStatusProjection(),
-      riskAggregator: getRiskAggregator(),
       historyStore,
       definitionsDir,
+      portfolioActionDefinitionsDir: options.portfolioActionDefinitionsDir,
+      portfolioDefinitionsDir: options.portfolioDefinitionsDir,
       marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
       crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
       swarmDefinitionsDir: options.swarmDefinitionsDir,
@@ -212,16 +200,21 @@ export function createPortfolioInspection(options: {
       crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
       marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
       portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      portfolioActionArtifactsRoot: options.portfolioActionArtifactsRoot,
+      actionPlanArtifactsRoot: options.actionPlanArtifactsRoot,
       now: options.now,
     });
     return projection;
   }
 
-  function getMaterializer(): PortfolioMaterializer {
-    materializer ??= createPortfolioMaterializer({
+  function getMaterializer(): ActionPlanMaterializer {
+    materializer ??= createActionPlanMaterializer({
       projection: getProjection(),
-      portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      historyStore,
+      actionPlanArtifactsRoot: options.actionPlanArtifactsRoot,
       definitionsDir,
+      portfolioActionDefinitionsDir: options.portfolioActionDefinitionsDir,
+      portfolioDefinitionsDir: options.portfolioDefinitionsDir,
       marketSynthesisDefinitionsDir: options.marketSynthesisDefinitionsDir,
       crossSwarmDefinitionsDir: options.crossSwarmDefinitionsDir,
       swarmDefinitionsDir: options.swarmDefinitionsDir,
@@ -241,59 +234,62 @@ export function createPortfolioInspection(options: {
       swarmArtifactsRoot: options.swarmArtifactsRoot,
       crossSwarmArtifactsRoot: options.crossSwarmArtifactsRoot,
       marketSynthesisArtifactsRoot: options.marketSynthesisArtifactsRoot,
+      portfolioArtifactsRoot: options.portfolioArtifactsRoot,
+      portfolioActionArtifactsRoot: options.portfolioActionArtifactsRoot,
       now: options.now,
     });
     return materializer;
   }
 
-  function listPortfolioIntelligenceUnits() {
-    return registry.listPortfolioDefinitions().map((entry) => ({
-      portfolioId: entry.portfolioId,
+  function listPlans() {
+    return registry.getActionPlanDefinitions().map((entry) => ({
+      actionPlanId: entry.actionPlanId,
       displayName: entry.displayName,
-      portfolioType: entry.portfolioType,
+      planType: entry.planType,
       enabled: entry.enabled,
     }));
   }
 
-  function inspectPortfolioIntelligence(portfolioId: string) {
-    return getProjection().projectOne(portfolioId);
+  function inspectPlan(actionPlanId: string) {
+    return getProjection().projectOne(actionPlanId);
   }
 
-  function getPortfolioStatus(portfolioId: string) {
-    const projected = inspectPortfolioIntelligence(portfolioId);
+  function getPlanStatus(actionPlanId: string) {
+    const projected = inspectPlan(actionPlanId);
     return {
-      portfolioId,
+      actionPlanId,
       lifecycleState: projected.lifecycleState,
       readinessState: projected.readinessState,
       completionState: projected.completionState,
-      linkedMarketSynthesisIds: projected.linkedMarketSynthesisIds,
+      priority: projected.priority,
+      routeSummary: projected.routeSummary,
+      linkedActionIds: projected.linkedActionIds,
       blockingReasons: projected.blockingReasons,
       strengths: projected.strengths,
       limitations: projected.limitations,
-      riskThemes: projected.riskThemes,
-      exposureFlags: projected.exposureFlags,
-      concentrationWarnings: projected.concentrationWarnings,
     };
   }
 
-  function getPortfolioLinks(portfolioId: string) {
-    const link = linker.buildLinks().find((entry) => entry.portfolioId === portfolioId);
+  function getPlanLinks(actionPlanId: string) {
+    const link = getLinker().buildLinks().find((entry) => entry.actionPlanId === actionPlanId);
     if (!link) {
-      throw new Error(`PORTFOLIO_NOT_FOUND: ${portfolioId}`);
+      throw new Error(`ACTION_PLAN_NOT_FOUND: ${actionPlanId}`);
     }
 
     return {
-      portfolioId,
-      linkedMarketSynthesisIds: link.linkedMarketSynthesisIds,
-      linkedMarketSyntheses: link.linkedMarketSyntheses,
+      actionPlanId,
+      linkedActionIds: link.linkedActionIds,
+      linkedActions: link.linkedActions,
       rationale: link.rationale,
+      riskThemes: link.riskThemes,
+      routeCategories: link.routeCategories,
     };
   }
 
-  function getPortfolioReadiness(portfolioId: string) {
-    const projected = inspectPortfolioIntelligence(portfolioId);
+  function getPlanReadiness(actionPlanId: string) {
+    const projected = inspectPlan(actionPlanId);
     return {
-      portfolioId,
+      actionPlanId,
       readinessState: projected.readinessState,
       completionState: projected.completionState,
       blockingReasons: projected.blockingReasons,
@@ -302,113 +298,105 @@ export function createPortfolioInspection(options: {
     };
   }
 
-  function getPortfolioRisk(portfolioId: string) {
-    registry.getPortfolioDefinition(portfolioId);
-    return getRiskAggregator().aggregateOne(portfolioId);
+  function getPlanPriority(actionPlanId: string) {
+    const projected = inspectPlan(actionPlanId);
+    return {
+      actionPlanId,
+      priority: projected.priority,
+      routeSummary: projected.routeSummary,
+      reasons: projected.priorityReasons,
+    };
   }
 
-  function getPortfolioHistory(portfolioId: string) {
-    registry.getPortfolioDefinition(portfolioId);
-    return historyStore.load(portfolioId);
+  function getPlanHistory(actionPlanId: string) {
+    registry.getActionPlanDefinitionById(actionPlanId);
+    return historyStore.load(actionPlanId);
   }
 
-  function evaluatePortfolioIntelligence(input: { portfolioId: string; slotReference?: string }) {
-    const status = getStatusProjection().projectOne(input.portfolioId);
+  function evaluateActionPlan(input: { actionPlanId: string; slotReference?: string }) {
+    const status = getStatusProjection().projectOne(input.actionPlanId);
 
     historyStore.append({
-      portfolioId: input.portfolioId,
-      eventType: 'portfolio_initialized',
-      reason: 'portfolio_projection_generated',
-      linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+      actionPlanId: input.actionPlanId,
+      eventType: 'action_plan_initialized',
+      reason: 'action_plan_projection_generated',
+      linkedActionIds: status.linkedActionIds,
       ...(input.slotReference ? { slotReference: input.slotReference } : {}),
     });
 
-    if (status.linkedMarketSynthesisIds.length > 0) {
+    if (status.linkedActionIds.length > 0) {
       historyStore.append({
-        portfolioId: input.portfolioId,
-        eventType: 'market_synthesis_linked',
-        reason: `linked_market_syntheses:${String(status.linkedMarketSynthesisIds.length)}`,
-        linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+        actionPlanId: input.actionPlanId,
+        eventType: 'action_candidate_linked',
+        reason: `linked_action_candidates:${String(status.linkedActionIds.length)}`,
+        linkedActionIds: status.linkedActionIds,
         ...(input.slotReference ? { slotReference: input.slotReference } : {}),
       });
     }
 
     historyStore.append({
-      portfolioId: input.portfolioId,
+      actionPlanId: input.actionPlanId,
       eventType: 'readiness_changed',
       reason: toReadinessReason(status.readinessState, status.blockingReasons),
-      linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+      linkedActionIds: status.linkedActionIds,
       ...(input.slotReference ? { slotReference: input.slotReference } : {}),
     });
 
-    if (status.lifecycleState === 'initializing' || status.lifecycleState === 'active' || status.lifecycleState === 'progressing') {
-      historyStore.append({
-        portfolioId: input.portfolioId,
-        eventType: 'portfolio_progressed',
-        reason: toLifecycleReason(status.lifecycleState),
-        linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
-        ...(input.slotReference ? { slotReference: input.slotReference } : {}),
-      });
-    }
+    historyStore.append({
+      actionPlanId: input.actionPlanId,
+      eventType: 'priority_changed',
+      reason: status.priorityReasons.join('|') || 'priority_evaluated',
+      linkedActionIds: status.linkedActionIds,
+      ...(input.slotReference ? { slotReference: input.slotReference } : {}),
+    });
 
-    if (status.lifecycleState === 'stabilizing') {
+    if (status.lifecycleState === 'initializing' || status.lifecycleState === 'active' || status.lifecycleState === 'progressing' || status.lifecycleState === 'stabilizing') {
       historyStore.append({
-        portfolioId: input.portfolioId,
-        eventType: 'portfolio_stabilized',
-        reason: status.blockingReasons.join('|') || 'portfolio_stabilizing',
-        linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+        actionPlanId: input.actionPlanId,
+        eventType: 'plan_progressed',
+        reason: toLifecycleReason(status.lifecycleState),
+        linkedActionIds: status.linkedActionIds,
         ...(input.slotReference ? { slotReference: input.slotReference } : {}),
       });
     }
 
     if (status.completionState === 'completed') {
       historyStore.append({
-        portfolioId: input.portfolioId,
-        eventType: 'portfolio_completed',
-        reason: 'portfolio_completion_requirements_satisfied',
-        linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+        actionPlanId: input.actionPlanId,
+        eventType: 'plan_completed',
+        reason: 'action_plan_intelligence_stabilized',
+        linkedActionIds: status.linkedActionIds,
         ...(input.slotReference ? { slotReference: input.slotReference } : {}),
       });
     }
 
     if (status.completionState === 'inconclusive') {
       historyStore.append({
-        portfolioId: input.portfolioId,
-        eventType: 'portfolio_marked_inconclusive',
-        reason: status.limitations.join('|') || 'portfolio_completion_inconclusive',
-        linkedMarketSynthesisIds: status.linkedMarketSynthesisIds,
+        actionPlanId: input.actionPlanId,
+        eventType: 'plan_marked_inconclusive',
+        reason: status.limitations.join('|') || 'action_plan_completion_inconclusive',
+        linkedActionIds: status.linkedActionIds,
         ...(input.slotReference ? { slotReference: input.slotReference } : {}),
       });
     }
 
     return {
-      projection: inspectPortfolioIntelligence(input.portfolioId),
-      history: historyStore.load(input.portfolioId),
-    };
-  }
-
-  function materializePortfolioIntelligence(portfolioId: string) {
-    const projected = inspectPortfolioIntelligence(portfolioId);
-    const materialized = getMaterializer().materializeProjection({ projection: projected });
-    historyStore.write(historyStore.load(portfolioId));
-
-    return {
-      ...materialized,
-      historyPath: projected.artifactPaths.historyJsonPath,
+      projection: inspectPlan(input.actionPlanId),
+      history: historyStore.load(input.actionPlanId),
     };
   }
 
   return {
-    listPortfolioIntelligenceUnits,
-    inspectPortfolioIntelligence,
-    getPortfolioStatus,
-    getPortfolioLinks,
-    getPortfolioReadiness,
-    getPortfolioRisk,
-    getPortfolioHistory,
-    evaluatePortfolioIntelligence,
-    materializePortfolioIntelligence,
+    listPlans,
+    inspectPlan,
+    getPlanStatus,
+    getPlanLinks,
+    getPlanReadiness,
+    getPlanPriority,
+    getPlanHistory,
+    evaluateActionPlan,
+    materializeOne: (actionPlanId: string) => getMaterializer().materializeOne(actionPlanId),
   };
 }
 
-export type PortfolioInspection = ReturnType<typeof createPortfolioInspection>;
+export type ActionPlanInspection = ReturnType<typeof createActionPlanInspection>;

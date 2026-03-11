@@ -12,4 +12,5 @@ node_modules/.vite
 control-plane/__tests__/tmp-*/
 syntheses/
 runtime-data/
+artifacts/syntheses/
 .env

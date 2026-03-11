@@ -1,0 +1,44 @@
+{
+  "crossSwarmId": "protocol-response-cluster",
+  "displayName": "Protocol Response Cluster",
+  "groupType": "protocol_response_cluster",
+  "enabled": true,
+  "scope": {
+    "teamIds": [
+      "defi-risk-team"
+    ],
+    "subjectKeys": [
+      "aave"
+    ]
+  },
+  "include": {
+    "swarmIds": [
+      "protocol-risk-response"
+    ],
+    "teamIds": [
+      "defi-risk-team"
+    ],
+    "protocolFamilies": [
+      "aave"
+    ],
+    "assetFamilies": [],
+    "eventFamilies": [
+      "protocol"
+    ],
+    "cohortFamilies": [
+      "protocol"
+    ]
+  },
+  "requiredMatchDimensions": [
+    "explicit_definition_match",
+    "shared_team_ownership",
+    "shared_event_family",
+    "shared_cohort_family"
+  ],
+  "completionRules": {
+    "requireAllLinkedSwarmsComplete": true,
+    "requireNoBlockedSwarms": true,
+    "requireNoUnresolvedConflicts": true,
+    "requireCoherentReadiness": true
+  }
+}

@@ -150,7 +150,14 @@
     "entities:validate": "node --experimental-strip-types runtime/entity-registry.ts --validate",
     "demo:rwa": "node --experimental-strip-types scripts/demo-rwa.ts",
     "artifacts:view": "node --experimental-strip-types scripts/artifacts-view.ts",
-    "runs:list": "node --experimental-strip-types scripts/runs-list.ts"
+    "runs:list": "node --experimental-strip-types scripts/runs-list.ts",
+    "cross-swarms:list": "node --experimental-strip-types control-plane/cli/cross-swarms-list.ts",
+    "cross-swarms:inspect": "node --experimental-strip-types control-plane/cli/cross-swarms-inspect.ts",
+    "cross-swarms:status": "node --experimental-strip-types control-plane/cli/cross-swarms-status.ts",
+    "cross-swarms:links": "node --experimental-strip-types control-plane/cli/cross-swarms-links.ts",
+    "cross-swarms:readiness": "node --experimental-strip-types control-plane/cli/cross-swarms-readiness.ts",
+    "cross-swarms:history": "node --experimental-strip-types control-plane/cli/cross-swarms-history.ts",
+    "cross-swarms:materialize": "node --experimental-strip-types control-plane/cli/cross-swarms-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

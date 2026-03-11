@@ -1,0 +1,44 @@
+{
+  "crossSwarmId": "liquidity-instability-cluster",
+  "displayName": "Liquidity Instability Cluster",
+  "groupType": "liquidity_instability_cluster",
+  "enabled": true,
+  "scope": {
+    "teamIds": [
+      "liquidity-response-team"
+    ],
+    "subjectKeys": [
+      "aave"
+    ]
+  },
+  "include": {
+    "swarmIds": [
+      "liquidity-shock-response"
+    ],
+    "teamIds": [
+      "liquidity-response-team"
+    ],
+    "protocolFamilies": [
+      "aave"
+    ],
+    "assetFamilies": [],
+    "eventFamilies": [
+      "liquidity"
+    ],
+    "cohortFamilies": [
+      "liquidity"
+    ]
+  },
+  "requiredMatchDimensions": [
+    "explicit_definition_match",
+    "shared_team_ownership",
+    "shared_event_family",
+    "shared_cohort_family"
+  ],
+  "completionRules": {
+    "requireAllLinkedSwarmsComplete": true,
+    "requireNoBlockedSwarms": true,
+    "requireNoUnresolvedConflicts": true,
+    "requireCoherentReadiness": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "programId": "aave-liquidity-monitor",
+  "cohortId": "aave-liquidity",
+  "displayName": "Aave Liquidity Monitor",
+  "description": "Monitors liquidity stress conditions for the Aave liquidity cohort.",
+  "cadence": "hourly",
+  "enabled": true,
+  "lifecycleState": "active",
+  "investigationTemplates": [
+    "liquidity-drain-investigation"
+  ],
+  "launchConditions": [
+    {
+      "kind": "cadence"
+    },
+    {
+      "kind": "signal_type",
+      "signalType": "liquidity_drain"
+    },
+    {
+      "kind": "cohort_health",
+      "health": "degraded"
+    }
+  ]
+}

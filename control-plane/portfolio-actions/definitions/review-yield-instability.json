@@ -1,0 +1,23 @@
+{
+  "actionId": "review-yield-instability",
+  "displayName": "Review Yield Instability",
+  "actionType": "yield_review",
+  "enabled": true,
+  "portfolioMatchRules": {
+    "riskThemes": [
+      "yield_instability"
+    ],
+    "marketEventFamilies": [
+      "yield"
+    ]
+  },
+  "readinessRules": [
+    "min_linked_portfolios:1"
+  ],
+  "blockingRules": [
+    "require_no_unresolved_market_conflicts"
+  ],
+  "priorityRules": [
+    "elevate_on_contradictions"
+  ]
+}

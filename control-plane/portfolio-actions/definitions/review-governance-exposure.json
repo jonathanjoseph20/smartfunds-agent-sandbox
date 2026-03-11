@@ -1,0 +1,23 @@
+{
+  "actionId": "review-governance-exposure",
+  "displayName": "Review Governance Exposure",
+  "actionType": "governance_review",
+  "enabled": true,
+  "portfolioMatchRules": {
+    "riskThemes": [
+      "governance_risk_rising"
+    ],
+    "marketEventFamilies": [
+      "governance"
+    ]
+  },
+  "readinessRules": [
+    "min_linked_portfolios:1"
+  ],
+  "blockingRules": [
+    "require_consistent_signals"
+  ],
+  "priorityRules": [
+    "elevate_on_conflicts"
+  ]
+}

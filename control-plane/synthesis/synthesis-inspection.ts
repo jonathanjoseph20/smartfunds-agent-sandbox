@@ -1,21 +1,67 @@
 import fs from 'node:fs';
 
-import { createSynthesisEngine, type SynthesisEngine } from './synthesis-engine.ts';
-import { createSynthesisStore, type SynthesisStore } from './synthesis-store.ts';
-import { SynthesisError, type SynthesisReport } from './synthesis-types.ts';
-
-function readJson<T>(filePath: string): T {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
-}
+import { createSynthesisMaterializer, type SynthesisMaterializer } from './synthesis-materializer.ts';
+import { createSynthesisProjection, type SynthesisProjectionEngine } from './synthesis-projection.ts';
+import { resolveSynthesisArtifactPaths } from './synthesis-runtime-paths.ts';
+import type { SynthesisStatus } from './synthesis-status.ts';
 
 function comparePath(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
+type LegacySynthesisReport = {
+  synthesisId: string;
+  synthesisType: string;
+  subjectKey: string;
+  status: string;
+  linkedInvestigations: Array<Record<string, unknown>>;
+  linkedReasons: Array<Record<string, unknown>>;
+  findings: Array<Record<string, unknown>>;
+  confidence: Record<string, unknown>;
+  reinforcingInvestigationIds: string[];
+  conflictingInvestigationIds: string[];
+  conflicts: Array<Record<string, unknown>>;
+  unresolvedLimitations: string[];
+  artifactPaths: string[];
+  conclusion: string;
+};
+
+function asLegacyReport(reportPreview: Record<string, unknown>): LegacySynthesisReport {
+  return {
+    synthesisId: String(reportPreview.synthesisId),
+    synthesisType: String(reportPreview.synthesisType),
+    subjectKey: String(reportPreview.subjectKey),
+    status: String(reportPreview.status),
+    linkedInvestigations: Array.isArray(reportPreview.linkedInvestigations)
+      ? reportPreview.linkedInvestigations as Array<Record<string, unknown>>
+      : [],
+    linkedReasons: Array.isArray(reportPreview.linkedReasons)
+      ? reportPreview.linkedReasons as Array<Record<string, unknown>>
+      : [],
+    findings: Array.isArray(reportPreview.findings) ? reportPreview.findings as Array<Record<string, unknown>> : [],
+    confidence: (reportPreview.confidence ?? {}) as Record<string, unknown>,
+    reinforcingInvestigationIds: Array.isArray(reportPreview.reinforcingInvestigationIds)
+      ? [...reportPreview.reinforcingInvestigationIds as string[]].sort(comparePath)
+      : [],
+    conflictingInvestigationIds: Array.isArray(reportPreview.conflictingInvestigationIds)
+      ? [...reportPreview.conflictingInvestigationIds as string[]].sort(comparePath)
+      : [],
+    conflicts: Array.isArray(reportPreview.conflicts)
+      ? reportPreview.conflicts as Array<Record<string, unknown>>
+      : [],
+    unresolvedLimitations: Array.isArray(reportPreview.unresolvedLimitations)
+      ? [...reportPreview.unresolvedLimitations as string[]].sort(comparePath)
+      : [],
+    artifactPaths: Array.isArray(reportPreview.artifactPaths)
+      ? [...reportPreview.artifactPaths as string[]].sort(comparePath)
+      : [],
+    conclusion: String(reportPreview.conclusion ?? '')
+  };
+}
+
 export function createSynthesisInspection(options: {
-  engine?: SynthesisEngine;
-  store?: SynthesisStore;
-  synthesisRootDir?: string;
+  projection?: SynthesisProjectionEngine;
+  materializer?: SynthesisMaterializer;
   synthesisArtifactsRoot?: string;
   synthesisDefinitionsDir?: string;
   investigationDefinitionsDir?: string;
@@ -23,83 +69,53 @@ export function createSynthesisInspection(options: {
   signalsRootDir?: string;
   investigationArtifactsRoot?: string;
 } = {}) {
-  const engine = options.engine ?? createSynthesisEngine({
-    synthesisRootDir: options.synthesisRootDir,
-    synthesisArtifactsRoot: options.synthesisArtifactsRoot,
+  const projection = options.projection ?? createSynthesisProjection({
     synthesisDefinitionsDir: options.synthesisDefinitionsDir,
     investigationDefinitionsDir: options.investigationDefinitionsDir,
     investigationsRootDir: options.investigationsRootDir,
     signalsRootDir: options.signalsRootDir,
-    investigationArtifactsRoot: options.investigationArtifactsRoot
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot
   });
-  const store = options.store ?? createSynthesisStore({ rootDir: options.synthesisRootDir });
 
-  function materialize(): SynthesisReport[] {
-    return engine.runAll();
-  }
-
-  function latestJsonReportPath(synthesisId: string): string {
-    const record = store.getSynthesisSet(synthesisId);
-    const path = [...record.latestArtifactPaths]
-      .sort(comparePath)
-      .find((entry) => entry.endsWith('synthesis-report.json'));
-
-    if (!path || !fs.existsSync(path)) {
-      const refreshed = engine.runOne(synthesisId);
-      const fallback = [...refreshed.artifactPaths]
-        .sort(comparePath)
-        .find((entry) => entry.endsWith('synthesis-report.json'));
-      if (!fallback || !fs.existsSync(fallback)) {
-        throw new SynthesisError('SYNTHESIS_REPORT_NOT_FOUND', `Synthesis JSON report not found: ${synthesisId}`);
-      }
-      return fallback;
-    }
-
-    return path;
-  }
-
-  function latestMarkdownReportPath(synthesisId: string): string {
-    const record = store.getSynthesisSet(synthesisId);
-    const path = [...record.latestArtifactPaths]
-      .sort(comparePath)
-      .find((entry) => entry.endsWith('synthesis-report.md'));
-
-    if (!path || !fs.existsSync(path)) {
-      const refreshed = engine.runOne(synthesisId);
-      const fallback = [...refreshed.artifactPaths]
-        .sort(comparePath)
-        .find((entry) => entry.endsWith('synthesis-report.md'));
-      if (!fallback || !fs.existsSync(fallback)) {
-        throw new SynthesisError('SYNTHESIS_REPORT_NOT_FOUND', `Synthesis markdown report not found: ${synthesisId}`);
-      }
-      return fallback;
-    }
-
-    return path;
-  }
+  const materializer = options.materializer ?? createSynthesisMaterializer({
+    projection,
+    synthesisDefinitionsDir: options.synthesisDefinitionsDir,
+    investigationDefinitionsDir: options.investigationDefinitionsDir,
+    investigationsRootDir: options.investigationsRootDir,
+    signalsRootDir: options.signalsRootDir,
+    investigationArtifactsRoot: options.investigationArtifactsRoot,
+    synthesisArtifactsRoot: options.synthesisArtifactsRoot
+  });
 
   function listSynthesisSets(input: { synthesisType?: string; status?: string } = {}) {
-    materialize();
+    return projection
+      .projectAll()
+      .filter((entry) => (input.synthesisType
+        ? String(entry.reportPreview.synthesisType) === input.synthesisType
+        : true))
+      .filter((entry) => (input.status ? entry.status.readinessState === input.status : true))
+      .map((entry) => {
+        const report = asLegacyReport(entry.reportPreview);
+        const paths = resolveSynthesisArtifactPaths({ synthesisId: entry.synthesisId, rootDir: options.synthesisArtifactsRoot });
+        const artifactPaths = [paths.reportJsonPath, paths.reportMarkdownPath].filter((filePath) => fs.existsSync(filePath));
 
-    return store
-      .listSynthesisSets({
-        ...(input.synthesisType ? { synthesisType: input.synthesisType } : {}),
-        ...(input.status ? { status: input.status as Parameters<typeof store.listSynthesisSets>[0]['status'] } : {})
+        return {
+          synthesisId: entry.synthesisId,
+          synthesisType: report.synthesisType,
+          subjectKey: report.subjectKey,
+          status: report.status,
+          linkedInvestigationCount: report.linkedInvestigations.length,
+          confidenceBand: String((report.confidence as { overallBand?: string }).overallBand ?? 'low'),
+          artifactPaths: artifactPaths.sort(comparePath)
+        };
       })
-      .map((record) => ({
-        synthesisId: record.synthesisId,
-        synthesisType: record.synthesisType,
-        subjectKey: record.subjectKey,
-        status: record.status,
-        linkedInvestigationCount: record.linkedInvestigationIds.length,
-        ...(record.latestConfidenceBand ? { confidenceBand: record.latestConfidenceBand } : {}),
-        artifactPaths: [...record.latestArtifactPaths].sort(comparePath)
-      }));
+      .sort((left, right) => left.synthesisId.localeCompare(right.synthesisId));
   }
 
-  function inspectSynthesis(synthesisId: string): SynthesisReport {
-    materialize();
-    return readJson<SynthesisReport>(latestJsonReportPath(synthesisId));
+  function inspectSynthesis(synthesisId: string): LegacySynthesisReport {
+    const projected = projection.projectOne(synthesisId);
+    return asLegacyReport(projected.reportPreview);
   }
 
   function inspectLinks(synthesisId: string) {
@@ -109,18 +125,23 @@ export function createSynthesisInspection(options: {
       synthesisType: report.synthesisType,
       subjectKey: report.subjectKey,
       linkedInvestigationIds: report.linkedInvestigations
-        .map((entry) => entry.investigationRunId)
+        .map((entry) => String(entry.investigationRunId ?? ''))
+        .filter((entry) => entry.length > 0)
         .sort((left, right) => left.localeCompare(right)),
       linkedReasons: [...report.linkedReasons].sort((left, right) => {
-        const d = left.dimension.localeCompare(right.dimension);
+        const leftDimension = String(left.dimension ?? '');
+        const rightDimension = String(right.dimension ?? '');
+        const d = leftDimension.localeCompare(rightDimension);
         if (d !== 0) {
           return d;
         }
-        const v = left.value.localeCompare(right.value);
+        const leftValue = String(left.value ?? '');
+        const rightValue = String(right.value ?? '');
+        const v = leftValue.localeCompare(rightValue);
         if (v !== 0) {
           return v;
         }
-        return left.reason.localeCompare(right.reason);
+        return String(left.reason ?? '').localeCompare(String(right.reason ?? ''));
       })
     };
   }
@@ -133,22 +154,69 @@ export function createSynthesisInspection(options: {
     };
   }
 
-  function readReport(synthesisId: string): { reportPath: string; content: string } {
-    materialize();
-    const markdownPath = latestMarkdownReportPath(synthesisId);
+  function inspectStatus(synthesisId: string): SynthesisStatus {
+    const projected = projection.projectOne(synthesisId);
+    return projected.status;
+  }
+
+  function inspectConflicts(synthesisId: string) {
+    const projected = projection.projectOne(synthesisId);
     return {
-      reportPath: markdownPath,
-      content: fs.readFileSync(markdownPath, 'utf8')
+      synthesisId,
+      conflicts: projected.conflicts
+    };
+  }
+
+  function inspectWhy(synthesisId: string) {
+    const projected = projection.projectOne(synthesisId);
+    const linkExplanations = Array.isArray(projected.reportPreview.linkExplanations)
+      ? projected.reportPreview.linkExplanations
+      : [];
+
+    return {
+      synthesisId,
+      explanations: [...linkExplanations as Array<Record<string, unknown>>].sort((left, right) => {
+        const leftId = String(left.linkedInvestigationId ?? '');
+        const rightId = String(right.linkedInvestigationId ?? '');
+        return leftId.localeCompare(rightId);
+      })
+    };
+  }
+
+  function projectSynthesis(synthesisId: string) {
+    return projection.projectOne(synthesisId);
+  }
+
+  function materializeSynthesis(synthesisId: string) {
+    return materializer.materializeOne(synthesisId);
+  }
+
+  function readReport(synthesisId: string): { reportPath: string; content: string } {
+    const projected = projection.projectOne(synthesisId);
+    const content = [
+      '# Cross-Investigation Synthesis Report',
+      '',
+      `${JSON.stringify(projected.reportPreview, null, 2)}`
+    ].join('\n') + '\n';
+
+    const paths = resolveSynthesisArtifactPaths({ synthesisId, rootDir: options.synthesisArtifactsRoot });
+    return {
+      reportPath: paths.reportMarkdownPath,
+      content
     };
   }
 
   return {
-    materialize,
     listSynthesisSets,
     inspectSynthesis,
     inspectLinks,
     inspectConfidence,
-    readReport
+    readReport,
+    inspectStatus,
+    inspectWhy,
+    inspectConflicts,
+    projectSynthesis,
+    materializeSynthesis
   };
 }
 

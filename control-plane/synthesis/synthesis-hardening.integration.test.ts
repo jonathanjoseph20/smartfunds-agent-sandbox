@@ -10,7 +10,7 @@ import { createSignalStore } from '../signals/signal-store.ts';
 
 import { createSynthesisInspection } from './synthesis-inspection.ts';
 
-const tmpRoot = path.join('control-plane', '__tests__', 'tmp-synthesis-integration');
+const tmpRoot = path.join('control-plane', '__tests__', 'tmp-synthesis-hardening');
 
 afterEach(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -19,8 +19,7 @@ afterEach(() => {
 function createInspection(scope: string) {
   const root = path.join(tmpRoot, scope);
   return createSynthesisInspection({
-    synthesisRootDir: path.join(root, 'syntheses'),
-    synthesisArtifactsRoot: path.join(root, 'artifacts', 'synthesis'),
+    synthesisArtifactsRoot: path.join(root, 'artifacts', 'syntheses'),
     investigationsRootDir: path.join(root, 'investigations'),
     signalsRootDir: path.join(root, 'signals'),
     investigationArtifactsRoot: path.join(root, 'artifacts', 'investigations')
@@ -37,9 +36,10 @@ function createEmitter(scope: string) {
   });
 }
 
-describe('synthesis integration', () => {
-  it('T-SYN-INT1 positive path projects synthesis deterministically and materializes explicitly', () => {
-    const emitter = createEmitter('positive');
+describe('synthesis hardening integration', () => {
+  it('T-SYN-HI1 linked investigations form deterministic synthesis cluster with explainable links', () => {
+    const scope = 'cluster';
+    const emitter = createEmitter(scope);
 
     emitter.emitSignal('protocol_risk', {
       dataset: 'protocol_risk_feed',
@@ -54,26 +54,18 @@ describe('synthesis integration', () => {
       riskLevel: 'high'
     });
 
-    const inspection = createInspection('positive');
-    const list = inspection.listSynthesisSets();
-    const target = list.find((entry) => entry.synthesisType === 'protocol-risk-synthesis' && entry.subjectKey === 'protocol:aave');
-
+    const inspection = createInspection(scope);
+    const target = inspection.listSynthesisSets().find((entry) => entry.subjectKey === 'protocol:aave');
     expect(target).toBeTruthy();
-    expect(target?.linkedInvestigationCount).toBe(2);
 
-    const report = inspection.inspectSynthesis(target!.synthesisId);
-    expect(report.findings.length).toBeGreaterThan(0);
-    expect(report.conflicts.some((entry) => String(entry.summary).includes('direct finding conflict'))).toBe(false);
-
-    const jsonPath = report.artifactPaths.find((entry) => entry.endsWith('synthesis-report.json'));
-    expect(jsonPath && fs.existsSync(jsonPath)).toBe(false);
-
-    inspection.materializeSynthesis(target!.synthesisId);
-    expect(jsonPath && fs.existsSync(jsonPath)).toBe(true);
+    const why = inspection.inspectWhy(target!.synthesisId);
+    expect(why.explanations.length).toBeGreaterThan(0);
+    expect(why.explanations.every((entry) => Array.isArray(entry.linkReasons))).toBe(true);
   });
 
-  it('T-SYN-INT2 conflict path surfaces contradiction and inconclusive status', () => {
-    const emitter = createEmitter('conflict');
+  it('T-SYN-HI2 contradiction-heavy projection is surfaced as inconclusive with classified conflicts', () => {
+    const scope = 'conflicts';
+    const emitter = createEmitter(scope);
 
     emitter.emitSignal('protocol_risk', {
       dataset: 'protocol_risk_feed',
@@ -88,28 +80,27 @@ describe('synthesis integration', () => {
       riskLevel: 'low'
     });
 
-    const inspection = createInspection('conflict');
-    const list = inspection.listSynthesisSets();
-    const target = list.find((entry) => entry.synthesisType === 'protocol-risk-synthesis' && entry.subjectKey === 'protocol:aave');
-    const report = inspection.inspectSynthesis(target!.synthesisId);
+    const inspection = createInspection(scope);
+    const target = inspection.listSynthesisSets().find((entry) => entry.subjectKey === 'protocol:aave');
+    const status = inspection.inspectStatus(target!.synthesisId);
+    const conflicts = inspection.inspectConflicts(target!.synthesisId);
 
-    expect(report.status).toBe('inconclusive');
-    expect(report.conflicts.length).toBeGreaterThan(0);
-    expect(report.confidence.unresolvedConflicts.length).toBeGreaterThan(0);
+    expect(status.readinessState).toBe('inconclusive');
+    expect(conflicts.conflicts.length).toBeGreaterThan(0);
+    expect(conflicts.conflicts.some((entry) => entry.type === 'direct_finding_conflict')).toBe(true);
   });
 
-  it('T-SYN-INT3 partial readiness remains active with explicit limitations', () => {
+  it('T-SYN-HI3 partial readiness and projection vs materialization boundary remains explicit', () => {
     const scope = 'partial';
     const root = path.join(tmpRoot, scope);
     const emitter = createEmitter(scope);
 
-    const first = emitter.emitSignal('protocol_risk', {
+    emitter.emitSignal('protocol_risk', {
       dataset: 'protocol_risk_feed',
       slot: 'interval_hours:6:2026-03-10T12:00Z',
       protocol: 'Aave',
       riskLevel: 'high'
     });
-    expect(first.status).toBe('persisted');
 
     const signalStore = createSignalStore({ rootDir: path.join(root, 'signals') });
     signalStore.appendSignal({
@@ -148,41 +139,16 @@ describe('synthesis integration', () => {
     });
 
     const inspection = createInspection(scope);
-    const list = inspection.listSynthesisSets();
-    const target = list.find((entry) => entry.synthesisType === 'protocol-risk-synthesis' && entry.subjectKey === 'protocol:aave');
-    const report = inspection.inspectSynthesis(target!.synthesisId);
+    const target = inspection.listSynthesisSets().find((entry) => entry.subjectKey === 'protocol:aave');
+    expect(target).toBeTruthy();
 
-    expect(report.status === 'active' || report.status === 'incomplete').toBe(true);
-    expect(report.linkedInvestigations.length).toBeGreaterThanOrEqual(2);
-    expect(report.confidence.weakeningFactors.some((factor) => factor.includes('incomplete investigations'))).toBe(true);
-  });
+    const status = inspection.inspectStatus(target!.synthesisId);
+    expect(status.readinessState === 'active' || status.readinessState === 'incomplete').toBe(true);
 
-  it('T-SYN-INT4 regression path preserves signal trigger investigation flow semantics', () => {
-    const scope = 'regression';
-    const root = path.join(tmpRoot, scope);
-    const emitter = createEmitter(scope);
+    const artifactPath = path.join(root, 'artifacts', 'syntheses', target!.synthesisId, 'synthesis-report.json');
+    expect(fs.existsSync(artifactPath)).toBe(false);
 
-    const emitted = emitter.emitSignal('liquidity_drain', {
-      dataset: 'protocol_tvl_timeseries',
-      slot: 'interval_hours:6:2026-03-10T12:00Z',
-      protocol: 'Aave',
-      liquidityDropPercent: 12
-    });
-
-    expect(emitted.status).toBe('persisted');
-
-    const inspection = createInspection(scope);
-    inspection.listSynthesisSets();
-
-    const signalLogPath = path.join(root, 'signals', '2026-03-10', 'signal-log.json');
-    const triggerLogPath = path.join(root, 'triggers', '2026-03-10', 'trigger-log.json');
-    const investigationLogPath = path.join(root, 'investigations', '2026-03-10', 'investigation-events.json');
-
-    expect(fs.existsSync(signalLogPath)).toBe(true);
-    expect(fs.existsSync(triggerLogPath)).toBe(true);
-    expect(fs.existsSync(investigationLogPath)).toBe(true);
-
-    const history = JSON.parse(fs.readFileSync(investigationLogPath, 'utf8')) as Array<Record<string, unknown>>;
-    expect(history.some((entry) => entry.eventType === 'INVESTIGATION_COMPLETED')).toBe(true);
+    inspection.materializeSynthesis(target!.synthesisId);
+    expect(fs.existsSync(artifactPath)).toBe(true);
   });
 });

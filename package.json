@@ -164,7 +164,15 @@
     "market-synthesis:links": "node --experimental-strip-types control-plane/cli/market-synthesis-links.ts",
     "market-synthesis:readiness": "node --experimental-strip-types control-plane/cli/market-synthesis-readiness.ts",
     "market-synthesis:history": "node --experimental-strip-types control-plane/cli/market-synthesis-history.ts",
-    "market-synthesis:materialize": "node --experimental-strip-types control-plane/cli/market-synthesis-materialize.ts"
+    "market-synthesis:materialize": "node --experimental-strip-types control-plane/cli/market-synthesis-materialize.ts",
+    "portfolio-intelligence:list": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-list.ts",
+    "portfolio-intelligence:inspect": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-inspect.ts",
+    "portfolio-intelligence:status": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-status.ts",
+    "portfolio-intelligence:links": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-links.ts",
+    "portfolio-intelligence:readiness": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-readiness.ts",
+    "portfolio-intelligence:risk": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-risk.ts",
+    "portfolio-intelligence:history": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-history.ts",
+    "portfolio-intelligence:materialize": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

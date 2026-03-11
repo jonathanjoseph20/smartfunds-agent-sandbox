@@ -1,0 +1,22 @@
+{
+  "portfolioId": "yield-sensitive-portfolio",
+  "displayName": "Yield Sensitive Portfolio",
+  "portfolioType": "yield",
+  "enabled": true,
+  "matchingRules": {
+    "eventFamilies": [
+      "yield"
+    ],
+    "synthesisTypes": [
+      "yield_instability",
+      "market_risk"
+    ],
+    "protocolFamilies": [
+      "aave",
+      "curve"
+    ]
+  },
+  "readinessRules": {
+    "requireAllLinkedSynthesesReady": true
+  }
+}

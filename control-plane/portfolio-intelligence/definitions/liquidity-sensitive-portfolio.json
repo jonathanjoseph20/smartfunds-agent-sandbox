@@ -1,0 +1,23 @@
+{
+  "portfolioId": "liquidity-sensitive-portfolio",
+  "displayName": "Liquidity Sensitive Portfolio",
+  "portfolioType": "liquidity",
+  "enabled": true,
+  "matchingRules": {
+    "eventFamilies": [
+      "liquidity",
+      "market"
+    ],
+    "assetFamilies": [
+      "stablecoin",
+      "eth"
+    ],
+    "synthesisTypes": [
+      "liquidity_stress",
+      "market_risk"
+    ]
+  },
+  "readinessRules": {
+    "requireAllLinkedSynthesesReady": false
+  }
+}

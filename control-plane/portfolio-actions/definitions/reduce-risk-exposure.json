@@ -1,0 +1,28 @@
+{
+  "actionId": "reduce-risk-exposure",
+  "displayName": "Reduce Risk Exposure",
+  "actionType": "risk_reduction",
+  "enabled": true,
+  "portfolioMatchRules": {
+    "riskThemes": [
+      "protocol_exposure_pressure",
+      "governance_risk_rising"
+    ],
+    "concentrationWarnings": [
+      "protocol_concentration"
+    ],
+    "marketEventFamilies": [
+      "protocol",
+      "governance"
+    ]
+  },
+  "readinessRules": [
+    "min_linked_portfolios:1"
+  ],
+  "blockingRules": [
+    "require_no_blocked_portfolios"
+  ],
+  "priorityRules": [
+    "escalate_on_governance_risk"
+  ]
+}

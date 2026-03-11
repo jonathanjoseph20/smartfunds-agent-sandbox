@@ -1,0 +1,23 @@
+{
+  "actionId": "monitor-liquidity-stress",
+  "displayName": "Monitor Liquidity Stress",
+  "actionType": "liquidity_monitoring",
+  "enabled": true,
+  "portfolioMatchRules": {
+    "riskThemes": [
+      "liquidity_stress"
+    ],
+    "marketEventFamilies": [
+      "liquidity"
+    ]
+  },
+  "readinessRules": [
+    "min_linked_portfolios:1"
+  ],
+  "blockingRules": [
+    "require_upstream_readiness"
+  ],
+  "priorityRules": [
+    "elevate_on_concentration_warnings"
+  ]
+}

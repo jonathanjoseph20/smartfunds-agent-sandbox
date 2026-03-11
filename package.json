@@ -172,7 +172,15 @@
     "portfolio-intelligence:readiness": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-readiness.ts",
     "portfolio-intelligence:risk": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-risk.ts",
     "portfolio-intelligence:history": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-history.ts",
-    "portfolio-intelligence:materialize": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-materialize.ts"
+    "portfolio-intelligence:materialize": "node --experimental-strip-types control-plane/cli/portfolio-intelligence-materialize.ts",
+    "portfolio-actions:list": "node --experimental-strip-types control-plane/cli/portfolio-actions-list.ts",
+    "portfolio-actions:inspect": "node --experimental-strip-types control-plane/cli/portfolio-actions-inspect.ts",
+    "portfolio-actions:status": "node --experimental-strip-types control-plane/cli/portfolio-actions-status.ts",
+    "portfolio-actions:links": "node --experimental-strip-types control-plane/cli/portfolio-actions-links.ts",
+    "portfolio-actions:readiness": "node --experimental-strip-types control-plane/cli/portfolio-actions-readiness.ts",
+    "portfolio-actions:priority": "node --experimental-strip-types control-plane/cli/portfolio-actions-priority.ts",
+    "portfolio-actions:history": "node --experimental-strip-types control-plane/cli/portfolio-actions-history.ts",
+    "portfolio-actions:materialize": "node --experimental-strip-types control-plane/cli/portfolio-actions-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

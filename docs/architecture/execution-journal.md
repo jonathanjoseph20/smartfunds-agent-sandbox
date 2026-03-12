@@ -1,98 +1,140 @@
-# Execution Journal (Sprint 62)
+# Mission Execution Journal (Sprint 5.4)
 
-## Purpose
+## Scope
 
-Execution Journal is the deterministic runtime memory substrate for control-plane execution runs.
+Mission Execution Journal is the bounded, deterministic, append-only event layer for a `MissionExecutionAttempt`.
 
-It is intentionally limited to append-only event capture and reducer-based state derivation.
+Pipeline position:
 
-## Event Sourcing Model
+- runtime envelope
+- execution attempt
+- mission execution journal
+- execution engine (future)
 
-Journal state is represented by:
+This layer does not execute mission work. It records pre-execution attempt lifecycle events and materializes observability artifacts.
 
-- Run metadata: `runtime-data/journal/runs/<runId>.json`
-- Ordered events: `runtime-data/journal/events/<runId>.json`
+## Boundary
 
-Allowed event types:
+Mission Execution Journal is implemented under:
 
-- `RUN_CREATED`
-- `PHASE_STARTED`
-- `PHASE_COMPLETED`
-- `TASK_STARTED`
-- `TASK_COMPLETED`
-- `TASK_FAILED`
-- `ARTIFACT_RECORDED`
-- `RUN_COMPLETED`
-- `RUN_FAILED`
+- `control-plane/execution-journal/*`
 
-The source of truth is event history, not mutable aggregate state.
+It is intentionally decoupled from legacy runtime-run journaling under:
 
-## Reducer Architecture
+- `control-plane/execution/journal.ts`
 
-`control-plane/journal/reducer.ts` deterministically derives `RunSummary` from:
+## Deterministic Identity
 
-- `ExecutionRun`
-- ordered `ExecutionEvent[]`
+`executionJournalId` is derived from semantic attempt identity only:
 
-Derived fields:
+- `executionAttemptId`
+- `runtimeEnvelopeId`
+- `executionContractId`
+- `missionId`
 
-- `status`
-- `currentPhase`
-- `lastCompletedPhase`
-- `totalEvents`
-- `tasksCompleted`
-- `tasksFailed`
-- `artifactsProduced`
+Algorithm:
 
-The reducer validates strict sequence ordering before computing summary output.
+- `sha256(canonicalStringify(identityPayload))`
 
-## Deterministic IDs
+Excluded from identity and dedupe:
 
-No timestamps, UUIDs, or randomness are used.
+- timestamps
+- filesystem paths
+- CLI invocation metadata
+- markdown artifact content
+- random values
+- process/runtime ambient noise
 
-ID formats:
+## Event Model
 
-- Run: `run_<projectId>_<counter>`
-- Event: `evt_<runId>_<sequence>`
-- Artifact: `art_<runId>_<sequence>`
+Mission Execution Journal event fields:
 
-Counters are zero-padded to 4 digits.
+- `eventType`
+- `eventDedupeKey`
+- `executionJournalId`
+- `executionAttemptId`
+- `eventIndex`
+- `eventPayload`
+- `reasonTokens`
+- `blockingReasons`
+- `limitations`
 
-## Run Kinds
+### Live event types (Sprint 5.4)
 
-Run kind is one of:
+- `attempt_created`
+- `attempt_prepared`
+- `attempt_ready_for_execution`
+- `attempt_cancelled`
+- `journal_materialized`
 
-- `swarm`
-- `mission`
-- `maintenance`
-- `governance`
+### Reserved future event types (defined, inactive)
 
-## Phase Model
+- `execution_started`
+- `execution_progressed`
+- `execution_completed`
+- `execution_failed`
+- `execution_retried`
 
-Execution phases are constrained to:
+Reserved events are schema-valid but never auto-emitted in Sprint 5.4.
 
-- `plan`
-- `setup`
-- `implement`
-- `verify`
-- `test`
-- `release`
+## Append-only History Guarantees
 
-## Governance Relationship
+History store guarantees:
 
-Run creation resolves `entity`, `pod`, and `mode` from canonical project registry:
+- append-only writes
+- semantic dedupe using `eventDedupeKey`
+- deterministic `eventIndex` assignment
+- stable read ordering by `eventIndex` with lexical fallback
 
-- `entities/projects/*.json`
+Semantic dedupe key:
 
-This keeps runtime metadata aligned with governance ownership and mode policy.
+- `sha256(canonicalStringify({ executionAttemptId, eventType, normalizedEventPayload }))`
 
-## Non-Goals
+## Projection-first Truth
 
-Execution Journal does not implement:
+Truth computation:
 
-- orchestration
-- scheduling
-- retries
-- parallel execution
-- agent runtime
-- Slack or web interfaces
+- execution attempt projection computes attempt truth
+- journal projection composes attempt truth + journal history + derived status
+
+Materialization:
+
+- persists projection output only
+- never mutates attempt truth
+- never invents semantic state
+
+## Journal State Derivation
+
+Journal states:
+
+- `initialized`
+- `collecting`
+- `ready_for_runtime_events`
+- `blocked`
+- `archived`
+
+State is derived from attempt truth and journal events, including blockers and limitations.
+
+## Artifact Outputs
+
+Materialization path:
+
+- `artifacts/execution-journal/<executionJournalId>/`
+
+Files:
+
+- `execution-journal-status.json`
+- `execution-journal-report.json`
+- `execution-journal-report.md`
+- `execution-journal-history.json`
+- `execution-journal-events.json`
+
+All files are deterministic projection outputs.
+
+## Sprint 5.4 Limitations
+
+- no execution engine integration
+- no runtime event producers
+- no task dispatch or retries
+- no scheduling or live runtime orchestration
+- no external API/agent runtime execution behavior

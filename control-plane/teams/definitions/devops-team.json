@@ -1,0 +1,39 @@
+{
+  "teamId": "devops-team",
+  "displayName": "DevOps Team",
+  "description": "Maintains reliability posture and operational readiness metadata.",
+  "teamType": "devops",
+  "purpose": "Monitor and maintain system health posture and operations guidance.",
+  "domainTags": [
+    "operations",
+    "reliability",
+    "infrastructure"
+  ],
+  "supportedMissionTypes": [
+    "analyze-agent-economy-development"
+  ],
+  "supportedTemplateIds": [
+    "analyze-agent-economy-development"
+  ],
+  "capabilityTags": [
+    "incident_response",
+    "infra_hardening",
+    "operational_monitoring"
+  ],
+  "defaultOperatingMode": "continuous",
+  "lifecycleState": "active",
+  "availabilityState": "manual_only",
+  "readinessState": "partial",
+  "rosterPolicy": {
+    "type": "placeholder",
+    "minAgents": 1,
+    "maxAgents": 4,
+    "requiredCapabilities": [
+      "operational_monitoring"
+    ]
+  },
+  "notes": [
+    "continuous_mode_is_descriptive_only_in_sprint_4_1",
+    "pre_execution_registry_entry"
+  ]
+}

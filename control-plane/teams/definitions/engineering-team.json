@@ -1,0 +1,42 @@
+{
+  "teamId": "engineering-team",
+  "displayName": "Engineering Team",
+  "description": "Owns architecture and implementation readiness artifacts.",
+  "teamType": "engineering",
+  "purpose": "Own technical architecture and implementation readiness for future MVP builds.",
+  "domainTags": [
+    "architecture",
+    "implementation",
+    "delivery"
+  ],
+  "supportedMissionTypes": [
+    "analyze-agent-economy-development",
+    "generate-product-spec"
+  ],
+  "supportedTemplateIds": [
+    "analyze-agent-economy-development",
+    "generate-product-spec"
+  ],
+  "capabilityTags": [
+    "architecture_design",
+    "implementation_planning",
+    "delivery_readiness"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "active",
+  "availabilityState": "restricted",
+  "readinessState": "ready",
+  "rosterPolicy": {
+    "type": "expandable",
+    "minAgents": 2,
+    "maxAgents": 8,
+    "requiredCapabilities": [
+      "architecture_design",
+      "implementation_planning"
+    ]
+  },
+  "notes": [
+    "execution_not_enabled_in_sprint_4_1",
+    "pre_execution_registry_entry"
+  ]
+}

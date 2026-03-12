@@ -1,0 +1,39 @@
+{
+  "teamId": "tokenization-law-team",
+  "displayName": "Tokenization Law Team",
+  "description": "Provides legal and structural guidance for tokenized offerings.",
+  "teamType": "legal",
+  "purpose": "Support tokenized offering structuring and legal guidance outputs.",
+  "domainTags": [
+    "legal",
+    "tokenization",
+    "securities"
+  ],
+  "supportedMissionTypes": [
+    "structure-tokenized-offering"
+  ],
+  "supportedTemplateIds": [
+    "structure-tokenized-offering"
+  ],
+  "capabilityTags": [
+    "legal_structuring",
+    "regulatory_analysis",
+    "offering_compliance"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "defined",
+  "availabilityState": "manual_only",
+  "readinessState": "partial",
+  "rosterPolicy": {
+    "type": "placeholder",
+    "minAgents": 1,
+    "maxAgents": 3,
+    "requiredCapabilities": [
+      "legal_structuring"
+    ]
+  },
+  "notes": [
+    "requires_human_legal_review_for_future_assignment",
+    "pre_execution_registry_entry"
+  ]
+}

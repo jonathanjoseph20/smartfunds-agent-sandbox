@@ -11,5 +11,40 @@
   "teamObjective": "Deliver deterministic, regulation-aware market analysis artifacts.",
   "defaultWorkflowIds": [
     "research-analysis-workflow"
+  ],
+  "displayName": "SmartFunds Research Team",
+  "description": "Legacy runtime team kept compatible while participating in Team Registry projections.",
+  "teamType": "research",
+  "purpose": "Produce deterministic market analysis and founder-facing synthesis outputs.",
+  "domainTags": [
+    "research",
+    "market_intelligence",
+    "risk"
+  ],
+  "supportedMissionTypes": [
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "produce-market-memo"
+  ],
+  "capabilityTags": [
+    "market_synthesis",
+    "risk_signal_analysis"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "active",
+  "availabilityState": "restricted",
+  "readinessState": "ready",
+  "rosterPolicy": {
+    "type": "fixed",
+    "minAgents": 3,
+    "maxAgents": 3,
+    "requiredCapabilities": [
+      "market_synthesis"
+    ]
+  },
+  "notes": [
+    "legacy_runtime_team_definition",
+    "pre_execution_registry_entry"
   ]
 }

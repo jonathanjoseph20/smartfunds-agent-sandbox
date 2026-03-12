@@ -1,0 +1,39 @@
+{
+  "teamId": "product-design-team",
+  "displayName": "Product Design Team",
+  "description": "Produces product definition artifacts and scoped MVP plans.",
+  "teamType": "product",
+  "purpose": "Produce product specs, shape MVP scope, and define roadmap artifacts.",
+  "domainTags": [
+    "product",
+    "mvp",
+    "roadmap"
+  ],
+  "supportedMissionTypes": [
+    "generate-product-spec"
+  ],
+  "supportedTemplateIds": [
+    "generate-product-spec"
+  ],
+  "capabilityTags": [
+    "spec_authoring",
+    "scope_definition",
+    "roadmap_planning"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "active",
+  "availabilityState": "restricted",
+  "readinessState": "ready",
+  "rosterPolicy": {
+    "type": "expandable",
+    "minAgents": 1,
+    "maxAgents": 5,
+    "requiredCapabilities": [
+      "spec_authoring"
+    ]
+  },
+  "notes": [
+    "descriptive_only_no_runtime_invocation",
+    "pre_execution_registry_entry"
+  ]
+}

@@ -146,6 +146,26 @@ export function createTaskExecutionMaterializer(options: {
     fs.writeFileSync(paths.historyJsonPath, `${canonicalStringify(history)}\n`, 'utf8');
     fs.writeFileSync(paths.stepsJsonPath, `${canonicalStringify(projected.steps)}\n`, 'utf8');
     fs.writeFileSync(paths.progressJsonPath, `${canonicalStringify(projected.executionProgress)}\n`, 'utf8');
+    fs.writeFileSync(paths.failuresJsonPath, `${canonicalStringify({
+      failedNodeCount: projected.failedNodeCount,
+      graphFailureState: projected.graphFailureState,
+      failures: projected.steps
+        .filter((step) => step.stepType === 'node_execution_failed')
+        .map((step) => ({
+          taskNodeId: step.taskNodeId,
+          failureClass: step.stepOutputs.failureClass,
+        })),
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.retriesJsonPath, `${canonicalStringify({
+      retryingNodeCount: projected.retryingNodeCount,
+      retryAttempts: projected.retryAttempts,
+      retryLimitBreaches: projected.retryLimitBreaches,
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.blockersJsonPath, `${canonicalStringify({
+      blockedNodeCount: projected.blockedNodeCount,
+      blockingNodes: projected.blockingNodes,
+      blockingReasons: projected.blockingReasons,
+    })}\n`, 'utf8');
 
     return {
       executionEngineRunId: projected.executionEngineRunId,
@@ -157,6 +177,9 @@ export function createTaskExecutionMaterializer(options: {
       historyPath: paths.historyJsonPath,
       stepsPath: paths.stepsJsonPath,
       progressPath: paths.progressJsonPath,
+      failuresPath: paths.failuresJsonPath,
+      retriesPath: paths.retriesJsonPath,
+      blockersPath: paths.blockersJsonPath,
     };
   }
 

@@ -120,6 +120,45 @@ export function createTaskExecutionInspection(options: {
     return engine.step(input);
   }
 
+  function failTaskNode(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+    failureCode?: string;
+    failureClass?: 'RETRYABLE_FAILURE' | 'NON_RETRYABLE_FAILURE' | 'SYSTEM_FAILURE' | 'POLICY_FAILURE' | 'DEPENDENCY_FAILURE';
+  }) {
+    return engine.failNode(input);
+  }
+
+  function retryTaskNode(input: { taskGraphId: string; taskNodeId: string }) {
+    return engine.retryNode(input);
+  }
+
+  function retryTaskExecutionStatus(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return {
+      taskGraphId: projected.taskGraphId,
+      graphState: projected.graphState,
+      graphFailureState: projected.graphFailureState,
+      retryAttempts: projected.retryAttempts,
+      retryLimitBreaches: projected.retryLimitBreaches,
+      retryingNodeCount: projected.retryingNodeCount,
+      failedNodeCount: projected.failedNodeCount,
+      blockedNodeCount: projected.blockedNodeCount,
+    };
+  }
+
+  function retryTaskExecutionHistory(input: { taskGraphId: string }) {
+    const history = taskExecutionHistory(input);
+    return {
+      ...history,
+      entries: history.entries.filter((entry) => (
+        entry.eventType === 'node_retry_scheduled'
+        || entry.eventType === 'node_retry_started'
+        || entry.eventType === 'node_retry_exhausted'
+      )),
+    };
+  }
+
   function advanceTaskExecution(input: { taskGraphId: string }) {
     return engine.advance(input);
   }
@@ -138,6 +177,10 @@ export function createTaskExecutionInspection(options: {
     taskExecutionStatus,
     taskExecutionHistory,
     stepTaskExecution,
+    failTaskNode,
+    retryTaskNode,
+    retryTaskExecutionStatus,
+    retryTaskExecutionHistory,
     advanceTaskExecution,
     simulateTaskExecution,
     materializeTaskExecution,

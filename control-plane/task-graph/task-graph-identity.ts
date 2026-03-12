@@ -152,6 +152,14 @@ export function normalizeTaskNodes(nodes: MissionTaskNode[]): MissionTaskNode[] 
     taskInputs: normalizeRecord(node.taskInputs),
     taskOutputs: normalizeRecord(node.taskOutputs),
     requiredCapabilities: uniqueSorted(node.requiredCapabilities),
+    ...(node.retryPolicy
+      ? {
+        retryPolicy: {
+          ...node.retryPolicy,
+          retryConditions: uniqueSorted(node.retryPolicy.retryConditions),
+        },
+      }
+      : {}),
     blockingReasons: uniqueSorted(node.blockingReasons),
     limitations: uniqueSorted(node.limitations),
     provenanceInputs: normalizeRecord(node.provenanceInputs),

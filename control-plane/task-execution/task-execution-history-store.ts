@@ -152,6 +152,9 @@ export function resolveTaskExecutionArtifactPaths(input: {
   historyJsonPath: string;
   stepsJsonPath: string;
   progressJsonPath: string;
+  failuresJsonPath: string;
+  retriesJsonPath: string;
+  blockersJsonPath: string;
 } {
   const dirPath = resolveTaskExecutionArtifactDir(input);
 
@@ -163,6 +166,9 @@ export function resolveTaskExecutionArtifactPaths(input: {
     historyJsonPath: path.join(dirPath, 'task-execution-history.json'),
     stepsJsonPath: path.join(dirPath, 'task-execution-steps.json'),
     progressJsonPath: path.join(dirPath, 'task-execution-progress.json'),
+    failuresJsonPath: path.join(dirPath, 'task-execution-failures.json'),
+    retriesJsonPath: path.join(dirPath, 'task-execution-retries.json'),
+    blockersJsonPath: path.join(dirPath, 'task-execution-blockers.json'),
   };
 }
 

@@ -17,6 +17,8 @@ function projected() {
     executionAttemptId: 'ea-1',
     taskGraphId: 'tg-1',
     executionStepCount: 3,
+    failedNodeCount: 0,
+    retryingNodeCount: 0,
     readyNodeCount: 0,
     runningNodeCount: 0,
     completedNodeCount: 1,
@@ -28,6 +30,7 @@ function projected() {
       ratio: 0.5,
     },
     blockingReasons: [],
+    blockingNodes: [],
     lastExecutionStepId: 'step-3',
     engineState: 'active',
     steps: [{ executionStepId: 'step-1' }],
@@ -35,9 +38,12 @@ function projected() {
       'node-a': 'completed',
       'node-b': 'ready',
     },
+    retryAttempts: [],
+    retryLimitBreaches: [],
+    graphFailureState: 'none',
     statusPreview: {
       taskGraphId: 'tg-1',
-      graphState: 'in_progress',
+      graphState: 'running',
     },
     reportPreview: {
       taskGraphId: 'tg-1',
@@ -51,6 +57,9 @@ function projected() {
       historyJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-history.json'),
       stepsJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-steps.json'),
       progressJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-progress.json'),
+      failuresJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-failures.json'),
+      retriesJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-retries.json'),
+      blockersJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-blockers.json'),
     },
     provenanceInputs: {
       taskGraphState: 'ready_for_execution',
@@ -92,6 +101,9 @@ describe('task execution materializer', () => {
       history: fs.readFileSync(first.historyPath, 'utf8'),
       steps: fs.readFileSync(first.stepsPath, 'utf8'),
       progress: fs.readFileSync(first.progressPath, 'utf8'),
+      failures: fs.readFileSync(first.failuresPath, 'utf8'),
+      retries: fs.readFileSync(first.retriesPath, 'utf8'),
+      blockers: fs.readFileSync(first.blockersPath, 'utf8'),
     };
 
     const secondSnapshot = {
@@ -101,6 +113,9 @@ describe('task execution materializer', () => {
       history: fs.readFileSync(second.historyPath, 'utf8'),
       steps: fs.readFileSync(second.stepsPath, 'utf8'),
       progress: fs.readFileSync(second.progressPath, 'utf8'),
+      failures: fs.readFileSync(second.failuresPath, 'utf8'),
+      retries: fs.readFileSync(second.retriesPath, 'utf8'),
+      blockers: fs.readFileSync(second.blockersPath, 'utf8'),
     };
 
     expect(secondSnapshot).toEqual(firstSnapshot);

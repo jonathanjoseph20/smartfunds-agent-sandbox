@@ -6,6 +6,10 @@ import { main as inspectMain } from '../../cli/task-execution-inspect.ts';
 import { main as statusMain } from '../../cli/task-execution-status.ts';
 import { main as historyMain } from '../../cli/task-execution-history.ts';
 import { main as stepMain } from '../../cli/task-execution-step.ts';
+import { main as failNodeMain } from '../../cli/task-execution-fail-node.ts';
+import { main as retryNodeMain } from '../../cli/task-execution-retry-node.ts';
+import { main as retryStatusMain } from '../../cli/task-execution-retry-status.ts';
+import { main as retryHistoryMain } from '../../cli/task-execution-retry-history.ts';
 import { main as advanceMain } from '../../cli/task-execution-advance.ts';
 import { main as simulateMain } from '../../cli/task-execution-simulate.ts';
 import { main as materializeMain } from '../../cli/task-execution-materialize.ts';
@@ -16,6 +20,10 @@ const {
   taskExecutionStatus,
   taskExecutionHistory,
   stepTaskExecution,
+  failTaskNode,
+  retryTaskNode,
+  retryTaskExecutionStatus,
+  retryTaskExecutionHistory,
   advanceTaskExecution,
   simulateTaskExecution,
   materializeTaskExecution,
@@ -25,6 +33,10 @@ const {
   taskExecutionStatus: vi.fn(() => ({ taskGraphId: 'tg-1', graphState: 'pending' })),
   taskExecutionHistory: vi.fn(() => ({ taskGraphId: 'tg-1', entries: [] })),
   stepTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1', selectedTaskNodeId: 'node-a' })),
+  failTaskNode: vi.fn(() => ({ failureClass: 'RETRYABLE_FAILURE', projection: { nodeStates: { 'node-a': 'failed' } } })),
+  retryTaskNode: vi.fn(() => ({ retryScheduled: true, retryStarted: true, projection: { nodeStates: { 'node-a': 'ready' }, graphState: 'running' } })),
+  retryTaskExecutionStatus: vi.fn(() => ({ taskGraphId: 'tg-1', retryAttempts: [] })),
+  retryTaskExecutionHistory: vi.fn(() => ({ taskGraphId: 'tg-1', entries: [] })),
   advanceTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1', mode: 'advance' })),
   simulateTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1', mode: 'simulate' })),
   materializeTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1' })),
@@ -37,6 +49,10 @@ vi.mock('../../task-execution/task-execution-inspection.ts', () => ({
     taskExecutionStatus,
     taskExecutionHistory,
     stepTaskExecution,
+    failTaskNode,
+    retryTaskNode,
+    retryTaskExecutionStatus,
+    retryTaskExecutionHistory,
     advanceTaskExecution,
     simulateTaskExecution,
     materializeTaskExecution,
@@ -70,6 +86,10 @@ describe('task execution CLI commands', () => {
     await statusMain(['--graph', 'tg-1']);
     await historyMain(['--graph=tg-1']);
     await stepMain(['--graph', 'tg-1']);
+    await failNodeMain(['--graph', 'tg-1', '--node', 'node-a']);
+    await retryNodeMain(['--graph', 'tg-1', '--node=node-a']);
+    await retryStatusMain(['--graph=tg-1']);
+    await retryHistoryMain(['--graph', 'tg-1']);
     await advanceMain(['--graph', 'tg-1']);
     await simulateMain(['--graph=tg-1']);
     await materializeMain(['--graph', 'tg-1']);
@@ -77,6 +97,10 @@ describe('task execution CLI commands', () => {
     expect(taskExecutionStatus).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(taskExecutionHistory).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(stepTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(failTaskNode).toHaveBeenCalledWith({ taskGraphId: 'tg-1', taskNodeId: 'node-a' });
+    expect(retryTaskNode).toHaveBeenCalledWith({ taskGraphId: 'tg-1', taskNodeId: 'node-a' });
+    expect(retryTaskExecutionStatus).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(retryTaskExecutionHistory).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(advanceTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(simulateTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(materializeTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });

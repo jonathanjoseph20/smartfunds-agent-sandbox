@@ -71,6 +71,14 @@ export interface MissionTaskNode {
   taskInputs: Record<string, unknown>;
   taskOutputs: Record<string, unknown>;
   requiredCapabilities: string[];
+  retryPolicy?: {
+    retryPolicyId: string;
+    maxRetries: number;
+    retryStrategy: 'immediate';
+    retryDelayModel: 'immediate' | 'deterministic_linear' | 'deterministic_exponential';
+    retryConditions: string[];
+    baseDelay: number;
+  };
   taskState: TaskNodeState;
   taskEligibilityState: TaskNodeEligibilityState;
   blockingReasons: string[];

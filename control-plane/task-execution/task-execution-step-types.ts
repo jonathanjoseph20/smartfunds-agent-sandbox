@@ -1,8 +1,8 @@
 export const TASK_EXECUTION_GRAPH_STATES = [
-  'pending',
-  'in_progress',
+  'running',
   'blocked',
   'completed',
+  'failed',
 ] as const;
 
 export const TASK_EXECUTION_NODE_STATES = [
@@ -11,6 +11,8 @@ export const TASK_EXECUTION_NODE_STATES = [
   'running',
   'completed',
   'failed',
+  'retrying',
+  'permanently_failed',
   'blocked',
   'skipped',
 ] as const;
@@ -19,6 +21,10 @@ export const TASK_EXECUTION_STEP_TYPES = [
   'node_execution_started',
   'node_execution_completed',
   'node_execution_failed',
+  'node_retry_scheduled',
+  'node_retry_started',
+  'node_retry_exhausted',
+  'node_blocked',
   'graph_execution_progressed',
   'graph_execution_completed',
 ] as const;
@@ -63,7 +69,7 @@ export interface MissionTaskExecutionEngine {
   executionEngineRunId: string;
   executionAttemptId: string;
   taskGraphId: string;
-  engineState: 'active' | 'completed' | 'blocked';
+  engineState: 'active' | 'completed' | 'blocked' | 'failed';
   executionStepCount: number;
   lastExecutionStepId: string | null;
   readyNodeCount: number;
@@ -107,6 +113,8 @@ export interface MissionTaskExecutionProjection {
   executionAttemptId: string;
   taskGraphId: string;
   executionStepCount: number;
+  failedNodeCount: number;
+  retryingNodeCount: number;
   readyNodeCount: number;
   runningNodeCount: number;
   completedNodeCount: number;
@@ -118,10 +126,26 @@ export interface MissionTaskExecutionProjection {
     ratio: number;
   };
   blockingReasons: string[];
+  blockingNodes: string[];
   lastExecutionStepId: string | null;
-  engineState: 'active' | 'completed' | 'blocked';
+  engineState: 'active' | 'completed' | 'blocked' | 'failed';
   steps: MissionTaskExecutionStep[];
   nodeStates: Record<string, TaskExecutionNodeState>;
+  retryAttempts: Array<{
+    taskNodeId: string;
+    attemptIndex: number;
+    failureClass: string;
+    retryPolicyId: string;
+    retryState: string;
+    retryCount: number;
+  }>;
+  retryLimitBreaches: Array<{
+    taskNodeId: string;
+    retryPolicyId: string;
+    attemptIndex: number;
+    reason: string;
+  }>;
+  graphFailureState: 'none' | 'retry_exhausted' | 'unrecoverable_failure';
   statusPreview: Record<string, unknown>;
   reportPreview: Record<string, unknown>;
   artifactPaths: {
@@ -132,6 +156,9 @@ export interface MissionTaskExecutionProjection {
     historyJsonPath: string;
     stepsJsonPath: string;
     progressJsonPath: string;
+    failuresJsonPath: string;
+    retriesJsonPath: string;
+    blockersJsonPath: string;
   };
   provenanceInputs: MissionTaskExecutionEngine['provenanceInputs'];
 }
@@ -146,4 +173,7 @@ export interface MissionTaskExecutionMaterializationSummary {
   historyPath: string;
   stepsPath: string;
   progressPath: string;
+  failuresPath: string;
+  retriesPath: string;
+  blockersPath: string;
 }

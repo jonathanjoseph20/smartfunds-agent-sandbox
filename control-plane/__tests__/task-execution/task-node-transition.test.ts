@@ -10,6 +10,10 @@ describe('task node transition', () => {
     expect(applyTaskNodeTransition({ currentState: 'pending', nextState: 'ready' })).toBe('ready');
     expect(applyTaskNodeTransition({ currentState: 'ready', nextState: 'running' })).toBe('running');
     expect(applyTaskNodeTransition({ currentState: 'running', nextState: 'completed' })).toBe('completed');
+    expect(applyTaskNodeTransition({ currentState: 'failed', nextState: 'retrying' })).toBe('retrying');
+    expect(applyTaskNodeTransition({ currentState: 'retrying', nextState: 'ready' })).toBe('ready');
+    expect(applyTaskNodeTransition({ currentState: 'failed', nextState: 'permanently_failed' })).toBe('permanently_failed');
+    expect(applyTaskNodeTransition({ currentState: 'pending', nextState: 'blocked' })).toBe('blocked');
   });
 
   it('T-MTE-TR2 invalid transitions reject with stable error', () => {

@@ -62,43 +62,37 @@ function mapTaskNodeState(state: TaskNodeState): TaskExecutionNodeState {
   }
 }
 
-function deriveGraphState(input: {
-  totalNodeCount: number;
-  readyNodeCount: number;
-  runningNodeCount: number;
-  completedNodeCount: number;
-  blockedNodeCount: number;
-}): TaskExecutionGraphState {
-  if (input.totalNodeCount > 0 && input.completedNodeCount === input.totalNodeCount) {
-    return 'completed';
+function buildPredecessors(taskGraph: MissionTaskGraphProjection): Map<string, string[]> {
+  const predecessors = new Map<string, string[]>();
+
+  for (const node of [...taskGraph.taskNodes].sort((left, right) => left.taskNodeId.localeCompare(right.taskNodeId))) {
+    predecessors.set(node.taskNodeId, []);
   }
 
-  if (input.runningNodeCount > 0 || input.completedNodeCount > 0) {
-    return 'in_progress';
+  for (const edge of [...taskGraph.taskEdges].sort((left, right) => {
+    const bySource = left.sourceNodeId.localeCompare(right.sourceNodeId);
+    if (bySource !== 0) {
+      return bySource;
+    }
+
+    const byTarget = left.targetNodeId.localeCompare(right.targetNodeId);
+    if (byTarget !== 0) {
+      return byTarget;
+    }
+
+    return left.dependencyType.localeCompare(right.dependencyType);
+  })) {
+    if (edge.dependencyType !== 'finish_to_start') {
+      continue;
+    }
+
+    const current = predecessors.get(edge.targetNodeId) ?? [];
+    current.push(edge.sourceNodeId);
+    current.sort((left, right) => left.localeCompare(right));
+    predecessors.set(edge.targetNodeId, current);
   }
 
-  if (input.readyNodeCount > 0) {
-    return 'pending';
-  }
-
-  if (input.blockedNodeCount > 0 || input.totalNodeCount > 0) {
-    return 'blocked';
-  }
-
-  return 'pending';
-}
-
-function asStepType(value: unknown): TaskExecutionStepType | null {
-  if (
-    value === 'node_execution_started'
-    || value === 'node_execution_completed'
-    || value === 'node_execution_failed'
-    || value === 'graph_execution_progressed'
-    || value === 'graph_execution_completed'
-  ) {
-    return value;
-  }
-  return null;
+  return predecessors;
 }
 
 function isStepRecord(value: unknown): value is MissionTaskExecutionStep {
@@ -127,24 +121,66 @@ function isStepRecord(value: unknown): value is MissionTaskExecutionStep {
   );
 }
 
+type ReplayResult = {
+  nodeStates: Record<string, TaskExecutionNodeState>;
+  steps: MissionTaskExecutionStep[];
+  blockingReasonsByNode: Record<string, string[]>;
+  failureClassByNode: Record<string, string>;
+  retryAttempts: MissionTaskExecutionProjection['retryAttempts'];
+  retryLimitBreaches: MissionTaskExecutionProjection['retryLimitBreaches'];
+};
+
+function parseRetryAttempt(value: unknown): MissionTaskExecutionProjection['retryAttempts'][number] | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.taskNodeId !== 'string'
+    || typeof row.attemptIndex !== 'number'
+    || typeof row.failureClass !== 'string'
+    || typeof row.retryPolicyId !== 'string'
+    || typeof row.retryState !== 'string'
+    || typeof row.retryCount !== 'number'
+    || !Number.isInteger(row.attemptIndex)
+    || !Number.isInteger(row.retryCount)
+  ) {
+    return null;
+  }
+
+  return {
+    taskNodeId: row.taskNodeId,
+    attemptIndex: row.attemptIndex,
+    failureClass: row.failureClass,
+    retryPolicyId: row.retryPolicyId,
+    retryState: row.retryState,
+    retryCount: row.retryCount,
+  };
+}
+
 function replayExecutionHistory(input: {
   taskGraph: MissionTaskGraphProjection;
   historyEntries: Array<{
     eventType: TaskExecutionStepType;
     eventPayload: Record<string, unknown>;
   }>;
-}): {
-  nodeStates: Record<string, TaskExecutionNodeState>;
-  steps: MissionTaskExecutionStep[];
-  blockingReasons: string[];
-} {
+}): ReplayResult {
   const nodeStates: Record<string, TaskExecutionNodeState> = Object.fromEntries(
     [...input.taskGraph.taskNodes]
       .sort((left, right) => left.taskNodeId.localeCompare(right.taskNodeId))
       .map((node) => [node.taskNodeId, mapTaskNodeState(node.taskState)]),
   );
 
-  const blockingReasons: string[] = [];
+  const blockingReasonsByNode = new Map<string, Set<string>>(
+    [...input.taskGraph.taskNodes]
+      .sort((left, right) => left.taskNodeId.localeCompare(right.taskNodeId))
+      .map((node) => [node.taskNodeId, new Set(node.blockingReasons)]),
+  );
+
+  const failureClassByNode = new Map<string, string>();
+  const retryAttempts: MissionTaskExecutionProjection['retryAttempts'] = [];
+  const retryLimitBreaches: MissionTaskExecutionProjection['retryLimitBreaches'] = [];
   const steps: MissionTaskExecutionStep[] = [];
 
   for (const entry of input.historyEntries) {
@@ -172,7 +208,7 @@ function replayExecutionHistory(input: {
     const currentState = nodeStates[taskNodeId] ?? 'pending';
 
     if (entry.eventType === 'node_execution_started') {
-      if (currentState === 'pending') {
+      if (currentState === 'pending' || currentState === 'retrying') {
         nodeStates[taskNodeId] = applyTaskNodeTransition({
           currentState,
           nextState: 'ready',
@@ -183,6 +219,7 @@ function replayExecutionHistory(input: {
         currentState: nodeStates[taskNodeId] ?? 'ready',
         nextState: 'running',
       });
+      continue;
     }
 
     if (entry.eventType === 'node_execution_completed') {
@@ -190,6 +227,7 @@ function replayExecutionHistory(input: {
         currentState,
         nextState: 'completed',
       });
+      continue;
     }
 
     if (entry.eventType === 'node_execution_failed') {
@@ -197,14 +235,116 @@ function replayExecutionHistory(input: {
         currentState,
         nextState: 'failed',
       });
-      blockingReasons.push(`task_failed:${taskNodeId}`);
+
+      const failureClass = typeof entry.eventPayload.failureClass === 'string'
+        ? entry.eventPayload.failureClass
+        : 'NON_RETRYABLE_FAILURE';
+      failureClassByNode.set(taskNodeId, failureClass);
+
+      const reasons = blockingReasonsByNode.get(taskNodeId) ?? new Set<string>();
+      reasons.add(`task_failed:${taskNodeId}`);
+      reasons.add(`failure_class:${failureClass.toLowerCase()}`);
+      blockingReasonsByNode.set(taskNodeId, reasons);
+      continue;
+    }
+
+    if (entry.eventType === 'node_retry_scheduled') {
+      nodeStates[taskNodeId] = applyTaskNodeTransition({
+        currentState,
+        nextState: 'retrying',
+      });
+
+      const attempt = parseRetryAttempt(entry.eventPayload.retryAttempt);
+      if (attempt) {
+        retryAttempts.push(attempt);
+      }
+      continue;
+    }
+
+    if (entry.eventType === 'node_retry_started') {
+      nodeStates[taskNodeId] = applyTaskNodeTransition({
+        currentState,
+        nextState: 'ready',
+      });
+
+      const attempt = parseRetryAttempt(entry.eventPayload.retryAttempt);
+      if (attempt) {
+        retryAttempts.push(attempt);
+      }
+      continue;
+    }
+
+    if (entry.eventType === 'node_retry_exhausted') {
+      nodeStates[taskNodeId] = applyTaskNodeTransition({
+        currentState,
+        nextState: 'permanently_failed',
+      });
+
+      const reason = typeof entry.eventPayload.reason === 'string'
+        ? entry.eventPayload.reason
+        : 'retry_exhausted';
+
+      retryLimitBreaches.push({
+        taskNodeId,
+        retryPolicyId: typeof entry.eventPayload.retryPolicyId === 'string'
+          ? entry.eventPayload.retryPolicyId
+          : 'mission_task_retry_default_v1',
+        attemptIndex: typeof entry.eventPayload.attemptIndex === 'number'
+          ? entry.eventPayload.attemptIndex
+          : 0,
+        reason,
+      });
+
+      const reasons = blockingReasonsByNode.get(taskNodeId) ?? new Set<string>();
+      reasons.add(`retry_exhausted:${taskNodeId}`);
+      blockingReasonsByNode.set(taskNodeId, reasons);
+      continue;
+    }
+
+    if (entry.eventType === 'node_blocked') {
+      nodeStates[taskNodeId] = applyTaskNodeTransition({
+        currentState,
+        nextState: 'blocked',
+      });
+
+      const reasons = blockingReasonsByNode.get(taskNodeId) ?? new Set<string>();
+      const blockingReason = typeof entry.eventPayload.blockingReason === 'string'
+        ? entry.eventPayload.blockingReason
+        : 'DEPENDENCY_FAILED';
+      reasons.add(blockingReason);
+      blockingReasonsByNode.set(taskNodeId, reasons);
     }
   }
 
   return {
     nodeStates,
     steps: [...steps].sort(compareSteps),
-    blockingReasons: uniqueSorted(blockingReasons),
+    blockingReasonsByNode: Object.fromEntries(
+      [...blockingReasonsByNode.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([taskNodeId, reasons]) => [taskNodeId, uniqueSorted([...reasons])]),
+    ),
+    failureClassByNode: Object.fromEntries(
+      [...failureClassByNode.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    ),
+    retryAttempts: [...retryAttempts].sort((left, right) => {
+      const byNode = left.taskNodeId.localeCompare(right.taskNodeId);
+      if (byNode !== 0) {
+        return byNode;
+      }
+      const byAttempt = left.attemptIndex - right.attemptIndex;
+      if (byAttempt !== 0) {
+        return byAttempt;
+      }
+      return left.retryState.localeCompare(right.retryState);
+    }),
+    retryLimitBreaches: [...retryLimitBreaches].sort((left, right) => {
+      const byNode = left.taskNodeId.localeCompare(right.taskNodeId);
+      if (byNode !== 0) {
+        return byNode;
+      }
+      return left.attemptIndex - right.attemptIndex;
+    }),
   };
 }
 
@@ -223,6 +363,31 @@ function resolveSeedByExecutionEngineRunId(input: {
   return {
     taskGraphId: history.taskGraphId,
   };
+}
+
+function deriveGraphState(input: {
+  totalNodeCount: number;
+  readyNodeCount: number;
+  runningNodeCount: number;
+  retryingNodeCount: number;
+  completedNodeCount: number;
+  blockedNodeCount: number;
+  failedNodeCount: number;
+  graphFailureState: MissionTaskExecutionProjection['graphFailureState'];
+}): TaskExecutionGraphState {
+  if (input.totalNodeCount > 0 && input.completedNodeCount === input.totalNodeCount) {
+    return 'completed';
+  }
+
+  if (input.graphFailureState !== 'none' || input.failedNodeCount > 0) {
+    return 'failed';
+  }
+
+  if (input.blockedNodeCount > 0 && input.readyNodeCount === 0 && input.runningNodeCount === 0 && input.retryingNodeCount === 0) {
+    return 'blocked';
+  }
+
+  return 'running';
 }
 
 export function createTaskExecutionProjection(options: {
@@ -307,14 +472,44 @@ export function createTaskExecutionProjection(options: {
       historyEntries: history.entries,
     });
 
-    const readyFromPending = detectReadyTaskNodeIds({
-      taskGraph,
-      nodeStates: replayed.nodeStates,
-    });
-
     const projectedNodeStates: Record<string, TaskExecutionNodeState> = {
       ...replayed.nodeStates,
     };
+
+    const predecessors = buildPredecessors(taskGraph);
+    const terminalBlockingStates: TaskExecutionNodeState[] = ['permanently_failed', 'blocked'];
+
+    for (const node of [...taskGraph.taskNodes].sort((left, right) => left.taskNodeId.localeCompare(right.taskNodeId))) {
+      if (projectedNodeStates[node.taskNodeId] !== 'pending') {
+        continue;
+      }
+
+      const dependencyIds = predecessors.get(node.taskNodeId) ?? [];
+      const dependencyBlockers = dependencyIds
+        .filter((dependencyNodeId) => terminalBlockingStates.includes(projectedNodeStates[dependencyNodeId] ?? 'pending'))
+        .sort((left, right) => left.localeCompare(right));
+
+      if (dependencyBlockers.length === 0) {
+        continue;
+      }
+
+      projectedNodeStates[node.taskNodeId] = applyTaskNodeTransition({
+        currentState: 'pending',
+        nextState: 'blocked',
+      });
+
+      const reasons = replayed.blockingReasonsByNode[node.taskNodeId] ?? [];
+      replayed.blockingReasonsByNode[node.taskNodeId] = uniqueSorted([
+        ...reasons,
+        'DEPENDENCY_FAILED',
+        ...dependencyBlockers.map((dependencyNodeId) => `dependency_terminal_failure:${dependencyNodeId}`),
+      ]);
+    }
+
+    const readyFromPending = detectReadyTaskNodeIds({
+      taskGraph,
+      nodeStates: projectedNodeStates,
+    });
 
     for (const taskNodeId of readyFromPending) {
       projectedNodeStates[taskNodeId] = 'ready';
@@ -323,23 +518,38 @@ export function createTaskExecutionProjection(options: {
     const nodeStateValues = Object.values(projectedNodeStates);
     const readyNodeCount = nodeStateValues.filter((state) => state === 'ready').length;
     const runningNodeCount = nodeStateValues.filter((state) => state === 'running').length;
+    const retryingNodeCount = nodeStateValues.filter((state) => state === 'retrying').length;
     const completedNodeCount = nodeStateValues.filter((state) => state === 'completed').length;
-    const blockedNodeCount = nodeStateValues.filter((state) => state === 'blocked' || state === 'failed').length;
+    const failedNodeCount = nodeStateValues.filter((state) => state === 'failed' || state === 'permanently_failed').length;
+    const blockedNodeCount = nodeStateValues.filter((state) => state === 'blocked').length;
+
+    const graphFailureState: MissionTaskExecutionProjection['graphFailureState'] = replayed.retryLimitBreaches.length > 0
+      ? 'retry_exhausted'
+      : nodeStateValues.some((state) => state === 'permanently_failed')
+        ? 'unrecoverable_failure'
+        : 'none';
 
     const graphState = deriveGraphState({
       totalNodeCount: taskGraph.nodeCount,
       readyNodeCount,
       runningNodeCount,
+      retryingNodeCount,
       completedNodeCount,
       blockedNodeCount,
+      failedNodeCount,
+      graphFailureState,
     });
+
+    const blockingNodes = Object.entries(projectedNodeStates)
+      .filter(([, nodeState]) => nodeState === 'blocked' || nodeState === 'permanently_failed')
+      .map(([taskNodeId]) => taskNodeId)
+      .sort((left, right) => left.localeCompare(right));
 
     const blockingReasons = uniqueSorted([
       ...taskGraph.blockingReasons,
-      ...replayed.blockingReasons,
-      ...(graphState === 'blocked' && readyNodeCount === 0 && completedNodeCount !== taskGraph.nodeCount
-        ? ['TASK_GRAPH_BLOCKED']
-        : []),
+      ...blockingNodes.flatMap((taskNodeId) => replayed.blockingReasonsByNode[taskNodeId] ?? []),
+      ...(graphState === 'blocked' ? ['TASK_GRAPH_BLOCKED'] : []),
+      ...(graphState === 'failed' ? ['TASK_GRAPH_FAILED'] : []),
     ]);
 
     const steps = [...replayed.steps].sort(compareSteps);
@@ -355,9 +565,11 @@ export function createTaskExecutionProjection(options: {
 
     const engineState = graphState === 'completed'
       ? 'completed'
-      : graphState === 'blocked'
-        ? 'blocked'
-        : 'active';
+      : graphState === 'failed'
+        ? 'failed'
+        : graphState === 'blocked'
+          ? 'blocked'
+          : 'active';
 
     const artifactPaths = resolveTaskExecutionArtifactPaths({
       executionEngineRunId: taskGraph.executionEngineRunId,
@@ -369,13 +581,19 @@ export function createTaskExecutionProjection(options: {
       executionAttemptId: taskGraph.executionAttemptId,
       taskGraphId: taskGraph.taskGraphId,
       executionStepCount: steps.length,
+      failedNodeCount,
+      retryingNodeCount,
       readyNodeCount,
       runningNodeCount,
       completedNodeCount,
       blockedNodeCount,
       graphState,
+      graphFailureState,
       executionProgress,
+      blockingNodes,
       blockingReasons,
+      retryAttempts: replayed.retryAttempts,
+      retryLimitBreaches: replayed.retryLimitBreaches,
       lastExecutionStepId,
     } as Record<string, unknown>;
 
@@ -384,8 +602,14 @@ export function createTaskExecutionProjection(options: {
       executionAttemptId: taskGraph.executionAttemptId,
       taskGraphId: taskGraph.taskGraphId,
       graphState,
+      graphFailureState,
       engineState,
       nodeStates: Object.fromEntries(Object.entries(projectedNodeStates).sort(([left], [right]) => left.localeCompare(right))),
+      failureClassByNode: replayed.failureClassByNode,
+      retryAttempts: replayed.retryAttempts,
+      retryLimitBreaches: replayed.retryLimitBreaches,
+      blockingNodes,
+      blockingReasonsByNode: replayed.blockingReasonsByNode,
       steps,
       history,
       executionProgress,
@@ -403,6 +627,8 @@ export function createTaskExecutionProjection(options: {
       executionAttemptId: taskGraph.executionAttemptId,
       taskGraphId: taskGraph.taskGraphId,
       executionStepCount: steps.length,
+      failedNodeCount,
+      retryingNodeCount,
       readyNodeCount,
       runningNodeCount,
       completedNodeCount,
@@ -410,10 +636,14 @@ export function createTaskExecutionProjection(options: {
       graphState,
       executionProgress,
       blockingReasons,
+      blockingNodes,
       lastExecutionStepId,
       engineState,
       steps,
       nodeStates: Object.fromEntries(Object.entries(projectedNodeStates).sort(([left], [right]) => left.localeCompare(right))),
+      retryAttempts: replayed.retryAttempts,
+      retryLimitBreaches: replayed.retryLimitBreaches,
+      graphFailureState,
       statusPreview,
       reportPreview,
       artifactPaths,

@@ -285,13 +285,20 @@ export function createTaskGraphEvaluator(options: {
         taskInputs: normalizeUnknownRecord(seed.taskInputs),
         taskOutputs: normalizeUnknownRecord(seed.taskOutputs),
         requiredCapabilities: uniqueSorted(seed.requiredCapabilities),
+        retryPolicy: {
+          retryPolicyId: 'mission_task_retry_default_v1',
+          maxRetries: 3,
+          retryStrategy: 'immediate',
+          retryDelayModel: 'deterministic_linear',
+          retryConditions: ['RETRYABLE_FAILURE', 'SYSTEM_FAILURE'],
+          baseDelay: 1,
+        },
         taskState: 'pending',
         taskEligibilityState: 'waiting_on_dependencies',
         blockingReasons: [],
         limitations: uniqueSorted([
           'task_graph_structure_only_sprint_6_1',
           'task_graph_no_runtime_dispatch',
-          'task_graph_no_retry_semantics',
         ]),
         provenanceInputs: normalizeUnknownRecord({
           ...seed.provenanceInputs,

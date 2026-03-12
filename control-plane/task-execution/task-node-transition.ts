@@ -1,33 +1,25 @@
 import type { TaskExecutionNodeState } from './task-execution-step-types.ts';
-
-const ALLOWED_TRANSITIONS: Record<TaskExecutionNodeState, TaskExecutionNodeState[]> = {
-  pending: ['ready'],
-  ready: ['running'],
-  running: ['completed', 'failed'],
-  completed: [],
-  failed: [],
-  blocked: [],
-  skipped: [],
-};
+import {
+  applyTaskNodeLifecycleTransition,
+  assertTaskNodeLifecycleTransition,
+} from './task-node-lifecycle.ts';
 
 export function assertTaskNodeTransition(input: {
   from: TaskExecutionNodeState;
   to: TaskExecutionNodeState;
 }): void {
-  const allowed = ALLOWED_TRANSITIONS[input.from] ?? [];
-  if (!allowed.includes(input.to)) {
-    throw new Error('INVALID_TASK_NODE_TRANSITION');
-  }
+  assertTaskNodeLifecycleTransition({
+    from: input.from,
+    to: input.to,
+  });
 }
 
 export function applyTaskNodeTransition(input: {
   currentState: TaskExecutionNodeState;
   nextState: TaskExecutionNodeState;
 }): TaskExecutionNodeState {
-  assertTaskNodeTransition({
-    from: input.currentState,
-    to: input.nextState,
+  return applyTaskNodeLifecycleTransition({
+    currentState: input.currentState,
+    nextState: input.nextState,
   });
-
-  return input.nextState;
 }

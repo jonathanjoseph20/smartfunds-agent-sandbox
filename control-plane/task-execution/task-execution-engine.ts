@@ -15,6 +15,18 @@ import {
 import { deriveTaskExecutionStepId } from './task-execution-step-identity.ts';
 import { deriveTaskGraphTopologicalOrder } from './task-ready-node-detector.ts';
 import { applyTaskNodeTransition } from './task-node-transition.ts';
+import {
+  classifyTaskFailure,
+  type TaskFailureClass,
+} from './task-failure-classifier.ts';
+import {
+  evaluateTaskRetryEligibility,
+  type MissionTaskRetryPolicy,
+} from './task-retry-policy.ts';
+import {
+  dependenciesSatisfiedForTaskRetry,
+  scheduleTaskRetry,
+} from './task-retry-scheduler.ts';
 import type { MissionTaskExecutionProjection, MissionTaskExecutionStep, TaskExecutionStepType } from './task-execution-step-types.ts';
 
 function normalizeRecord(value: Record<string, unknown>): Record<string, unknown> {
@@ -54,6 +66,40 @@ function selectReadyNodeId(input: {
       }
       return left.localeCompare(right);
     })[0] ?? null;
+}
+
+function currentRetryCountForNode(input: {
+  projected: MissionTaskExecutionProjection;
+  taskNodeId: string;
+}): number {
+  const counts = input.projected.retryAttempts
+    .filter((attempt) => attempt.taskNodeId === input.taskNodeId)
+    .map((attempt) => attempt.retryCount)
+    .sort((left, right) => right - left);
+
+  return counts[0] ?? 0;
+}
+
+function latestFailureClassForNode(input: {
+  projected: MissionTaskExecutionProjection;
+  taskNodeId: string;
+}): TaskFailureClass {
+  const failureStep = [...input.projected.steps]
+    .sort((left, right) => right.stepIndex - left.stepIndex)
+    .find((step) => step.taskNodeId === input.taskNodeId && step.stepType === 'node_execution_failed');
+
+  const failureClass = failureStep?.stepOutputs.failureClass;
+  if (
+    failureClass === 'RETRYABLE_FAILURE'
+    || failureClass === 'NON_RETRYABLE_FAILURE'
+    || failureClass === 'SYSTEM_FAILURE'
+    || failureClass === 'POLICY_FAILURE'
+    || failureClass === 'DEPENDENCY_FAILURE'
+  ) {
+    return failureClass;
+  }
+
+  return 'NON_RETRYABLE_FAILURE';
 }
 
 export function createTaskExecutionEngine(options: {
@@ -120,6 +166,7 @@ export function createTaskExecutionEngine(options: {
     stepType: TaskExecutionStepType;
     stepInputs: Record<string, unknown>;
     stepOutputs: Record<string, unknown>;
+    eventPayloadExtras?: Record<string, unknown>;
   }): MissionTaskExecutionStep {
     const stepIndex = input.projectedBefore.executionStepCount;
 
@@ -154,6 +201,7 @@ export function createTaskExecutionEngine(options: {
         executionStepId,
         taskNodeId: input.taskNodeId,
         step: baseStep,
+        ...(input.eventPayloadExtras ?? {}),
       },
     });
 
@@ -173,6 +221,10 @@ export function createTaskExecutionEngine(options: {
 
     if (projectedBefore.graphState === 'completed') {
       throw new Error('TASK_EXECUTION_ALREADY_COMPLETED');
+    }
+
+    if (projectedBefore.graphState === 'failed') {
+      throw new Error('TASK_GRAPH_BLOCKED');
     }
 
     const taskGraph = taskGraphProjection.projectOne({ taskGraphId: input.taskGraphId });
@@ -257,6 +309,220 @@ export function createTaskExecutionEngine(options: {
     };
   }
 
+  function failNode(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+    failureCode?: string;
+    failureClass?: TaskFailureClass;
+  }) {
+    const steps: MissionTaskExecutionStep[] = [];
+
+    const projectedBefore = projection.projectOne({ taskGraphId: input.taskGraphId });
+    const currentState = projectedBefore.nodeStates[input.taskNodeId];
+
+    if (!currentState) {
+      throw new Error('TASK_NODE_NOT_READY');
+    }
+
+    if (currentState !== 'ready' && currentState !== 'running') {
+      throw new Error('TASK_NODE_NOT_READY');
+    }
+
+    let projectedAtFailure = projectedBefore;
+
+    if (currentState === 'ready') {
+      applyTaskNodeTransition({ currentState: 'ready', nextState: 'running' });
+      const startedStep = appendStepEvent({
+        projectedBefore,
+        taskNodeId: input.taskNodeId,
+        stepType: 'node_execution_started',
+        stepInputs: {
+          taskNodeId: input.taskNodeId,
+          trigger: 'explicit_failure_transition',
+        },
+        stepOutputs: {
+          nextTaskNodeState: 'running',
+        },
+      });
+      steps.push(startedStep);
+      projectedAtFailure = projection.projectOne({ taskGraphId: input.taskGraphId });
+    }
+
+    const classified = classifyTaskFailure({
+      failureCode: input.failureCode,
+      explicitFailureClass: input.failureClass,
+    });
+
+    applyTaskNodeTransition({ currentState: 'running', nextState: 'failed' });
+    const failedStep = appendStepEvent({
+      projectedBefore: projectedAtFailure,
+      taskNodeId: input.taskNodeId,
+      stepType: 'node_execution_failed',
+      stepInputs: {
+        taskNodeId: input.taskNodeId,
+        failureCode: classified.normalizedFailureCode,
+      },
+      stepOutputs: {
+        nextTaskNodeState: 'failed',
+        failureClass: classified.failureClass,
+      },
+      eventPayloadExtras: {
+        failureCode: classified.normalizedFailureCode,
+        failureClass: classified.failureClass,
+        classifierPolicyId: classified.classifierPolicyId,
+      },
+    });
+    steps.push(failedStep);
+
+    return {
+      taskNodeId: input.taskNodeId,
+      failureClass: classified.failureClass,
+      steps: [...steps].sort(compareSteps),
+      projection: projection.projectOne({ taskGraphId: input.taskGraphId }),
+    };
+  }
+
+  function retryNode(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+  }) {
+    const projectedBefore = projection.projectOne({ taskGraphId: input.taskGraphId });
+    const currentState = projectedBefore.nodeStates[input.taskNodeId];
+
+    if (!currentState || currentState !== 'failed') {
+      throw new Error('TASK_NODE_NOT_READY');
+    }
+
+    const taskGraph = taskGraphProjection.projectOne({ taskGraphId: input.taskGraphId });
+    const taskNode = taskGraph.taskNodes.find((node) => node.taskNodeId === input.taskNodeId);
+    if (!taskNode) {
+      throw new Error('TASK_NODE_NOT_READY');
+    }
+
+    const failureClass = latestFailureClassForNode({
+      projected: projectedBefore,
+      taskNodeId: input.taskNodeId,
+    });
+
+    const evaluation = evaluateTaskRetryEligibility({
+      policy: taskNode.retryPolicy as Partial<MissionTaskRetryPolicy> | undefined,
+      failureClass,
+      currentRetryCount: currentRetryCountForNode({
+        projected: projectedBefore,
+        taskNodeId: input.taskNodeId,
+      }),
+    });
+
+    const retryAttempt = {
+      taskNodeId: input.taskNodeId,
+      attemptIndex: evaluation.attemptIndex,
+      failureClass,
+      retryPolicyId: evaluation.policy.retryPolicyId,
+      retryState: 'scheduled',
+      retryCount: evaluation.retryCount,
+    };
+
+    if (!evaluation.eligible) {
+      appendStepEvent({
+        projectedBefore,
+        taskNodeId: input.taskNodeId,
+        stepType: 'node_retry_exhausted',
+        stepInputs: {
+          taskNodeId: input.taskNodeId,
+          reason: evaluation.reason,
+        },
+        stepOutputs: {
+          nextTaskNodeState: 'permanently_failed',
+          reason: evaluation.reason,
+        },
+        eventPayloadExtras: {
+          attemptIndex: evaluation.attemptIndex,
+          retryPolicyId: evaluation.policy.retryPolicyId,
+          reason: evaluation.reason,
+        },
+      });
+
+      return {
+        taskNodeId: input.taskNodeId,
+        retryScheduled: false,
+        reason: evaluation.reason,
+        projection: projection.projectOne({ taskGraphId: input.taskGraphId }),
+      };
+    }
+
+    const dependencySatisfied = dependenciesSatisfiedForTaskRetry({
+      taskGraph,
+      taskNodeId: input.taskNodeId,
+      nodeStates: projectedBefore.nodeStates,
+    });
+
+    const scheduledQueue = scheduleTaskRetry({
+      queue: [],
+      taskNodeId: input.taskNodeId,
+      attemptIndex: evaluation.attemptIndex,
+      dependencySatisfied,
+    });
+
+    const scheduled = appendStepEvent({
+      projectedBefore,
+      taskNodeId: input.taskNodeId,
+      stepType: 'node_retry_scheduled',
+      stepInputs: {
+        taskNodeId: input.taskNodeId,
+        retryAttempt: evaluation.attemptIndex,
+        retryDelay: evaluation.retryDelay,
+      },
+      stepOutputs: {
+        nextTaskNodeState: 'retrying',
+        dependencySatisfied,
+      },
+      eventPayloadExtras: {
+        retryAttempt,
+        retryDelay: evaluation.retryDelay,
+        scheduledQueue,
+      },
+    });
+
+    if (!dependencySatisfied) {
+      return {
+        taskNodeId: input.taskNodeId,
+        retryScheduled: true,
+        retryStarted: false,
+        steps: [scheduled],
+        projection: projection.projectOne({ taskGraphId: input.taskGraphId }),
+      };
+    }
+
+    const projectedAfterSchedule = projection.projectOne({ taskGraphId: input.taskGraphId });
+
+    const started = appendStepEvent({
+      projectedBefore: projectedAfterSchedule,
+      taskNodeId: input.taskNodeId,
+      stepType: 'node_retry_started',
+      stepInputs: {
+        taskNodeId: input.taskNodeId,
+        retryAttempt: evaluation.attemptIndex,
+      },
+      stepOutputs: {
+        nextTaskNodeState: 'ready',
+      },
+      eventPayloadExtras: {
+        retryAttempt: {
+          ...retryAttempt,
+          retryState: 'started',
+        },
+      },
+    });
+
+    return {
+      taskNodeId: input.taskNodeId,
+      retryScheduled: true,
+      retryStarted: true,
+      steps: [scheduled, started].sort(compareSteps),
+      projection: projection.projectOne({ taskGraphId: input.taskGraphId }),
+    };
+  }
+
   function advance(input: {
     taskGraphId: string;
   }) {
@@ -266,7 +532,7 @@ export function createTaskExecutionEngine(options: {
     for (let index = 0; index < limit; index += 1) {
       const current = projection.projectOne({ taskGraphId: input.taskGraphId });
 
-      if (current.graphState === 'completed') {
+      if (current.graphState === 'completed' || current.graphState === 'failed') {
         return {
           mode: 'advance' as const,
           steps: [...steps].sort(compareSteps),
@@ -301,7 +567,7 @@ export function createTaskExecutionEngine(options: {
 
     for (let index = 0; index < limit; index += 1) {
       const current = projection.projectOne({ taskGraphId: input.taskGraphId });
-      if (current.graphState === 'completed') {
+      if (current.graphState === 'completed' || current.graphState === 'failed') {
         return {
           mode: 'simulate' as const,
           steps: [...steps].sort(compareSteps),
@@ -327,6 +593,8 @@ export function createTaskExecutionEngine(options: {
 
   return {
     step,
+    failNode,
+    retryNode,
     advance,
     simulate,
   };

@@ -11,6 +11,7 @@ import {
   type TaskExecutionHistoryStore,
 } from './task-execution-history-store.ts';
 import { deriveTaskConcurrencyProjection } from './task-concurrency-projection.ts';
+import { deriveTaskWorkerProjection } from './task-worker-projection.ts';
 import { detectReadyTaskNodeIds } from './task-ready-node-detector.ts';
 import { applyTaskNodeTransition } from './task-node-transition.ts';
 import type {
@@ -546,6 +547,9 @@ export function createTaskExecutionProjection(options: {
       graphState,
       runningNodeCount,
     });
+    const workerProjection = deriveTaskWorkerProjection({
+      historyEntries: history.entries,
+    });
 
     const blockingNodes = Object.entries(projectedNodeStates)
       .filter(([, nodeState]) => nodeState === 'blocked' || nodeState === 'permanently_failed')
@@ -613,6 +617,9 @@ export function createTaskExecutionProjection(options: {
       deferredNodeIds: concurrencyProjection.deferredNodeIds,
       schedulingState: concurrencyProjection.schedulingState,
       lastExecutionStepId,
+      claimedNodeCount: workerProjection.claimedNodeCount,
+      activeWorkerCount: workerProjection.activeWorkerCount,
+      workerAssignments: workerProjection.workerAssignments,
     } as Record<string, unknown>;
 
     const reportPreview = {
@@ -638,6 +645,11 @@ export function createTaskExecutionProjection(options: {
       deferredNodeIds: concurrencyProjection.deferredNodeIds,
       schedulingState: concurrencyProjection.schedulingState,
       schedulingWaves: concurrencyProjection.schedulingWaves,
+      claimedNodeCount: workerProjection.claimedNodeCount,
+      activeWorkerCount: workerProjection.activeWorkerCount,
+      workerAssignments: workerProjection.workerAssignments,
+      workerExecutionState: workerProjection.workerExecutionState,
+      workerHistory: workerProjection.workerHistory,
       blockingNodes,
       blockingReasonsByNode: replayed.blockingReasonsByNode,
       steps,
@@ -686,6 +698,11 @@ export function createTaskExecutionProjection(options: {
       schedulingState: concurrencyProjection.schedulingState,
       schedulingWaves: concurrencyProjection.schedulingWaves,
       graphFailureState,
+      claimedNodeCount: workerProjection.claimedNodeCount,
+      activeWorkerCount: workerProjection.activeWorkerCount,
+      workerAssignments: workerProjection.workerAssignments,
+      workerExecutionState: workerProjection.workerExecutionState,
+      workerHistory: workerProjection.workerHistory,
       statusPreview,
       reportPreview,
       artifactPaths,

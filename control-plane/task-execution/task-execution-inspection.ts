@@ -21,12 +21,18 @@ import {
 import { evaluateRunnableNodeSet } from './task-runnable-node-set.ts';
 import { computeSchedulingWave } from './task-concurrency-scheduler.ts';
 import { createTaskGraphProjection } from '../task-graph/task-graph-projection.ts';
+import { loadWorkerRegistry, type WorkerRegistry } from '../workers/worker-registry.ts';
+import { createTaskWorkClaimService, type TaskWorkClaimService } from './task-work-claim.ts';
+import { createTaskWorkerResultHandler, type TaskWorkerResultHandler } from './task-worker-result-handler.ts';
 
 export function createTaskExecutionInspection(options: {
   projection?: TaskExecutionProjectionEngine;
   historyStore?: TaskExecutionHistoryStore;
   engine?: TaskExecutionEngine;
   materializer?: TaskExecutionMaterializer;
+  workerRegistry?: WorkerRegistry;
+  workClaimService?: TaskWorkClaimService;
+  workerResultHandler?: TaskWorkerResultHandler;
   missionDefinitionsDir?: string;
   missionInstancesDir?: string;
   missionArtifactsRoot?: string;
@@ -116,6 +122,17 @@ export function createTaskExecutionInspection(options: {
     executionJournalArtifactsRoot: options.executionJournalArtifactsRoot,
     executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
     taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
+  });
+  const workerRegistry = options.workerRegistry ?? loadWorkerRegistry();
+  const workClaimService = options.workClaimService ?? createTaskWorkClaimService({
+    projection,
+    historyStore,
+    taskGraphProjection,
+  });
+  const workerResultHandler = options.workerResultHandler ?? createTaskWorkerResultHandler({
+    projection,
+    historyStore,
+    taskGraphProjection,
   });
 
   function listTaskExecutionRuns() {
@@ -251,6 +268,97 @@ export function createTaskExecutionInspection(options: {
     };
   }
 
+  function workersList() {
+    return workerRegistry.listWorkers();
+  }
+
+  function workersInspect(input: { workerId: string }) {
+    return workerRegistry.getWorker(input.workerId);
+  }
+
+  function workersStatus() {
+    const workers = workerRegistry.listWorkers();
+    return {
+      totalWorkers: workers.length,
+      activeWorkerCount: workers.filter((worker) => worker.status === 'active').length,
+      disabledWorkerCount: workers.filter((worker) => worker.status === 'disabled').length,
+      workers,
+    };
+  }
+
+  function taskExecutionClaim(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+    workerId: string;
+    claimAttemptIndex?: number;
+  }) {
+    return workClaimService.claimWork({
+      taskGraphId: input.taskGraphId,
+      taskNodeId: input.taskNodeId,
+      workerId: input.workerId,
+      claimAttemptIndex: input.claimAttemptIndex ?? 0,
+    });
+  }
+
+  function taskExecutionComplete(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+    workerId: string;
+    claimId: string;
+    attemptIndex: number;
+    resultPayload: Record<string, unknown>;
+  }) {
+    const projected = projection.projectOne({ taskGraphId: input.taskGraphId });
+    return workerResultHandler.handleResult({
+      taskGraphId: input.taskGraphId,
+      executionRunId: projected.executionEngineRunId,
+      taskNodeId: input.taskNodeId,
+      workerId: input.workerId,
+      claimId: input.claimId,
+      attemptIndex: input.attemptIndex,
+      resultType: 'SUCCESS',
+      resultPayload: input.resultPayload,
+    });
+  }
+
+  function taskExecutionFail(input: {
+    taskGraphId: string;
+    taskNodeId: string;
+    workerId: string;
+    claimId: string;
+    attemptIndex: number;
+    resultType: 'FAILURE' | 'RETRY_REQUESTED';
+    resultPayload: Record<string, unknown>;
+    failureClass: 'RETRYABLE_FAILURE' | 'NON_RETRYABLE_FAILURE' | 'SYSTEM_FAILURE' | 'POLICY_FAILURE' | 'DEPENDENCY_FAILURE';
+    retryEligible: boolean;
+  }) {
+    const projected = projection.projectOne({ taskGraphId: input.taskGraphId });
+    return workerResultHandler.handleResult({
+      taskGraphId: input.taskGraphId,
+      executionRunId: projected.executionEngineRunId,
+      taskNodeId: input.taskNodeId,
+      workerId: input.workerId,
+      claimId: input.claimId,
+      attemptIndex: input.attemptIndex,
+      resultType: input.resultType,
+      resultPayload: input.resultPayload,
+      failureClass: input.failureClass,
+      retryEligible: input.retryEligible,
+    });
+  }
+
+  function taskExecutionWorkerStatus(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return {
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+      claimedNodeCount: projected.claimedNodeCount,
+      activeWorkerCount: projected.activeWorkerCount,
+      workerAssignments: projected.workerAssignments,
+      workerExecutionState: projected.workerExecutionState,
+    };
+  }
+
   return {
     listTaskExecutionRuns,
     inspectTaskExecutionRun,
@@ -268,6 +376,13 @@ export function createTaskExecutionInspection(options: {
     taskExecutionConcurrencyStatus,
     scheduleTaskExecutionWave,
     taskExecutionConcurrencyHistory,
+    workersList,
+    workersInspect,
+    workersStatus,
+    taskExecutionClaim,
+    taskExecutionComplete,
+    taskExecutionFail,
+    taskExecutionWorkerStatus,
   };
 }
 

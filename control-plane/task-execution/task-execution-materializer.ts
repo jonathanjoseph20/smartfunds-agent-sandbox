@@ -188,6 +188,34 @@ export function createTaskExecutionMaterializer(options: {
       deferredNodeIds: projected.deferredNodeIds,
     })}\n`, 'utf8');
     fs.writeFileSync(paths.schedulingWavesJsonPath, `${canonicalStringify(projected.schedulingWaves)}\n`, 'utf8');
+    const workerHistory = projected.workerHistory ?? [];
+    const workerAssignments = projected.workerAssignments ?? {};
+    const workerExecutionState = projected.workerExecutionState ?? {};
+    fs.writeFileSync(paths.workerClaimsJsonPath, `${canonicalStringify({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+      claimedNodeCount: projected.claimedNodeCount ?? 0,
+      claims: workerHistory
+        .filter((entry) => entry.eventType === 'task_node_claimed')
+        .map((entry) => entry.eventPayload),
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.workerResultsJsonPath, `${canonicalStringify({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+      completed: workerHistory
+        .filter((entry) => entry.eventType === 'worker_execution_completed')
+        .map((entry) => entry.eventPayload),
+      failed: workerHistory
+        .filter((entry) => entry.eventType === 'worker_execution_failed')
+        .map((entry) => entry.eventPayload),
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.workerStateJsonPath, `${canonicalStringify({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+      activeWorkerCount: projected.activeWorkerCount ?? 0,
+      workerAssignments,
+      workerExecutionState,
+    })}\n`, 'utf8');
 
     return {
       executionEngineRunId: projected.executionEngineRunId,
@@ -205,6 +233,9 @@ export function createTaskExecutionMaterializer(options: {
       concurrencyPath: paths.concurrencyJsonPath,
       runnableSetPath: paths.runnableSetJsonPath,
       schedulingWavesPath: paths.schedulingWavesJsonPath,
+      workerClaimsPath: paths.workerClaimsJsonPath,
+      workerResultsPath: paths.workerResultsJsonPath,
+      workerStatePath: paths.workerStateJsonPath,
     };
   }
 

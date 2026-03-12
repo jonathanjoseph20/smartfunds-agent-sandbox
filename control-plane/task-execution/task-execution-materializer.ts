@@ -12,6 +12,10 @@ import {
   createTaskExecutionProjection,
   type TaskExecutionProjectionEngine,
 } from './task-execution-projection.ts';
+import {
+  createTaskOrchestrationMaterializer,
+  type TaskOrchestrationMaterializer,
+} from './task-orchestration-materializer.ts';
 import type { MissionTaskExecutionMaterializationSummary } from './task-execution-step-types.ts';
 
 function toMarkdownReport(input: {
@@ -69,6 +73,7 @@ function toMarkdownReport(input: {
 export function createTaskExecutionMaterializer(options: {
   projection?: TaskExecutionProjectionEngine;
   historyStore?: TaskExecutionHistoryStore;
+  orchestrationMaterializer?: TaskOrchestrationMaterializer;
   missionDefinitionsDir?: string;
   missionInstancesDir?: string;
   missionArtifactsRoot?: string;
@@ -103,6 +108,9 @@ export function createTaskExecutionMaterializer(options: {
 
   const historyStore = options.historyStore ?? createTaskExecutionHistoryStore({
     artifactsRoot: options.taskExecutionArtifactsRoot,
+  });
+  const orchestrationMaterializer = options.orchestrationMaterializer ?? createTaskOrchestrationMaterializer({
+    taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
   });
 
   function materializeOne(input: {
@@ -216,6 +224,10 @@ export function createTaskExecutionMaterializer(options: {
       workerAssignments,
       workerExecutionState,
     })}\n`, 'utf8');
+    const orchestrationMaterialized = orchestrationMaterializer.materializeOne({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
 
     return {
       executionEngineRunId: projected.executionEngineRunId,
@@ -236,6 +248,13 @@ export function createTaskExecutionMaterializer(options: {
       workerClaimsPath: paths.workerClaimsJsonPath,
       workerResultsPath: paths.workerResultsJsonPath,
       workerStatePath: paths.workerStateJsonPath,
+      orchestrationStatusPath: orchestrationMaterialized.statusPath,
+      orchestrationReportPath: orchestrationMaterialized.reportPath,
+      orchestrationMarkdownPath: orchestrationMaterialized.markdownPath,
+      orchestrationHistoryPath: orchestrationMaterialized.historyPath,
+      workerAssignmentsPath: orchestrationMaterialized.assignmentsPath,
+      workerQueuesPath: orchestrationMaterialized.queuesPath,
+      workerDeferralsPath: orchestrationMaterialized.deferralsPath,
     };
   }
 

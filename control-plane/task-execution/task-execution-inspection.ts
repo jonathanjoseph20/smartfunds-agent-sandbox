@@ -24,6 +24,10 @@ import { createTaskGraphProjection } from '../task-graph/task-graph-projection.t
 import { loadWorkerRegistry, type WorkerRegistry } from '../workers/worker-registry.ts';
 import { createTaskWorkClaimService, type TaskWorkClaimService } from './task-work-claim.ts';
 import { createTaskWorkerResultHandler, type TaskWorkerResultHandler } from './task-worker-result-handler.ts';
+import {
+  createTaskOrchestrationInspection,
+  type TaskOrchestrationInspection,
+} from './task-orchestration-inspection.ts';
 
 export function createTaskExecutionInspection(options: {
   projection?: TaskExecutionProjectionEngine;
@@ -33,6 +37,7 @@ export function createTaskExecutionInspection(options: {
   workerRegistry?: WorkerRegistry;
   workClaimService?: TaskWorkClaimService;
   workerResultHandler?: TaskWorkerResultHandler;
+  orchestrationInspection?: TaskOrchestrationInspection;
   missionDefinitionsDir?: string;
   missionInstancesDir?: string;
   missionArtifactsRoot?: string;
@@ -133,6 +138,22 @@ export function createTaskExecutionInspection(options: {
     projection,
     historyStore,
     taskGraphProjection,
+  });
+  const orchestrationInspection = options.orchestrationInspection ?? createTaskOrchestrationInspection({
+    taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
+    missionDefinitionsDir: options.missionDefinitionsDir,
+    missionInstancesDir: options.missionInstancesDir,
+    missionArtifactsRoot: options.missionArtifactsRoot,
+    teamDefinitionsDir: options.teamDefinitionsDir,
+    compatibilityArtifactsRoot: options.compatibilityArtifactsRoot,
+    assignmentArtifactsRoot: options.assignmentArtifactsRoot,
+    activationArtifactsRoot: options.activationArtifactsRoot,
+    executionContractArtifactsRoot: options.executionContractArtifactsRoot,
+    runtimeEnvelopeArtifactsRoot: options.runtimeEnvelopeArtifactsRoot,
+    executionAttemptArtifactsRoot: options.executionAttemptArtifactsRoot,
+    executionJournalArtifactsRoot: options.executionJournalArtifactsRoot,
+    executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
+    taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
   });
 
   function listTaskExecutionRuns() {
@@ -349,6 +370,10 @@ export function createTaskExecutionInspection(options: {
 
   function taskExecutionWorkerStatus(input: { taskGraphId: string }) {
     const projected = projection.projectOne(input);
+    const orchestration = orchestrationInspection.load({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
     return {
       executionRunId: projected.executionEngineRunId,
       taskGraphId: projected.taskGraphId,
@@ -356,7 +381,64 @@ export function createTaskExecutionInspection(options: {
       activeWorkerCount: projected.activeWorkerCount,
       workerAssignments: projected.workerAssignments,
       workerExecutionState: projected.workerExecutionState,
+      workerQueues: orchestration.workerQueues,
     };
+  }
+
+  function taskExecutionOrchestrationStatus(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return orchestrationInspection.orchestrationStatus({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
+  }
+
+  function taskExecutionAssignments(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return orchestrationInspection.assignments({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
+  }
+
+  function taskExecutionQueues(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return orchestrationInspection.queues({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
+  }
+
+  function taskExecutionDeferrals(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return orchestrationInspection.deferrals({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
+  }
+
+  function taskExecutionOrchestrationHistory(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return orchestrationInspection.history({
+      executionRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+    });
+  }
+
+  function taskExecutionCycle(input: { taskGraphId: string; workerSchedulingPolicyId?: string }) {
+    return orchestrationInspection.cycle(input);
+  }
+
+  function taskExecutionOrchestrate(input: {
+    taskGraphId: string;
+    workerSchedulingPolicyId?: string;
+    maxCycles?: number;
+  }) {
+    return orchestrationInspection.orchestrate(input);
+  }
+
+  function taskExecutionAssign(input: { taskGraphId: string; workerSchedulingPolicyId?: string }) {
+    return orchestrationInspection.assign(input);
   }
 
   return {
@@ -383,6 +465,14 @@ export function createTaskExecutionInspection(options: {
     taskExecutionComplete,
     taskExecutionFail,
     taskExecutionWorkerStatus,
+    taskExecutionOrchestrationStatus,
+    taskExecutionAssignments,
+    taskExecutionQueues,
+    taskExecutionDeferrals,
+    taskExecutionOrchestrationHistory,
+    taskExecutionCycle,
+    taskExecutionOrchestrate,
+    taskExecutionAssign,
   };
 }
 

@@ -1,0 +1,168 @@
+import fs from 'node:fs';
+
+import { canonicalStringify } from '../finance/determinism.ts';
+
+import {
+  createTaskExecutionHistoryStore,
+  ensureTaskExecutionArtifactDir,
+  resolveTaskExecutionArtifactPaths,
+  type TaskExecutionHistoryStore,
+} from './task-execution-history-store.ts';
+import {
+  createTaskExecutionProjection,
+  type TaskExecutionProjectionEngine,
+} from './task-execution-projection.ts';
+import type { MissionTaskExecutionMaterializationSummary } from './task-execution-step-types.ts';
+
+function toMarkdownReport(input: {
+  executionEngineRunId: string;
+  executionAttemptId: string;
+  taskGraphId: string;
+  graphState: string;
+  engineState: string;
+  executionStepCount: number;
+  readyNodeCount: number;
+  runningNodeCount: number;
+  completedNodeCount: number;
+  blockedNodeCount: number;
+  executionProgress: {
+    completed: number;
+    total: number;
+    ratio: number;
+  };
+  blockingReasons: string[];
+  lastExecutionStepId: string | null;
+}): string {
+  const lines = [
+    '# Mission Task Execution Report',
+    '',
+    `Execution Engine Run: ${input.executionEngineRunId}`,
+    `Execution Attempt: ${input.executionAttemptId}`,
+    `Task Graph: ${input.taskGraphId}`,
+    `Engine State: ${input.engineState}`,
+    `Graph State: ${input.graphState}`,
+    '',
+    '## Counts',
+    `- executionStepCount: ${String(input.executionStepCount)}`,
+    `- readyNodeCount: ${String(input.readyNodeCount)}`,
+    `- runningNodeCount: ${String(input.runningNodeCount)}`,
+    `- completedNodeCount: ${String(input.completedNodeCount)}`,
+    `- blockedNodeCount: ${String(input.blockedNodeCount)}`,
+    '',
+    '## Progress',
+    `- completed: ${String(input.executionProgress.completed)}`,
+    `- total: ${String(input.executionProgress.total)}`,
+    `- ratio: ${String(input.executionProgress.ratio)}`,
+    '',
+    '## Summary',
+    `- blockingReasons: ${input.blockingReasons.join(', ') || 'none'}`,
+    `- lastExecutionStepId: ${input.lastExecutionStepId ?? 'none'}`,
+    '',
+    '## Canonical JSON Payload',
+    canonicalStringify(input),
+    '',
+  ];
+
+  return `${lines.join('\n')}\n`;
+}
+
+export function createTaskExecutionMaterializer(options: {
+  projection?: TaskExecutionProjectionEngine;
+  historyStore?: TaskExecutionHistoryStore;
+  missionDefinitionsDir?: string;
+  missionInstancesDir?: string;
+  missionArtifactsRoot?: string;
+  teamDefinitionsDir?: string;
+  compatibilityArtifactsRoot?: string;
+  assignmentArtifactsRoot?: string;
+  activationArtifactsRoot?: string;
+  executionContractArtifactsRoot?: string;
+  runtimeEnvelopeArtifactsRoot?: string;
+  executionAttemptArtifactsRoot?: string;
+  executionJournalArtifactsRoot?: string;
+  executionEngineArtifactsRoot?: string;
+  taskGraphArtifactsRoot?: string;
+  taskExecutionArtifactsRoot?: string;
+} = {}) {
+  const projection = options.projection ?? createTaskExecutionProjection({
+    missionDefinitionsDir: options.missionDefinitionsDir,
+    missionInstancesDir: options.missionInstancesDir,
+    missionArtifactsRoot: options.missionArtifactsRoot,
+    teamDefinitionsDir: options.teamDefinitionsDir,
+    compatibilityArtifactsRoot: options.compatibilityArtifactsRoot,
+    assignmentArtifactsRoot: options.assignmentArtifactsRoot,
+    activationArtifactsRoot: options.activationArtifactsRoot,
+    executionContractArtifactsRoot: options.executionContractArtifactsRoot,
+    runtimeEnvelopeArtifactsRoot: options.runtimeEnvelopeArtifactsRoot,
+    executionAttemptArtifactsRoot: options.executionAttemptArtifactsRoot,
+    executionJournalArtifactsRoot: options.executionJournalArtifactsRoot,
+    executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
+    taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
+    taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
+  });
+
+  const historyStore = options.historyStore ?? createTaskExecutionHistoryStore({
+    artifactsRoot: options.taskExecutionArtifactsRoot,
+  });
+
+  function materializeOne(input: {
+    taskGraphId: string;
+  }): MissionTaskExecutionMaterializationSummary {
+    const projected = projection.projectOne(input);
+
+    ensureTaskExecutionArtifactDir({
+      executionEngineRunId: projected.executionEngineRunId,
+      rootDir: options.taskExecutionArtifactsRoot,
+    });
+
+    const paths = resolveTaskExecutionArtifactPaths({
+      executionEngineRunId: projected.executionEngineRunId,
+      rootDir: options.taskExecutionArtifactsRoot,
+    });
+
+    const history = historyStore.load({
+      executionEngineRunId: projected.executionEngineRunId,
+      executionAttemptId: projected.executionAttemptId,
+      taskGraphId: projected.taskGraphId,
+    });
+
+    fs.writeFileSync(paths.statusJsonPath, `${canonicalStringify(projected.statusPreview)}\n`, 'utf8');
+    fs.writeFileSync(paths.reportJsonPath, `${canonicalStringify(projected.reportPreview)}\n`, 'utf8');
+    fs.writeFileSync(paths.reportMarkdownPath, toMarkdownReport({
+      executionEngineRunId: projected.executionEngineRunId,
+      executionAttemptId: projected.executionAttemptId,
+      taskGraphId: projected.taskGraphId,
+      graphState: projected.graphState,
+      engineState: projected.engineState,
+      executionStepCount: projected.executionStepCount,
+      readyNodeCount: projected.readyNodeCount,
+      runningNodeCount: projected.runningNodeCount,
+      completedNodeCount: projected.completedNodeCount,
+      blockedNodeCount: projected.blockedNodeCount,
+      executionProgress: projected.executionProgress,
+      blockingReasons: projected.blockingReasons,
+      lastExecutionStepId: projected.lastExecutionStepId,
+    }), 'utf8');
+    fs.writeFileSync(paths.historyJsonPath, `${canonicalStringify(history)}\n`, 'utf8');
+    fs.writeFileSync(paths.stepsJsonPath, `${canonicalStringify(projected.steps)}\n`, 'utf8');
+    fs.writeFileSync(paths.progressJsonPath, `${canonicalStringify(projected.executionProgress)}\n`, 'utf8');
+
+    return {
+      executionEngineRunId: projected.executionEngineRunId,
+      executionAttemptId: projected.executionAttemptId,
+      taskGraphId: projected.taskGraphId,
+      statusPath: paths.statusJsonPath,
+      reportPath: paths.reportJsonPath,
+      markdownPath: paths.reportMarkdownPath,
+      historyPath: paths.historyJsonPath,
+      stepsPath: paths.stepsJsonPath,
+      progressPath: paths.progressJsonPath,
+    };
+  }
+
+  return {
+    materializeOne,
+  };
+}
+
+export type TaskExecutionMaterializer = ReturnType<typeof createTaskExecutionMaterializer>;

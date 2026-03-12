@@ -18,6 +18,11 @@ export const TASK_EXECUTION_NODE_STATES = [
 ] as const;
 
 export const TASK_EXECUTION_STEP_TYPES = [
+  'concurrency_wave_evaluated',
+  'concurrency_slots_allocated',
+  'node_scheduled_for_execution',
+  'node_deferred_by_concurrency_limit',
+  'concurrency_wave_completed',
   'node_execution_started',
   'node_execution_completed',
   'node_execution_failed',
@@ -116,6 +121,9 @@ export interface MissionTaskExecutionProjection {
   failedNodeCount: number;
   retryingNodeCount: number;
   readyNodeCount: number;
+  runnableNodeCount: number;
+  scheduledNodeCount: number;
+  deferredNodeCount: number;
   runningNodeCount: number;
   completedNodeCount: number;
   blockedNodeCount: number;
@@ -145,6 +153,25 @@ export interface MissionTaskExecutionProjection {
     attemptIndex: number;
     reason: string;
   }>;
+  concurrencyPolicyId: string;
+  maxConcurrentNodes: number;
+  activeConcurrencySlots: number;
+  availableConcurrencySlots: number;
+  currentWaveIndex: number;
+  currentWaveNodeIds: string[];
+  deferredNodeIds: string[];
+  schedulingState: 'single_lane' | 'wave_ready' | 'wave_active' | 'deferred_by_limit' | 'blocked' | 'completed' | 'failed';
+  schedulingWaves: Array<{
+    executionEngineRunId: string;
+    taskGraphId: string;
+    waveIndex: number;
+    concurrencyPolicyId: string;
+    runnableNodeIds: string[];
+    scheduledNodeIds: string[];
+    deferredNodeIds: string[];
+    availableConcurrencySlots: number;
+    consumedConcurrencySlots: number;
+  }>;
   graphFailureState: 'none' | 'retry_exhausted' | 'unrecoverable_failure';
   statusPreview: Record<string, unknown>;
   reportPreview: Record<string, unknown>;
@@ -159,6 +186,9 @@ export interface MissionTaskExecutionProjection {
     failuresJsonPath: string;
     retriesJsonPath: string;
     blockersJsonPath: string;
+    concurrencyJsonPath: string;
+    runnableSetJsonPath: string;
+    schedulingWavesJsonPath: string;
   };
   provenanceInputs: MissionTaskExecutionEngine['provenanceInputs'];
 }
@@ -176,4 +206,7 @@ export interface MissionTaskExecutionMaterializationSummary {
   failuresPath: string;
   retriesPath: string;
   blockersPath: string;
+  concurrencyPath: string;
+  runnableSetPath: string;
+  schedulingWavesPath: string;
 }

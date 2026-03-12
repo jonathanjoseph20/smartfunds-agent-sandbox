@@ -10,6 +10,7 @@ import {
   resolveTaskExecutionArtifactPaths,
   type TaskExecutionHistoryStore,
 } from './task-execution-history-store.ts';
+import { deriveTaskConcurrencyProjection } from './task-concurrency-projection.ts';
 import { detectReadyTaskNodeIds } from './task-ready-node-detector.ts';
 import { applyTaskNodeTransition } from './task-node-transition.ts';
 import type {
@@ -540,6 +541,12 @@ export function createTaskExecutionProjection(options: {
       graphFailureState,
     });
 
+    const concurrencyProjection = deriveTaskConcurrencyProjection({
+      historyEntries: history.entries,
+      graphState,
+      runningNodeCount,
+    });
+
     const blockingNodes = Object.entries(projectedNodeStates)
       .filter(([, nodeState]) => nodeState === 'blocked' || nodeState === 'permanently_failed')
       .map(([taskNodeId]) => taskNodeId)
@@ -584,6 +591,9 @@ export function createTaskExecutionProjection(options: {
       failedNodeCount,
       retryingNodeCount,
       readyNodeCount,
+      runnableNodeCount: concurrencyProjection.runnableNodeCount,
+      scheduledNodeCount: concurrencyProjection.scheduledNodeCount,
+      deferredNodeCount: concurrencyProjection.deferredNodeCount,
       runningNodeCount,
       completedNodeCount,
       blockedNodeCount,
@@ -594,6 +604,14 @@ export function createTaskExecutionProjection(options: {
       blockingReasons,
       retryAttempts: replayed.retryAttempts,
       retryLimitBreaches: replayed.retryLimitBreaches,
+      concurrencyPolicyId: concurrencyProjection.concurrencyPolicyId,
+      maxConcurrentNodes: concurrencyProjection.maxConcurrentNodes,
+      activeConcurrencySlots: concurrencyProjection.activeConcurrencySlots,
+      availableConcurrencySlots: concurrencyProjection.availableConcurrencySlots,
+      currentWaveIndex: concurrencyProjection.currentWaveIndex,
+      currentWaveNodeIds: concurrencyProjection.currentWaveNodeIds,
+      deferredNodeIds: concurrencyProjection.deferredNodeIds,
+      schedulingState: concurrencyProjection.schedulingState,
       lastExecutionStepId,
     } as Record<string, unknown>;
 
@@ -608,6 +626,18 @@ export function createTaskExecutionProjection(options: {
       failureClassByNode: replayed.failureClassByNode,
       retryAttempts: replayed.retryAttempts,
       retryLimitBreaches: replayed.retryLimitBreaches,
+      concurrencyPolicyId: concurrencyProjection.concurrencyPolicyId,
+      maxConcurrentNodes: concurrencyProjection.maxConcurrentNodes,
+      activeConcurrencySlots: concurrencyProjection.activeConcurrencySlots,
+      availableConcurrencySlots: concurrencyProjection.availableConcurrencySlots,
+      runnableNodeCount: concurrencyProjection.runnableNodeCount,
+      scheduledNodeCount: concurrencyProjection.scheduledNodeCount,
+      deferredNodeCount: concurrencyProjection.deferredNodeCount,
+      currentWaveIndex: concurrencyProjection.currentWaveIndex,
+      currentWaveNodeIds: concurrencyProjection.currentWaveNodeIds,
+      deferredNodeIds: concurrencyProjection.deferredNodeIds,
+      schedulingState: concurrencyProjection.schedulingState,
+      schedulingWaves: concurrencyProjection.schedulingWaves,
       blockingNodes,
       blockingReasonsByNode: replayed.blockingReasonsByNode,
       steps,
@@ -630,6 +660,9 @@ export function createTaskExecutionProjection(options: {
       failedNodeCount,
       retryingNodeCount,
       readyNodeCount,
+      runnableNodeCount: concurrencyProjection.runnableNodeCount,
+      scheduledNodeCount: concurrencyProjection.scheduledNodeCount,
+      deferredNodeCount: concurrencyProjection.deferredNodeCount,
       runningNodeCount,
       completedNodeCount,
       blockedNodeCount,
@@ -643,6 +676,15 @@ export function createTaskExecutionProjection(options: {
       nodeStates: Object.fromEntries(Object.entries(projectedNodeStates).sort(([left], [right]) => left.localeCompare(right))),
       retryAttempts: replayed.retryAttempts,
       retryLimitBreaches: replayed.retryLimitBreaches,
+      concurrencyPolicyId: concurrencyProjection.concurrencyPolicyId,
+      maxConcurrentNodes: concurrencyProjection.maxConcurrentNodes,
+      activeConcurrencySlots: concurrencyProjection.activeConcurrencySlots,
+      availableConcurrencySlots: concurrencyProjection.availableConcurrencySlots,
+      currentWaveIndex: concurrencyProjection.currentWaveIndex,
+      currentWaveNodeIds: concurrencyProjection.currentWaveNodeIds,
+      deferredNodeIds: concurrencyProjection.deferredNodeIds,
+      schedulingState: concurrencyProjection.schedulingState,
+      schedulingWaves: concurrencyProjection.schedulingWaves,
       graphFailureState,
       statusPreview,
       reportPreview,

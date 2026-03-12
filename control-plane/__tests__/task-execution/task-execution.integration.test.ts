@@ -301,6 +301,9 @@ describe('task execution integration', () => {
       history: fs.readFileSync(firstMaterialized.historyPath, 'utf8'),
       steps: fs.readFileSync(firstMaterialized.stepsPath, 'utf8'),
       progress: fs.readFileSync(firstMaterialized.progressPath, 'utf8'),
+      concurrency: fs.readFileSync(firstMaterialized.concurrencyPath, 'utf8'),
+      runnable: fs.readFileSync(firstMaterialized.runnableSetPath, 'utf8'),
+      waves: fs.readFileSync(firstMaterialized.schedulingWavesPath, 'utf8'),
     };
 
     const secondSnapshot = {
@@ -310,10 +313,15 @@ describe('task execution integration', () => {
       history: fs.readFileSync(secondMaterialized.historyPath, 'utf8'),
       steps: fs.readFileSync(secondMaterialized.stepsPath, 'utf8'),
       progress: fs.readFileSync(secondMaterialized.progressPath, 'utf8'),
+      concurrency: fs.readFileSync(secondMaterialized.concurrencyPath, 'utf8'),
+      runnable: fs.readFileSync(secondMaterialized.runnableSetPath, 'utf8'),
+      waves: fs.readFileSync(secondMaterialized.schedulingWavesPath, 'utf8'),
     };
 
     expect(firstSimulation.projection.graphState).toBe('completed');
     expect(firstSimulation.projection.completedNodeCount).toBe(graph.nodeCount);
+    expect(firstSimulation.projection.currentWaveIndex).toBeGreaterThan(0);
+    expect(firstSimulation.projection.concurrencyPolicyId).toBe('parallel-wave-default');
     expect(firstSimulation.projection.steps.map((step) => step.stepIndex)).toEqual(
       [...firstSimulation.projection.steps.map((step) => step.stepIndex)].sort((a, b) => a - b),
     );

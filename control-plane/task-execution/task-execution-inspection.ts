@@ -14,6 +14,13 @@ import {
   createTaskExecutionProjection,
   type TaskExecutionProjectionEngine,
 } from './task-execution-projection.ts';
+import {
+  DEFAULT_TASK_CONCURRENCY_POLICY_ID,
+  getTaskConcurrencyPolicy,
+} from './task-concurrency-policies.ts';
+import { evaluateRunnableNodeSet } from './task-runnable-node-set.ts';
+import { computeSchedulingWave } from './task-concurrency-scheduler.ts';
+import { createTaskGraphProjection } from '../task-graph/task-graph-projection.ts';
 
 export function createTaskExecutionInspection(options: {
   projection?: TaskExecutionProjectionEngine;
@@ -95,6 +102,22 @@ export function createTaskExecutionInspection(options: {
     taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
   });
 
+  const taskGraphProjection = createTaskGraphProjection({
+    missionDefinitionsDir: options.missionDefinitionsDir,
+    missionInstancesDir: options.missionInstancesDir,
+    missionArtifactsRoot: options.missionArtifactsRoot,
+    teamDefinitionsDir: options.teamDefinitionsDir,
+    compatibilityArtifactsRoot: options.compatibilityArtifactsRoot,
+    assignmentArtifactsRoot: options.assignmentArtifactsRoot,
+    activationArtifactsRoot: options.activationArtifactsRoot,
+    executionContractArtifactsRoot: options.executionContractArtifactsRoot,
+    runtimeEnvelopeArtifactsRoot: options.runtimeEnvelopeArtifactsRoot,
+    executionAttemptArtifactsRoot: options.executionAttemptArtifactsRoot,
+    executionJournalArtifactsRoot: options.executionJournalArtifactsRoot,
+    executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
+    taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
+  });
+
   function listTaskExecutionRuns() {
     return projection.summarizeList();
   }
@@ -171,6 +194,63 @@ export function createTaskExecutionInspection(options: {
     return materializer.materializeOne(input);
   }
 
+  function taskExecutionRunnable(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    const taskGraph = taskGraphProjection.projectOne({ taskGraphId: input.taskGraphId });
+    const history = historyStore.load({
+      executionEngineRunId: projected.executionEngineRunId,
+      executionAttemptId: projected.executionAttemptId,
+      taskGraphId: projected.taskGraphId,
+    });
+    const policy = getTaskConcurrencyPolicy(DEFAULT_TASK_CONCURRENCY_POLICY_ID);
+
+    return evaluateRunnableNodeSet(taskGraph, projected, history, policy);
+  }
+
+  function taskExecutionConcurrencyStatus(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    return {
+      taskGraphId: projected.taskGraphId,
+      policyId: projected.concurrencyPolicyId,
+      maxConcurrentNodes: projected.maxConcurrentNodes,
+      runnableNodeCount: projected.runnableNodeCount,
+      scheduledNodeCount: projected.scheduledNodeCount,
+      deferredNodeCount: projected.deferredNodeCount,
+      activeSlots: projected.activeConcurrencySlots,
+      availableSlots: projected.availableConcurrencySlots,
+      currentWaveIndex: projected.currentWaveIndex,
+      schedulingState: projected.schedulingState,
+    };
+  }
+
+  function scheduleTaskExecutionWave(input: { taskGraphId: string }) {
+    const projected = projection.projectOne(input);
+    const runnableSet = taskExecutionRunnable(input);
+    const policy = getTaskConcurrencyPolicy(DEFAULT_TASK_CONCURRENCY_POLICY_ID);
+    const wave = computeSchedulingWave(runnableSet, policy, projected);
+
+    return {
+      waveIndex: wave.waveIndex,
+      scheduledNodes: wave.scheduledNodeIds,
+      deferredNodes: wave.deferredNodeIds,
+    };
+  }
+
+  function taskExecutionConcurrencyHistory(input: { taskGraphId: string }) {
+    const history = taskExecutionHistory(input);
+
+    return {
+      ...history,
+      entries: history.entries.filter((entry) => (
+        entry.eventType === 'concurrency_wave_evaluated'
+        || entry.eventType === 'concurrency_slots_allocated'
+        || entry.eventType === 'node_scheduled_for_execution'
+        || entry.eventType === 'node_deferred_by_concurrency_limit'
+        || entry.eventType === 'concurrency_wave_completed'
+      )),
+    };
+  }
+
   return {
     listTaskExecutionRuns,
     inspectTaskExecutionRun,
@@ -184,6 +264,10 @@ export function createTaskExecutionInspection(options: {
     advanceTaskExecution,
     simulateTaskExecution,
     materializeTaskExecution,
+    taskExecutionRunnable,
+    taskExecutionConcurrencyStatus,
+    scheduleTaskExecutionWave,
+    taskExecutionConcurrencyHistory,
   };
 }
 

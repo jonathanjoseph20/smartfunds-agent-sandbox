@@ -147,8 +147,10 @@ describe('task execution engine', () => {
     const result = harness.engine.step({ taskGraphId: harness.taskGraph.taskGraphId });
 
     expect(result.selectedTaskNodeId).toBe('node-a');
+    expect(result.scheduledNodeIds).toEqual(['node-a']);
+    expect(result.deferredNodeIds).toEqual([]);
     expect(result.projection.completedNodeCount).toBe(1);
-    expect(result.projection.executionStepCount).toBe(3);
+    expect(result.projection.executionStepCount).toBe(7);
 
     const history = harness.historyStore.load({
       executionEngineRunId: harness.taskGraph.executionEngineRunId,
@@ -157,6 +159,10 @@ describe('task execution engine', () => {
     });
 
     expect(history.entries.map((entry) => entry.eventType)).toEqual([
+      'concurrency_wave_evaluated',
+      'concurrency_slots_allocated',
+      'node_scheduled_for_execution',
+      'concurrency_wave_completed',
       'node_execution_started',
       'node_execution_completed',
       'graph_execution_progressed',
@@ -170,7 +176,7 @@ describe('task execution engine', () => {
 
     expect(result.projection.graphState).toBe('completed');
     expect(result.projection.completedNodeCount).toBe(2);
-    expect(result.projection.executionStepCount).toBeGreaterThanOrEqual(5);
+    expect(result.projection.executionStepCount).toBeGreaterThanOrEqual(10);
   });
 
   it('T-MTE-E3 simulate is deterministic for identical inputs', () => {

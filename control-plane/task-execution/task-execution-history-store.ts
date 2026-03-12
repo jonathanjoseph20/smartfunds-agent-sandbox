@@ -155,6 +155,9 @@ export function resolveTaskExecutionArtifactPaths(input: {
   failuresJsonPath: string;
   retriesJsonPath: string;
   blockersJsonPath: string;
+  concurrencyJsonPath: string;
+  runnableSetJsonPath: string;
+  schedulingWavesJsonPath: string;
 } {
   const dirPath = resolveTaskExecutionArtifactDir(input);
 
@@ -169,6 +172,9 @@ export function resolveTaskExecutionArtifactPaths(input: {
     failuresJsonPath: path.join(dirPath, 'task-execution-failures.json'),
     retriesJsonPath: path.join(dirPath, 'task-execution-retries.json'),
     blockersJsonPath: path.join(dirPath, 'task-execution-blockers.json'),
+    concurrencyJsonPath: path.join(dirPath, 'task-execution-concurrency.json'),
+    runnableSetJsonPath: path.join(dirPath, 'task-execution-runnable-set.json'),
+    schedulingWavesJsonPath: path.join(dirPath, 'task-execution-scheduling-waves.json'),
   };
 }
 

@@ -166,6 +166,28 @@ export function createTaskExecutionMaterializer(options: {
       blockingNodes: projected.blockingNodes,
       blockingReasons: projected.blockingReasons,
     })}\n`, 'utf8');
+    fs.writeFileSync(paths.concurrencyJsonPath, `${canonicalStringify({
+      concurrencyPolicyId: projected.concurrencyPolicyId,
+      maxConcurrentNodes: projected.maxConcurrentNodes,
+      runnableNodeCount: projected.runnableNodeCount,
+      scheduledNodeCount: projected.scheduledNodeCount,
+      deferredNodeCount: projected.deferredNodeCount,
+      activeConcurrencySlots: projected.activeConcurrencySlots,
+      availableConcurrencySlots: projected.availableConcurrencySlots,
+      currentWaveIndex: projected.currentWaveIndex,
+      currentWaveNodeIds: projected.currentWaveNodeIds,
+      deferredNodeIds: projected.deferredNodeIds,
+      schedulingState: projected.schedulingState,
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.runnableSetJsonPath, `${canonicalStringify({
+      executionEngineRunId: projected.executionEngineRunId,
+      taskGraphId: projected.taskGraphId,
+      runnableNodeCount: projected.runnableNodeCount,
+      runnableNodeIds: [...projected.currentWaveNodeIds, ...projected.deferredNodeIds]
+        .sort((left, right) => left.localeCompare(right)),
+      deferredNodeIds: projected.deferredNodeIds,
+    })}\n`, 'utf8');
+    fs.writeFileSync(paths.schedulingWavesJsonPath, `${canonicalStringify(projected.schedulingWaves)}\n`, 'utf8');
 
     return {
       executionEngineRunId: projected.executionEngineRunId,
@@ -180,6 +202,9 @@ export function createTaskExecutionMaterializer(options: {
       failuresPath: paths.failuresJsonPath,
       retriesPath: paths.retriesJsonPath,
       blockersPath: paths.blockersJsonPath,
+      concurrencyPath: paths.concurrencyJsonPath,
+      runnableSetPath: paths.runnableSetJsonPath,
+      schedulingWavesPath: paths.schedulingWavesJsonPath,
     };
   }
 

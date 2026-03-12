@@ -75,6 +75,37 @@ describe('mission template CLI integration', () => {
     const payload = getPrintedJson(stdout) as Record<string, unknown>;
     expect((payload.missionInstance as Record<string, unknown>).missionType).toBe('evaluate-startup-opportunity');
     expect((payload.missionIdentityPayload as Record<string, unknown>).missionType).toBe('evaluate-startup-opportunity');
+    expect(payload.persisted).toBe(false);
+    stdout.mockRestore();
+  });
+
+  it('T-MTPL-C8 mission-templates:instantiate can explicitly persist the instantiated mission', async () => {
+    fs.mkdirSync(tmpRoot, { recursive: true });
+    const paramsFile = path.join(tmpRoot, 'persist-params.json');
+    const instancesDir = path.join(tmpRoot, 'instances');
+    fs.writeFileSync(paramsFile, `${JSON.stringify({ sector: 'AI agent payments' }, null, 2)}\n`, 'utf8');
+
+    const stdout = captureStdout();
+
+    const code = await instantiateMain([
+      '--template',
+      'evaluate-startup-opportunity',
+      '--params-file',
+      paramsFile,
+      '--write',
+      '--instances-dir',
+      instancesDir,
+    ]);
+
+    expect(code).toBe(0);
+    const payload = getPrintedJson(stdout) as Record<string, unknown>;
+    expect(payload.persisted).toBe(true);
+    expect(typeof payload.persistedPath).toBe('string');
+
+    const missionInstance = payload.missionInstance as Record<string, unknown>;
+    const persistedPath = payload.persistedPath as string;
+    expect(fs.existsSync(persistedPath)).toBe(true);
+    expect(path.basename(persistedPath)).toBe(`${String(missionInstance.missionId)}.json`);
     stdout.mockRestore();
   });
 

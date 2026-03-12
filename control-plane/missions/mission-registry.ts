@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { canonicalStringify } from '../finance/determinism.ts';
+
 import type { MissionDefinition, MissionDefinitionLike } from './mission-definition-types.ts';
 import type { MissionInstance } from './mission-instance-types.ts';
 import { deriveMissionIdFromPayload } from './mission-identity.ts';
@@ -308,6 +310,15 @@ export function loadMissionInstances(options: { instancesDir?: string } = {}): M
   return files
     .map((entry) => validateMissionInstance(readJson(path.join(instancesDir, entry)), entry))
     .sort((left, right) => left.missionId.localeCompare(right.missionId));
+}
+
+export function writeMissionInstance(instance: MissionInstance, options: { instancesDir?: string } = {}): string {
+  const validated = validateMissionInstance(instance, '<write-mission-instance>');
+  const instancesDir = path.resolve(options.instancesDir ?? DEFAULT_MISSION_INSTANCES_DIR);
+  fs.mkdirSync(instancesDir, { recursive: true });
+  const filePath = path.join(instancesDir, `${validated.missionId}.json`);
+  fs.writeFileSync(filePath, `${canonicalStringify(validated)}\n`, 'utf8');
+  return filePath;
 }
 
 export function createMissionRegistry(options: {

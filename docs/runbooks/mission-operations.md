@@ -57,6 +57,27 @@ Writes artifacts under `artifacts/missions/<missionId>/`:
 - `mission-report.md`
 - `mission-history.json`
 
+## Persist a Templated Mission
+
+`mission-templates:instantiate` can explicitly persist the instantiated mission into the mission registry:
+
+```bash
+npm run mission-templates:instantiate -- \
+  --template produce-market-memo \
+  --params-file /tmp/produce-market-memo-params.json \
+  --write
+```
+
+Optional: target a non-default registry directory for isolated testing:
+
+```bash
+npm run mission-templates:instantiate -- \
+  --template produce-market-memo \
+  --params-file /tmp/produce-market-memo-params.json \
+  --write \
+  --instances-dir /tmp/smoke-missions
+```
+
 ## Diagnose Blocked Missions
 
 1. Inspect status for `blockingReasons`.

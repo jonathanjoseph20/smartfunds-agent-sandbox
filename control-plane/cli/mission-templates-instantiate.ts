@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 
 import { canonicalStringify } from '../finance/determinism.ts';
+import { writeMissionInstance } from '../missions/mission-registry.ts';
 import { instantiateMissionTemplate } from '../missions/templates/mission-template-engine.ts';
 
 interface ParsedArgs {
   founderInstructions?: string;
+  instancesDir?: string;
   paramsFile: string;
   templateId: string;
+  write: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -17,6 +20,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   let templateId: string | null = null;
   let paramsFile: string | null = null;
   let founderInstructions: string | undefined;
+  let instancesDir: string | undefined;
+  let write = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -72,6 +77,29 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (arg === '--write') {
+      write = true;
+      continue;
+    }
+
+    if (arg === '--instances-dir') {
+      const value = argv[index + 1];
+      if (!value) {
+        throw new Error('MISSING_ARGUMENT: --instances-dir');
+      }
+      instancesDir = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--instances-dir=')) {
+      instancesDir = arg.slice('--instances-dir='.length);
+      if (!instancesDir) {
+        throw new Error('MISSING_ARGUMENT: --instances-dir');
+      }
+      continue;
+    }
+
     throw new Error(`UNKNOWN_ARGUMENT: ${arg}`);
   }
 
@@ -85,6 +113,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     templateId,
     paramsFile,
+    write,
+    ...(instancesDir === undefined ? {} : { instancesDir }),
     ...(founderInstructions === undefined ? {} : { founderInstructions }),
   };
 }
@@ -107,7 +137,22 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     const args = parseArgs(argv);
     const parameters = readParamsFile(args.paramsFile);
-    printJson(instantiateMissionTemplate(args.templateId, parameters, args.founderInstructions));
+    const instantiated = instantiateMissionTemplate(args.templateId, parameters, args.founderInstructions);
+
+    if (args.write) {
+      const persistedPath = writeMissionInstance(instantiated.missionInstance, { instancesDir: args.instancesDir });
+      printJson({
+        ...instantiated,
+        persisted: true,
+        persistedPath,
+      });
+      return 0;
+    }
+
+    printJson({
+      ...instantiated,
+      persisted: false,
+    });
     return 0;
   } catch (error) {
     printJson({ error: (error as Error).message });

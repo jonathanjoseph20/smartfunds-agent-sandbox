@@ -1,0 +1,39 @@
+{
+  "teamId": "agent-operations-team",
+  "displayName": "Agent Operations Team",
+  "description": "Represents future agent-native operations posture without runtime activation.",
+  "teamType": "agent_operations",
+  "purpose": "Prepare governance and operations posture for future autonomous micro-venture operations.",
+  "domainTags": [
+    "agent_operations",
+    "automation",
+    "governance"
+  ],
+  "supportedMissionTypes": [
+    "analyze-agent-economy-development"
+  ],
+  "supportedTemplateIds": [
+    "analyze-agent-economy-development"
+  ],
+  "capabilityTags": [
+    "ops_governance",
+    "agent_program_design",
+    "control_plane_hardening"
+  ],
+  "defaultOperatingMode": "dormant_reserve",
+  "lifecycleState": "dormant",
+  "availabilityState": "unavailable",
+  "readinessState": "partial",
+  "rosterPolicy": {
+    "type": "placeholder",
+    "minAgents": 0,
+    "maxAgents": 6,
+    "requiredCapabilities": [
+      "ops_governance"
+    ]
+  },
+  "notes": [
+    "dormant_reserve_until_future_execution_sprints",
+    "pre_execution_registry_entry"
+  ]
+}

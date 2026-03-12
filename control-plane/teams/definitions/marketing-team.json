@@ -1,0 +1,39 @@
+{
+  "teamId": "marketing-team",
+  "displayName": "Marketing Team",
+  "description": "Builds launch messaging and growth collateral.",
+  "teamType": "marketing",
+  "purpose": "Create landing pages, messaging, growth experiments, and launch collateral.",
+  "domainTags": [
+    "messaging",
+    "growth",
+    "launch"
+  ],
+  "supportedMissionTypes": [
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "produce-market-memo"
+  ],
+  "capabilityTags": [
+    "copywriting",
+    "growth_experiments",
+    "campaign_planning"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "active",
+  "availabilityState": "restricted",
+  "readinessState": "ready",
+  "rosterPolicy": {
+    "type": "expandable",
+    "minAgents": 1,
+    "maxAgents": 5,
+    "requiredCapabilities": [
+      "copywriting"
+    ]
+  },
+  "notes": [
+    "descriptive_support_only",
+    "pre_execution_registry_entry"
+  ]
+}

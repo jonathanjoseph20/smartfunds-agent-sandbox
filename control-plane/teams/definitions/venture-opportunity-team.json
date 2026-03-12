@@ -1,0 +1,42 @@
+{
+  "teamId": "venture-opportunity-team",
+  "displayName": "Venture Opportunity Team",
+  "description": "Evaluates startup opportunities and produces deterministic opportunity outputs.",
+  "teamType": "venture",
+  "purpose": "Evaluate startup ideas, synthesize opportunity summaries, and support founder opportunity review.",
+  "domainTags": [
+    "startup",
+    "venture",
+    "opportunity"
+  ],
+  "supportedMissionTypes": [
+    "evaluate-startup-opportunity",
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "evaluate-startup-opportunity",
+    "produce-market-memo"
+  ],
+  "capabilityTags": [
+    "opportunity_evaluation",
+    "market_synthesis",
+    "founder_review_support"
+  ],
+  "defaultOperatingMode": "on_demand",
+  "lifecycleState": "active",
+  "availabilityState": "manual_only",
+  "readinessState": "ready",
+  "rosterPolicy": {
+    "type": "expandable",
+    "minAgents": 2,
+    "maxAgents": 6,
+    "requiredCapabilities": [
+      "opportunity_evaluation",
+      "market_synthesis"
+    ]
+  },
+  "notes": [
+    "founder_approval_required_before_any_future_assignment",
+    "pre_execution_registry_entry"
+  ]
+}

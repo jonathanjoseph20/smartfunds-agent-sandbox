@@ -1,0 +1,29 @@
+{
+  "proposalType": "tokenized-offering-request",
+  "displayName": "Tokenized Offering Request",
+  "description": "Proposal to request tokenized offering structuring.",
+  "summary": "Propose a mission to structure a tokenized offering.",
+  "enabled": true,
+  "recommendedPriority": "critical",
+  "defaultProposedMissionType": "structure-tokenized-offering",
+  "defaultProposedTemplateId": "structure-tokenized-offering",
+  "supportedMissionTypes": [
+    "structure-tokenized-offering"
+  ],
+  "supportedTemplateIds": [
+    "structure-tokenized-offering"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "proposalType": "opportunity-followup",
+  "displayName": "Opportunity Follow-up",
+  "description": "Follow-up proposal for a newly identified opportunity.",
+  "summary": "Propose a targeted follow-up mission for an opportunity signal.",
+  "enabled": true,
+  "recommendedPriority": "high",
+  "defaultProposedMissionType": "evaluate-startup-opportunity",
+  "defaultProposedTemplateId": "evaluate-startup-opportunity",
+  "supportedMissionTypes": [
+    "evaluate-startup-opportunity",
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "evaluate-startup-opportunity",
+    "produce-market-memo"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "proposalType": "product-spec-request",
+  "displayName": "Product Spec Request",
+  "description": "Proposal to request a product specification mission.",
+  "summary": "Propose a product specification mission for a prioritized idea.",
+  "enabled": true,
+  "recommendedPriority": "high",
+  "defaultProposedMissionType": "generate-product-spec",
+  "defaultProposedTemplateId": "generate-product-spec",
+  "supportedMissionTypes": [
+    "generate-product-spec"
+  ],
+  "supportedTemplateIds": [
+    "generate-product-spec"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

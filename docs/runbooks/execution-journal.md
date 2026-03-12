@@ -1,4 +1,10 @@
-# Execution Journal Runbook
+# Execution Journal Runbook (Legacy Runtime-Run Journal)
+
+This runbook describes the legacy runtime-run journal commands (`journal:*`).
+
+For Sprint 5.4 Mission Execution Journal operations around `MissionExecutionAttempt`, use:
+
+- `docs/runbooks/execution-journal-operations.md`
 
 ## Create a Run
 

@@ -1,0 +1,31 @@
+{
+  "proposalType": "risk-followup",
+  "displayName": "Risk Follow-up",
+  "description": "Follow-up proposal for detected risk conditions.",
+  "summary": "Propose a risk-focused mission in response to elevated risk signals.",
+  "enabled": true,
+  "recommendedPriority": "critical",
+  "defaultProposedMissionType": "analyze-agent-economy-development",
+  "defaultProposedTemplateId": "analyze-agent-economy-development",
+  "supportedMissionTypes": [
+    "analyze-agent-economy-development",
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "analyze-agent-economy-development",
+    "produce-market-memo"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

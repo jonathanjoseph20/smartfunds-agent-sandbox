@@ -1,0 +1,30 @@
+{
+  "proposalType": "system-maintenance-followup",
+  "displayName": "System Maintenance Follow-up",
+  "description": "Proposal for a deterministic system maintenance follow-up mission.",
+  "summary": "Propose maintenance-oriented follow-up work from system intelligence.",
+  "enabled": true,
+  "recommendedPriority": "normal",
+  "defaultProposedMissionType": "analyze-agent-economy-development",
+  "supportedMissionTypes": [
+    "analyze-agent-economy-development",
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "analyze-agent-economy-development",
+    "produce-market-memo"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

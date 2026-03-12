@@ -1,0 +1,29 @@
+{
+  "proposalType": "market-memo-request",
+  "displayName": "Market Memo Request",
+  "description": "Proposal to request a market memo mission.",
+  "summary": "Propose preparation of a market memo based on current intelligence.",
+  "enabled": true,
+  "recommendedPriority": "normal",
+  "defaultProposedMissionType": "produce-market-memo",
+  "defaultProposedTemplateId": "produce-market-memo",
+  "supportedMissionTypes": [
+    "produce-market-memo"
+  ],
+  "supportedTemplateIds": [
+    "produce-market-memo"
+  ],
+  "allowedCreatedByKinds": [
+    "founder",
+    "agent",
+    "system"
+  ],
+  "allowedCreatedFromKinds": [
+    "action_plan",
+    "portfolio_intelligence",
+    "market_synthesis",
+    "mission",
+    "dag",
+    "manual"
+  ]
+}

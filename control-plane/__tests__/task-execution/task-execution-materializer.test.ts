@@ -20,6 +20,9 @@ function projected() {
     failedNodeCount: 0,
     retryingNodeCount: 0,
     readyNodeCount: 0,
+    runnableNodeCount: 1,
+    scheduledNodeCount: 1,
+    deferredNodeCount: 0,
     runningNodeCount: 0,
     completedNodeCount: 1,
     blockedNodeCount: 0,
@@ -40,6 +43,25 @@ function projected() {
     },
     retryAttempts: [],
     retryLimitBreaches: [],
+    concurrencyPolicyId: 'parallel-wave-default',
+    maxConcurrentNodes: 4,
+    activeConcurrencySlots: 0,
+    availableConcurrencySlots: 4,
+    currentWaveIndex: 1,
+    currentWaveNodeIds: ['node-a'],
+    deferredNodeIds: [],
+    schedulingState: 'wave_active',
+    schedulingWaves: [{
+      executionEngineRunId: 'er-1',
+      taskGraphId: 'tg-1',
+      waveIndex: 1,
+      concurrencyPolicyId: 'parallel-wave-default',
+      runnableNodeIds: ['node-a'],
+      scheduledNodeIds: ['node-a'],
+      deferredNodeIds: [],
+      availableConcurrencySlots: 4,
+      consumedConcurrencySlots: 1,
+    }],
     graphFailureState: 'none',
     statusPreview: {
       taskGraphId: 'tg-1',
@@ -60,6 +82,9 @@ function projected() {
       failuresJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-failures.json'),
       retriesJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-retries.json'),
       blockersJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-blockers.json'),
+      concurrencyJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-concurrency.json'),
+      runnableSetJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-runnable-set.json'),
+      schedulingWavesJsonPath: path.join(tmpRoot, 'artifacts', 'er-1', 'task-execution-scheduling-waves.json'),
     },
     provenanceInputs: {
       taskGraphState: 'ready_for_execution',
@@ -104,6 +129,9 @@ describe('task execution materializer', () => {
       failures: fs.readFileSync(first.failuresPath, 'utf8'),
       retries: fs.readFileSync(first.retriesPath, 'utf8'),
       blockers: fs.readFileSync(first.blockersPath, 'utf8'),
+      concurrency: fs.readFileSync(first.concurrencyPath, 'utf8'),
+      runnable: fs.readFileSync(first.runnableSetPath, 'utf8'),
+      waves: fs.readFileSync(first.schedulingWavesPath, 'utf8'),
     };
 
     const secondSnapshot = {
@@ -116,6 +144,9 @@ describe('task execution materializer', () => {
       failures: fs.readFileSync(second.failuresPath, 'utf8'),
       retries: fs.readFileSync(second.retriesPath, 'utf8'),
       blockers: fs.readFileSync(second.blockersPath, 'utf8'),
+      concurrency: fs.readFileSync(second.concurrencyPath, 'utf8'),
+      runnable: fs.readFileSync(second.runnableSetPath, 'utf8'),
+      waves: fs.readFileSync(second.schedulingWavesPath, 'utf8'),
     };
 
     expect(secondSnapshot).toEqual(firstSnapshot);

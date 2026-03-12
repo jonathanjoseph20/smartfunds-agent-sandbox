@@ -10,6 +10,10 @@ import { main as failNodeMain } from '../../cli/task-execution-fail-node.ts';
 import { main as retryNodeMain } from '../../cli/task-execution-retry-node.ts';
 import { main as retryStatusMain } from '../../cli/task-execution-retry-status.ts';
 import { main as retryHistoryMain } from '../../cli/task-execution-retry-history.ts';
+import { main as runnableMain } from '../../cli/task-execution-runnable.ts';
+import { main as concurrencyStatusMain } from '../../cli/task-execution-concurrency-status.ts';
+import { main as scheduleWaveMain } from '../../cli/task-execution-schedule-wave.ts';
+import { main as concurrencyHistoryMain } from '../../cli/task-execution-concurrency-history.ts';
 import { main as advanceMain } from '../../cli/task-execution-advance.ts';
 import { main as simulateMain } from '../../cli/task-execution-simulate.ts';
 import { main as materializeMain } from '../../cli/task-execution-materialize.ts';
@@ -24,6 +28,10 @@ const {
   retryTaskNode,
   retryTaskExecutionStatus,
   retryTaskExecutionHistory,
+  taskExecutionRunnable,
+  taskExecutionConcurrencyStatus,
+  scheduleTaskExecutionWave,
+  taskExecutionConcurrencyHistory,
   advanceTaskExecution,
   simulateTaskExecution,
   materializeTaskExecution,
@@ -37,6 +45,10 @@ const {
   retryTaskNode: vi.fn(() => ({ retryScheduled: true, retryStarted: true, projection: { nodeStates: { 'node-a': 'ready' }, graphState: 'running' } })),
   retryTaskExecutionStatus: vi.fn(() => ({ taskGraphId: 'tg-1', retryAttempts: [] })),
   retryTaskExecutionHistory: vi.fn(() => ({ taskGraphId: 'tg-1', entries: [] })),
+  taskExecutionRunnable: vi.fn(() => ({ runnableNodeIds: ['node-a'], runnableNodeCount: 1 })),
+  taskExecutionConcurrencyStatus: vi.fn(() => ({ taskGraphId: 'tg-1', policyId: 'parallel-wave-default' })),
+  scheduleTaskExecutionWave: vi.fn(() => ({ waveIndex: 1, scheduledNodes: ['node-a'], deferredNodes: [] })),
+  taskExecutionConcurrencyHistory: vi.fn(() => ({ taskGraphId: 'tg-1', entries: [] })),
   advanceTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1', mode: 'advance' })),
   simulateTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1', mode: 'simulate' })),
   materializeTaskExecution: vi.fn(() => ({ taskGraphId: 'tg-1' })),
@@ -53,6 +65,10 @@ vi.mock('../../task-execution/task-execution-inspection.ts', () => ({
     retryTaskNode,
     retryTaskExecutionStatus,
     retryTaskExecutionHistory,
+    taskExecutionRunnable,
+    taskExecutionConcurrencyStatus,
+    scheduleTaskExecutionWave,
+    taskExecutionConcurrencyHistory,
     advanceTaskExecution,
     simulateTaskExecution,
     materializeTaskExecution,
@@ -90,6 +106,10 @@ describe('task execution CLI commands', () => {
     await retryNodeMain(['--graph', 'tg-1', '--node=node-a']);
     await retryStatusMain(['--graph=tg-1']);
     await retryHistoryMain(['--graph', 'tg-1']);
+    await runnableMain(['--graph=tg-1']);
+    await concurrencyStatusMain(['--graph', 'tg-1']);
+    await scheduleWaveMain(['--graph=tg-1']);
+    await concurrencyHistoryMain(['--graph', 'tg-1']);
     await advanceMain(['--graph', 'tg-1']);
     await simulateMain(['--graph=tg-1']);
     await materializeMain(['--graph', 'tg-1']);
@@ -101,6 +121,10 @@ describe('task execution CLI commands', () => {
     expect(retryTaskNode).toHaveBeenCalledWith({ taskGraphId: 'tg-1', taskNodeId: 'node-a' });
     expect(retryTaskExecutionStatus).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(retryTaskExecutionHistory).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(taskExecutionRunnable).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(taskExecutionConcurrencyStatus).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(scheduleTaskExecutionWave).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
+    expect(taskExecutionConcurrencyHistory).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(advanceTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(simulateTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
     expect(materializeTaskExecution).toHaveBeenCalledWith({ taskGraphId: 'tg-1' });
@@ -117,6 +141,16 @@ describe('task execution CLI commands', () => {
 
     expect(code).toBe(1);
     expect(stdout).toHaveBeenLastCalledWith(`${canonicalStringify({ error: 'TASK_EXECUTION_RUN_NOT_FOUND' })}\n`);
+    stdout.mockRestore();
+  });
+
+  it('T-MTE-CLI5 runnable command preserves stable missing-graph error payload', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const code = await runnableMain([]);
+
+    expect(code).toBe(1);
+    expect(stdout).toHaveBeenLastCalledWith(`${canonicalStringify({ error: 'TASK_EXECUTION_ARGUMENT_MISSING_GRAPH' })}\n`);
     stdout.mockRestore();
   });
 });

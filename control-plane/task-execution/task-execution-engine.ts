@@ -13,8 +13,14 @@ import {
   type TaskExecutionProjectionEngine,
 } from './task-execution-projection.ts';
 import { deriveTaskExecutionStepId } from './task-execution-step-identity.ts';
-import { deriveTaskGraphTopologicalOrder } from './task-ready-node-detector.ts';
 import { applyTaskNodeTransition } from './task-node-transition.ts';
+import {
+  DEFAULT_TASK_CONCURRENCY_POLICY_ID,
+  getTaskConcurrencyPolicy,
+} from './task-concurrency-policies.ts';
+import { evaluateRunnableNodeSet } from './task-runnable-node-set.ts';
+import { computeSchedulingWave } from './task-concurrency-scheduler.ts';
+import { createConcurrencyWaveEvents } from './task-concurrency-history.ts';
 import {
   classifyTaskFailure,
   type TaskFailureClass,
@@ -45,27 +51,6 @@ function compareSteps(left: MissionTaskExecutionStep, right: MissionTaskExecutio
   }
 
   return left.executionStepId.localeCompare(right.executionStepId);
-}
-
-function selectReadyNodeId(input: {
-  readyNodeIds: string[];
-  topologicalOrder: string[];
-}): string | null {
-  if (input.readyNodeIds.length === 0) {
-    return null;
-  }
-
-  const orderIndex = new Map(input.topologicalOrder.map((nodeId, index) => [nodeId, index]));
-  return [...input.readyNodeIds]
-    .sort((left, right) => {
-      const leftIndex = orderIndex.get(left) ?? Number.MAX_SAFE_INTEGER;
-      const rightIndex = orderIndex.get(right) ?? Number.MAX_SAFE_INTEGER;
-      const byTopo = leftIndex - rightIndex;
-      if (byTopo !== 0) {
-        return byTopo;
-      }
-      return left.localeCompare(right);
-    })[0] ?? null;
 }
 
 function currentRetryCountForNode(input: {
@@ -100,6 +85,24 @@ function latestFailureClassForNode(input: {
   }
 
   return 'NON_RETRYABLE_FAILURE';
+}
+
+function attemptIndexByNode(projection: MissionTaskExecutionProjection): Record<string, number> {
+  const attemptByNode = new Map<string, number>();
+
+  for (const attempt of [...projection.retryAttempts].sort((left, right) => {
+    const byNode = left.taskNodeId.localeCompare(right.taskNodeId);
+    if (byNode !== 0) {
+      return byNode;
+    }
+    return left.attemptIndex - right.attemptIndex;
+  })) {
+    attemptByNode.set(attempt.taskNodeId, attempt.attemptIndex);
+  }
+
+  return Object.fromEntries(
+    [...attemptByNode.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 export function createTaskExecutionEngine(options: {
@@ -217,69 +220,102 @@ export function createTaskExecutionEngine(options: {
   function step(input: {
     taskGraphId: string;
   }) {
-    const projectedBefore = projection.projectOne({ taskGraphId: input.taskGraphId });
+    const projectedInitial = projection.projectOne({ taskGraphId: input.taskGraphId });
 
-    if (projectedBefore.graphState === 'completed') {
+    if (projectedInitial.graphState === 'completed') {
       throw new Error('TASK_EXECUTION_ALREADY_COMPLETED');
     }
 
-    if (projectedBefore.graphState === 'failed') {
+    if (projectedInitial.graphState === 'failed') {
       throw new Error('TASK_GRAPH_BLOCKED');
     }
 
     const taskGraph = taskGraphProjection.projectOne({ taskGraphId: input.taskGraphId });
-    const topologicalOrder = deriveTaskGraphTopologicalOrder(taskGraph);
+    const historyBefore = historyStore.load({
+      executionEngineRunId: projectedInitial.executionEngineRunId,
+      executionAttemptId: projectedInitial.executionAttemptId,
+      taskGraphId: projectedInitial.taskGraphId,
+    });
 
-    const readyNodeIds = Object.entries(projectedBefore.nodeStates)
-      .filter(([, state]) => state === 'ready')
-      .map(([taskNodeId]) => taskNodeId)
-      .sort((left, right) => left.localeCompare(right));
+    const concurrencyPolicy = getTaskConcurrencyPolicy(DEFAULT_TASK_CONCURRENCY_POLICY_ID);
+    const runnableSet = evaluateRunnableNodeSet(
+      taskGraph,
+      projectedInitial,
+      historyBefore,
+      concurrencyPolicy,
+    );
 
-    const selectedTaskNodeId = selectReadyNodeId({ readyNodeIds, topologicalOrder });
-
-    if (!selectedTaskNodeId) {
+    if (runnableSet.runnableNodeCount === 0) {
       throw new Error('TASK_GRAPH_BLOCKED');
     }
 
-    applyTaskNodeTransition({ currentState: 'ready', nextState: 'running' });
-    const startedStep = appendStepEvent({
-      projectedBefore,
-      taskNodeId: selectedTaskNodeId,
-      stepType: 'node_execution_started',
-      stepInputs: {
-        taskNodeId: selectedTaskNodeId,
-        readyNodeIds,
-      },
-      stepOutputs: {
-        nextTaskNodeState: 'running',
-      },
-    });
+    const wave = computeSchedulingWave(runnableSet, concurrencyPolicy, projectedInitial);
+    const steps: MissionTaskExecutionStep[] = [];
+    let projectedCurrent = projectedInitial;
 
-    const projectedAfterStart = projection.projectOne({ taskGraphId: input.taskGraphId });
+    for (const event of createConcurrencyWaveEvents({
+      wave,
+      attemptIndexByNode: attemptIndexByNode(projectedInitial),
+    })) {
+      const taskNodeId = typeof event.eventPayload.taskNodeId === 'string'
+        ? event.eventPayload.taskNodeId
+        : null;
+      const appended = appendStepEvent({
+        projectedBefore: projectedCurrent,
+        taskNodeId,
+        stepType: event.eventType,
+        stepInputs: event.eventPayload,
+        stepOutputs: event.eventPayload,
+        eventPayloadExtras: event.eventPayload,
+      });
+      steps.push(appended);
+      projectedCurrent = projection.projectOne({ taskGraphId: input.taskGraphId });
+    }
 
-    applyTaskNodeTransition({ currentState: 'running', nextState: 'completed' });
-    const completedStep = appendStepEvent({
-      projectedBefore: projectedAfterStart,
-      taskNodeId: selectedTaskNodeId,
-      stepType: 'node_execution_completed',
-      stepInputs: {
-        taskNodeId: selectedTaskNodeId,
-      },
-      stepOutputs: {
-        nextTaskNodeState: 'completed',
-      },
-    });
+    for (const taskNodeId of wave.scheduledNodeIds) {
+      applyTaskNodeTransition({ currentState: 'ready', nextState: 'running' });
+      const startedStep = appendStepEvent({
+        projectedBefore: projectedCurrent,
+        taskNodeId,
+        stepType: 'node_execution_started',
+        stepInputs: {
+          taskNodeId,
+          runnableNodeIds: runnableSet.runnableNodeIds,
+          scheduledNodeIds: wave.scheduledNodeIds,
+          waveIndex: wave.waveIndex,
+        },
+        stepOutputs: {
+          nextTaskNodeState: 'running',
+        },
+      });
+      steps.push(startedStep);
+      projectedCurrent = projection.projectOne({ taskGraphId: input.taskGraphId });
 
-    const projectedAfterComplete = projection.projectOne({ taskGraphId: input.taskGraphId });
+      applyTaskNodeTransition({ currentState: 'running', nextState: 'completed' });
+      const completedStep = appendStepEvent({
+        projectedBefore: projectedCurrent,
+        taskNodeId,
+        stepType: 'node_execution_completed',
+        stepInputs: {
+          taskNodeId,
+          waveIndex: wave.waveIndex,
+        },
+        stepOutputs: {
+          nextTaskNodeState: 'completed',
+        },
+      });
+      steps.push(completedStep);
+      projectedCurrent = projection.projectOne({ taskGraphId: input.taskGraphId });
+    }
 
-    if (projectedAfterComplete.completedNodeCount === projectedAfterComplete.executionProgress.total) {
+    if (projectedCurrent.completedNodeCount === projectedCurrent.executionProgress.total) {
       appendStepEvent({
-        projectedBefore: projectedAfterComplete,
+        projectedBefore: projectedCurrent,
         taskNodeId: null,
         stepType: 'graph_execution_completed',
         stepInputs: {
-          completedNodeCount: projectedAfterComplete.completedNodeCount,
-          totalNodeCount: projectedAfterComplete.executionProgress.total,
+          completedNodeCount: projectedCurrent.completedNodeCount,
+          totalNodeCount: projectedCurrent.executionProgress.total,
         },
         stepOutputs: {
           graphState: 'completed',
@@ -287,15 +323,15 @@ export function createTaskExecutionEngine(options: {
       });
     } else {
       appendStepEvent({
-        projectedBefore: projectedAfterComplete,
+        projectedBefore: projectedCurrent,
         taskNodeId: null,
         stepType: 'graph_execution_progressed',
         stepInputs: {
-          completedNodeCount: projectedAfterComplete.completedNodeCount,
-          totalNodeCount: projectedAfterComplete.executionProgress.total,
+          completedNodeCount: projectedCurrent.completedNodeCount,
+          totalNodeCount: projectedCurrent.executionProgress.total,
         },
         stepOutputs: {
-          graphState: projectedAfterComplete.graphState,
+          graphState: projectedCurrent.graphState,
         },
       });
     }
@@ -303,8 +339,12 @@ export function createTaskExecutionEngine(options: {
     const projectedAfter = projection.projectOne({ taskGraphId: input.taskGraphId });
 
     return {
-      selectedTaskNodeId,
-      steps: [startedStep, completedStep].sort(compareSteps),
+      selectedTaskNodeId: wave.scheduledNodeIds[0] ?? null,
+      scheduledNodeIds: wave.scheduledNodeIds,
+      deferredNodeIds: wave.deferredNodeIds,
+      waveIndex: wave.waveIndex,
+      concurrencyPolicyId: wave.concurrencyPolicyId,
+      steps: [...steps].sort(compareSteps),
       projection: projectedAfter,
     };
   }

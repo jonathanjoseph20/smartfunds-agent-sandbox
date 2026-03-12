@@ -1,4 +1,4 @@
-export const WORKER_STATUSES = ['active', 'disabled'] as const;
+export const WORKER_STATUSES = ['active', 'paused', 'disabled'] as const;
 
 export type WorkerStatus = typeof WORKER_STATUSES[number];
 export type WorkerType = string;
@@ -11,4 +11,5 @@ export interface WorkerDefinition {
   capabilities: WorkerCapability[];
   version?: string;
   status: WorkerStatus;
+  maxConcurrentAssignments: number;
 }

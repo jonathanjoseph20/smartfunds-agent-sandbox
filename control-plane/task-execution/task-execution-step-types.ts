@@ -39,6 +39,17 @@ export const TASK_EXECUTION_STEP_TYPES = [
   'graph_execution_completed',
 ] as const;
 
+export const TASK_ORCHESTRATION_EVENT_TYPES = [
+  'orchestration_cycle_started',
+  'orchestration_cycle_completed',
+  'worker_assignment_evaluated',
+  'worker_assignment_created',
+  'worker_assignment_deferred',
+  'worker_queue_updated',
+  'worker_queue_item_claimed',
+  'worker_queue_item_completed',
+] as const;
+
 export const TASK_EXECUTION_STEP_STATES = [
   'accepted',
   'deduped',
@@ -59,6 +70,7 @@ export const TASK_EXECUTION_ERROR_CODES = [
 export type TaskExecutionGraphState = typeof TASK_EXECUTION_GRAPH_STATES[number];
 export type TaskExecutionNodeState = typeof TASK_EXECUTION_NODE_STATES[number];
 export type TaskExecutionStepType = typeof TASK_EXECUTION_STEP_TYPES[number];
+export type TaskOrchestrationEventType = typeof TASK_ORCHESTRATION_EVENT_TYPES[number];
 export type TaskExecutionStepState = typeof TASK_EXECUTION_STEP_STATES[number];
 export type TaskExecutionErrorCode = typeof TASK_EXECUTION_ERROR_CODES[number];
 export type WorkerResultType = 'SUCCESS' | 'FAILURE' | 'RETRY_REQUESTED';
@@ -256,4 +268,11 @@ export interface MissionTaskExecutionMaterializationSummary {
   workerClaimsPath: string;
   workerResultsPath: string;
   workerStatePath: string;
+  orchestrationStatusPath?: string;
+  orchestrationReportPath?: string;
+  orchestrationMarkdownPath?: string;
+  orchestrationHistoryPath?: string;
+  workerAssignmentsPath?: string;
+  workerQueuesPath?: string;
+  workerDeferralsPath?: string;
 }

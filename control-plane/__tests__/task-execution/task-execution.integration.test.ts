@@ -304,6 +304,12 @@ describe('task execution integration', () => {
       concurrency: fs.readFileSync(firstMaterialized.concurrencyPath, 'utf8'),
       runnable: fs.readFileSync(firstMaterialized.runnableSetPath, 'utf8'),
       waves: fs.readFileSync(firstMaterialized.schedulingWavesPath, 'utf8'),
+      orchestrationStatus: fs.readFileSync(firstMaterialized.orchestrationStatusPath!, 'utf8'),
+      orchestrationReport: fs.readFileSync(firstMaterialized.orchestrationReportPath!, 'utf8'),
+      orchestrationHistory: fs.readFileSync(firstMaterialized.orchestrationHistoryPath!, 'utf8'),
+      assignments: fs.readFileSync(firstMaterialized.workerAssignmentsPath!, 'utf8'),
+      queues: fs.readFileSync(firstMaterialized.workerQueuesPath!, 'utf8'),
+      deferrals: fs.readFileSync(firstMaterialized.workerDeferralsPath!, 'utf8'),
     };
 
     const secondSnapshot = {
@@ -316,6 +322,12 @@ describe('task execution integration', () => {
       concurrency: fs.readFileSync(secondMaterialized.concurrencyPath, 'utf8'),
       runnable: fs.readFileSync(secondMaterialized.runnableSetPath, 'utf8'),
       waves: fs.readFileSync(secondMaterialized.schedulingWavesPath, 'utf8'),
+      orchestrationStatus: fs.readFileSync(secondMaterialized.orchestrationStatusPath!, 'utf8'),
+      orchestrationReport: fs.readFileSync(secondMaterialized.orchestrationReportPath!, 'utf8'),
+      orchestrationHistory: fs.readFileSync(secondMaterialized.orchestrationHistoryPath!, 'utf8'),
+      assignments: fs.readFileSync(secondMaterialized.workerAssignmentsPath!, 'utf8'),
+      queues: fs.readFileSync(secondMaterialized.workerQueuesPath!, 'utf8'),
+      deferrals: fs.readFileSync(secondMaterialized.workerDeferralsPath!, 'utf8'),
     };
 
     expect(firstSimulation.projection.graphState).toBe('completed');

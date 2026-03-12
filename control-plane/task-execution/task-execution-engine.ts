@@ -33,6 +33,10 @@ import {
   dependenciesSatisfiedForTaskRetry,
   scheduleTaskRetry,
 } from './task-retry-scheduler.ts';
+import {
+  createTaskExecutionOrchestrator,
+  type TaskExecutionOrchestrator,
+} from './task-execution-orchestrator.ts';
 import type { MissionTaskExecutionProjection, MissionTaskExecutionStep, TaskExecutionStepType } from './task-execution-step-types.ts';
 
 function normalizeRecord(value: Record<string, unknown>): Record<string, unknown> {
@@ -109,6 +113,7 @@ export function createTaskExecutionEngine(options: {
   projection?: TaskExecutionProjectionEngine;
   historyStore?: TaskExecutionHistoryStore;
   taskGraphProjection?: TaskGraphProjectionEngine;
+  orchestrator?: TaskExecutionOrchestrator;
   missionDefinitionsDir?: string;
   missionInstancesDir?: string;
   missionArtifactsRoot?: string;
@@ -161,6 +166,25 @@ export function createTaskExecutionEngine(options: {
     executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
     taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
     taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
+  });
+
+  const orchestrator = options.orchestrator ?? createTaskExecutionOrchestrator({
+    projection,
+    taskGraphProjection,
+    taskExecutionArtifactsRoot: options.taskExecutionArtifactsRoot,
+    missionDefinitionsDir: options.missionDefinitionsDir,
+    missionInstancesDir: options.missionInstancesDir,
+    missionArtifactsRoot: options.missionArtifactsRoot,
+    teamDefinitionsDir: options.teamDefinitionsDir,
+    compatibilityArtifactsRoot: options.compatibilityArtifactsRoot,
+    assignmentArtifactsRoot: options.assignmentArtifactsRoot,
+    activationArtifactsRoot: options.activationArtifactsRoot,
+    executionContractArtifactsRoot: options.executionContractArtifactsRoot,
+    runtimeEnvelopeArtifactsRoot: options.runtimeEnvelopeArtifactsRoot,
+    executionAttemptArtifactsRoot: options.executionAttemptArtifactsRoot,
+    executionJournalArtifactsRoot: options.executionJournalArtifactsRoot,
+    executionEngineArtifactsRoot: options.executionEngineArtifactsRoot,
+    taskGraphArtifactsRoot: options.taskGraphArtifactsRoot,
   });
 
   function appendStepEvent(input: {
@@ -337,6 +361,7 @@ export function createTaskExecutionEngine(options: {
     }
 
     const projectedAfter = projection.projectOne({ taskGraphId: input.taskGraphId });
+    const orchestration = orchestrator.cycle({ taskGraphId: input.taskGraphId });
 
     return {
       selectedTaskNodeId: wave.scheduledNodeIds[0] ?? null,
@@ -346,6 +371,7 @@ export function createTaskExecutionEngine(options: {
       concurrencyPolicyId: wave.concurrencyPolicyId,
       steps: [...steps].sort(compareSteps),
       projection: projectedAfter,
+      orchestration,
     };
   }
 

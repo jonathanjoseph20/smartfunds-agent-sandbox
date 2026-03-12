@@ -45,6 +45,14 @@ function asWorkerStatus(value: unknown): WorkerStatus | null {
     : null;
 }
 
+function asPositiveInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
 function validateWorkerDefinition(value: unknown, sourceLabel = '<inline>'): WorkerDefinition {
   if (!isRecord(value)) {
     throw new Error(`WORKER_INVALID_DEFINITION: ${sourceLabel} must be an object.`);
@@ -56,6 +64,9 @@ function validateWorkerDefinition(value: unknown, sourceLabel = '<inline>'): Wor
   const capabilities = asUniqueStringArray(value.capabilities);
   const version = value.version === undefined ? undefined : asTrimmedString(value.version);
   const status = asWorkerStatus(value.status);
+  const maxConcurrentAssignments = value.maxConcurrentAssignments === undefined
+    ? 1
+    : asPositiveInteger(value.maxConcurrentAssignments);
 
   if (!workerId) {
     throw new Error(`WORKER_INVALID_DEFINITION: ${sourceLabel} workerId must be a non-empty string.`);
@@ -81,6 +92,10 @@ function validateWorkerDefinition(value: unknown, sourceLabel = '<inline>'): Wor
     throw new Error(`WORKER_INVALID_DEFINITION: ${sourceLabel} status must be one of ${WORKER_STATUSES.join(', ')}.`);
   }
 
+  if (maxConcurrentAssignments === null) {
+    throw new Error(`WORKER_INVALID_DEFINITION: ${sourceLabel} maxConcurrentAssignments must be a positive integer.`);
+  }
+
   return {
     workerId,
     workerType,
@@ -88,6 +103,7 @@ function validateWorkerDefinition(value: unknown, sourceLabel = '<inline>'): Wor
     capabilities: capabilities as WorkerCapability[],
     ...(version ? { version } : {}),
     status,
+    maxConcurrentAssignments,
   };
 }
 

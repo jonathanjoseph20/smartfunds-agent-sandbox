@@ -3,5 +3,6 @@
   "workerType": "local",
   "supportedTaskTypes": ["shell", "script"],
   "capabilities": ["filesystem", "network"],
-  "status": "active"
+  "status": "active",
+  "maxConcurrentAssignments": 1
 }

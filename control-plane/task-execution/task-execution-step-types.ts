@@ -18,6 +18,11 @@ export const TASK_EXECUTION_NODE_STATES = [
 ] as const;
 
 export const TASK_EXECUTION_STEP_TYPES = [
+  'worker_registered',
+  'task_node_claimed',
+  'worker_execution_started',
+  'worker_execution_completed',
+  'worker_execution_failed',
   'concurrency_wave_evaluated',
   'concurrency_slots_allocated',
   'node_scheduled_for_execution',
@@ -48,6 +53,7 @@ export const TASK_EXECUTION_ERROR_CODES = [
   'TASK_EXECUTION_ALREADY_COMPLETED',
   'TASK_EXECUTION_STEP_INVALID',
   'TASK_EXECUTION_HISTORY_CONFLICT',
+  'INVALID_TASK_WORK_CLAIM',
 ] as const;
 
 export type TaskExecutionGraphState = typeof TASK_EXECUTION_GRAPH_STATES[number];
@@ -55,6 +61,36 @@ export type TaskExecutionNodeState = typeof TASK_EXECUTION_NODE_STATES[number];
 export type TaskExecutionStepType = typeof TASK_EXECUTION_STEP_TYPES[number];
 export type TaskExecutionStepState = typeof TASK_EXECUTION_STEP_STATES[number];
 export type TaskExecutionErrorCode = typeof TASK_EXECUTION_ERROR_CODES[number];
+export type WorkerResultType = 'SUCCESS' | 'FAILURE' | 'RETRY_REQUESTED';
+export type WorkerFailureClass =
+  | 'RETRYABLE_FAILURE'
+  | 'NON_RETRYABLE_FAILURE'
+  | 'SYSTEM_FAILURE'
+  | 'POLICY_FAILURE'
+  | 'DEPENDENCY_FAILURE';
+
+export interface MissionTaskWorkerClaim {
+  executionRunId: string;
+  taskGraphId: string;
+  taskNodeId: string;
+  workerId: string;
+  claimId: string;
+  claimAttemptIndex: number;
+  attemptIndex: number;
+}
+
+export interface MissionTaskWorkerExecutionState {
+  executionRunId: string;
+  taskGraphId: string;
+  taskNodeId: string;
+  workerId: string;
+  claimId: string;
+  attemptIndex: number;
+  state: 'claimed' | 'running' | 'completed' | 'failed';
+  resultType?: WorkerResultType;
+  failureClass?: WorkerFailureClass;
+  retryEligible?: boolean;
+}
 
 export interface MissionTaskExecutionStep {
   executionStepId: string;
@@ -173,6 +209,11 @@ export interface MissionTaskExecutionProjection {
     consumedConcurrencySlots: number;
   }>;
   graphFailureState: 'none' | 'retry_exhausted' | 'unrecoverable_failure';
+  claimedNodeCount: number;
+  activeWorkerCount: number;
+  workerAssignments: Record<string, string[]>;
+  workerExecutionState: Record<string, MissionTaskWorkerExecutionState>;
+  workerHistory: MissionTaskExecutionHistoryEntry[];
   statusPreview: Record<string, unknown>;
   reportPreview: Record<string, unknown>;
   artifactPaths: {
@@ -189,6 +230,9 @@ export interface MissionTaskExecutionProjection {
     concurrencyJsonPath: string;
     runnableSetJsonPath: string;
     schedulingWavesJsonPath: string;
+    workerClaimsJsonPath: string;
+    workerResultsJsonPath: string;
+    workerStateJsonPath: string;
   };
   provenanceInputs: MissionTaskExecutionEngine['provenanceInputs'];
 }
@@ -209,4 +253,7 @@ export interface MissionTaskExecutionMaterializationSummary {
   concurrencyPath: string;
   runnableSetPath: string;
   schedulingWavesPath: string;
+  workerClaimsPath: string;
+  workerResultsPath: string;
+  workerStatePath: string;
 }

@@ -1,0 +1,7 @@
+{
+  "workerId": "default-local-worker",
+  "workerType": "local",
+  "supportedTaskTypes": ["shell", "script"],
+  "capabilities": ["filesystem", "network"],
+  "status": "active"
+}

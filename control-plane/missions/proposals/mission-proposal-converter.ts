@@ -1,8 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
-import { canonicalStringify } from '../../finance/determinism.ts';
-
 import {
   deriveMissionIdFromPayload,
   normalizeMissionIdentityPayload,
@@ -10,9 +5,9 @@ import {
 } from '../mission-identity.ts';
 import type { MissionInstance } from '../mission-instance-types.ts';
 import {
-  DEFAULT_MISSION_INSTANCES_DIR,
   loadMissionInstances,
   validateMissionInstance,
+  writeMissionInstance,
 } from '../mission-registry.ts';
 import type { DeliverableDescriptor } from '../mission-types.ts';
 import { instantiateMissionTemplate } from '../templates/mission-template-engine.ts';
@@ -144,14 +139,6 @@ function createMissionInstanceFromExplicitProposal(input: {
   };
 }
 
-function writeMissionInstance(instance: MissionInstance, instancesDir?: string): string {
-  const targetDir = path.resolve(instancesDir ?? DEFAULT_MISSION_INSTANCES_DIR);
-  fs.mkdirSync(targetDir, { recursive: true });
-  const filePath = path.join(targetDir, `${instance.missionId}.json`);
-  fs.writeFileSync(filePath, `${canonicalStringify(instance)}\n`, 'utf8');
-  return filePath;
-}
-
 function findExistingMission(missionId: string, missionInstancesDir?: string): MissionInstance | null {
   const instances = loadMissionInstances({ instancesDir: missionInstancesDir });
   return instances.find((entry) => entry.missionId === missionId) ?? null;
@@ -249,7 +236,7 @@ export function createMissionProposalConverter(options: {
       };
     }
 
-    writeMissionInstance(validatedMission, options.missionInstancesDir);
+    writeMissionInstance(validatedMission, { instancesDir: options.missionInstancesDir });
 
     historyStore.append({
       proposalId,

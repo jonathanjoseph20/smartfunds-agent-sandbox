@@ -1,0 +1,35 @@
+{
+  "ventureName": "Stratum Markets",
+  "ventureSlug": "stratum-markets",
+  "ventureClass": "experimental_venture",
+  "ventureLifecycleState": "defined",
+  "ownershipModel": "internal",
+  "operatingMode": "manual",
+  "originMissionIds": [],
+  "linkedMissionPortfolioIds": [],
+  "linkedTeamIds": [
+    "engineering-team"
+  ],
+  "linkedEntityIds": [
+    "core-entity"
+  ],
+  "summary": "Early-stage registry seed for markets-focused venture tracking.",
+  "domainTags": [
+    "markets",
+    "intelligence"
+  ],
+  "productTypeTags": [
+    "analysis"
+  ],
+  "jurisdictionTags": [
+    "us"
+  ],
+  "limitations": [],
+  "blockingReasons": [],
+  "provenanceInputs": {
+    "source": "venture_registry_seed",
+    "referenceIds": [
+      "sprint-9.1"
+    ]
+  }
+}

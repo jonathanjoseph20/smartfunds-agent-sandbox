@@ -1,0 +1,35 @@
+{
+  "ventureName": "SmartFunds Core",
+  "ventureSlug": "smartfunds-core",
+  "ventureClass": "core_venture",
+  "ventureLifecycleState": "operating",
+  "ownershipModel": "internal",
+  "operatingMode": "manual",
+  "originMissionIds": [],
+  "linkedMissionPortfolioIds": [],
+  "linkedTeamIds": [
+    "operations-team"
+  ],
+  "linkedEntityIds": [
+    "core-entity"
+  ],
+  "summary": "Core venture registry anchor for SmartFunds control-plane tracking.",
+  "domainTags": [
+    "transfer-agent",
+    "issuance"
+  ],
+  "productTypeTags": [
+    "control-plane"
+  ],
+  "jurisdictionTags": [
+    "us"
+  ],
+  "limitations": [],
+  "blockingReasons": [],
+  "provenanceInputs": {
+    "source": "venture_registry_seed",
+    "referenceIds": [
+      "sprint-9.1"
+    ]
+  }
+}

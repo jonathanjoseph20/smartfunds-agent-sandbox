@@ -1,0 +1,35 @@
+{
+  "ventureName": "Stratum Money",
+  "ventureSlug": "stratum-money",
+  "ventureClass": "cashflow_venture",
+  "ventureLifecycleState": "incubating",
+  "ownershipModel": "internal",
+  "operatingMode": "manual",
+  "originMissionIds": [],
+  "linkedMissionPortfolioIds": [],
+  "linkedTeamIds": [
+    "finance-team"
+  ],
+  "linkedEntityIds": [
+    "core-entity"
+  ],
+  "summary": "Seed venture definition for conservative registry-level tracking.",
+  "domainTags": [
+    "payments",
+    "operations"
+  ],
+  "productTypeTags": [
+    "internal-product"
+  ],
+  "jurisdictionTags": [
+    "us"
+  ],
+  "limitations": [],
+  "blockingReasons": [],
+  "provenanceInputs": {
+    "source": "venture_registry_seed",
+    "referenceIds": [
+      "sprint-9.1"
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "ventureName": "Experimental Agent Tools",
+  "ventureSlug": "experimental-agent-tools",
+  "ventureClass": "internal_tooling_venture",
+  "ventureLifecycleState": "incubating",
+  "ownershipModel": "internal",
+  "operatingMode": "assisted",
+  "originMissionIds": [],
+  "linkedMissionPortfolioIds": [],
+  "linkedTeamIds": [
+    "agent-operations-team"
+  ],
+  "linkedEntityIds": [
+    "core-entity"
+  ],
+  "summary": "Internal tooling venture seed for deterministic registry coverage.",
+  "domainTags": [
+    "agentic-systems",
+    "tooling"
+  ],
+  "productTypeTags": [
+    "internal-tooling"
+  ],
+  "jurisdictionTags": [
+    "us"
+  ],
+  "limitations": [],
+  "blockingReasons": [],
+  "provenanceInputs": {
+    "source": "venture_registry_seed",
+    "referenceIds": [
+      "sprint-9.1"
+    ]
+  }
+}

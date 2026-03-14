@@ -125,7 +125,12 @@ describe('mission templates CLI', () => {
       { sector: 'AI' },
       'Focus on moats',
     );
-    expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(instantiateMissionTemplate())}\n`);
+    const expected = {
+  ...instantiateMissionTemplate(),
+  persisted: false
+};
+
+expect(stdout).toHaveBeenCalledWith(`${canonicalStringify(expected)}\n`);
     stdout.mockRestore();
   });
 

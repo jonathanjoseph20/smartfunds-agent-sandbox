@@ -1,9 +1,25 @@
 {
+  "missionId": "analyze-agent-economy-development",
   "missionType": "analyze-agent-economy-development",
+  "projectId": "smartfunds-core",
+  "teamId": "core-engineering",
+  "workflowId": "research-analysis-workflow",
   "displayName": "Analyze Agent Economy Development",
   "enabled": true,
   "description": "Analyze ecosystem evolution and business opportunities in agent-driven economies.",
+  "objective": "Provide founder-facing options for entering or expanding in agent-economy markets.",
   "defaultObjective": "Provide founder-facing options for entering or expanding in agent-economy markets.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "ecosystem_memo"
+    },
+    {
+      "deliverableId": "business_model_opportunities"
+    },
+    {
+      "deliverableId": "token_incentive_observations"
+    }
+  ],
   "defaultDeliverables": [
     "ecosystem_memo",
     "business_model_opportunities",
@@ -15,6 +31,9 @@
     "signal",
     "synthesis"
   ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
   "defaultPriority": "normal",
   "defaultLifecycleState": "draft",
   "tags": [

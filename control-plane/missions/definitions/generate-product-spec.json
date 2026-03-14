@@ -1,9 +1,25 @@
 {
+  "missionId": "generate-product-spec",
   "missionType": "generate-product-spec",
+  "projectId": "smartfunds-core",
+  "teamId": "core-engineering",
+  "workflowId": "research-analysis-workflow",
   "displayName": "Generate Product Spec",
   "enabled": true,
   "description": "Draft a product specification package based on founder intent and linked intelligence.",
+  "objective": "Produce a review-ready product specification with implementation boundaries.",
   "defaultObjective": "Produce a review-ready product specification with implementation boundaries.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "product_spec"
+    },
+    {
+      "deliverableId": "mvp_scope"
+    },
+    {
+      "deliverableId": "architecture_notes"
+    }
+  ],
   "defaultDeliverables": [
     "product_spec",
     "mvp_scope",
@@ -15,6 +31,9 @@
     "research",
     "synthesis"
   ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
   "defaultPriority": "high",
   "defaultLifecycleState": "draft",
   "tags": [

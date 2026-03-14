@@ -60,60 +60,60 @@ describe('adapters', () => {
 });
 
 describe('view-models', () => {
-  it('getMissionList returns sorted missions', () => {
-    const list = getMissionList();
+  it('getMissionList returns sorted missions', async () => {
+    const list = await getMissionList();
     expect(list.length).toBeGreaterThan(0);
     // running/created should come first
     const firstStatus = list[0].status;
     expect(['running', 'created']).toContain(firstStatus);
   });
 
-  it('getRunList returns sorted runs', () => {
-    const list = getRunList();
+  it('getRunList returns sorted runs', async () => {
+    const list = await getRunList();
     expect(list.length).toBeGreaterThan(0);
   });
 
-  it('getRunDetail returns failure panel for failed run', () => {
-    const detail = getRunDetail('run-002');
+  it('getRunDetail returns failure panel for failed run', async () => {
+    const detail = await getRunDetail('run-002');
     expect(detail).not.toBeNull();
     expect(detail!.failure).not.toBeNull();
     expect(detail!.failure!.code).toBe('ADAPTER_TIMEOUT');
     expect(detail!.traceEvents.length).toBeGreaterThan(0);
   });
 
-  it('getRunDetail returns null for unknown run', () => {
-    expect(getRunDetail('nonexistent')).toBeNull();
+  it('getRunDetail returns null for unknown run', async () => {
+    expect(await getRunDetail('nonexistent')).toBeNull();
   });
 
-  it('getMissionDetail maps parameters correctly', () => {
-    const detail = getMissionDetail('rwa-market-analysis');
+  it('getMissionDetail maps parameters correctly', async () => {
+    const detail = await getMissionDetail('rwa-market-analysis');
     expect(detail).not.toBeNull();
     expect(detail!.parameters.length).toBe(4);
     expect(detail!.agents.length).toBeGreaterThan(0);
   });
 
-  it('getOverview counts correctly', () => {
-    const overview = getOverview();
+  it('getOverview counts correctly', async () => {
+    const overview = await getOverview();
     expect(overview.totalMissions).toBe(6);
     expect(overview.failedRuns).toBe(1);
   });
 
-  it('getWorkflowDag returns deterministic node order', () => {
-    const dag = getWorkflowDag('research-analysis-workflow');
+  it('getWorkflowDag returns deterministic node order', async () => {
+    const dag = await getWorkflowDag('research-analysis-workflow');
     expect(dag).not.toBeNull();
     expect(dag!.nodes.length).toBe(4);
     expect(dag!.nodes[0].nodeId).toBe('node-collect');
   });
 
-  it('getWorkflowDag with runId uses run execution state', () => {
-    const dag = getWorkflowDag('research-analysis-workflow', 'run-002');
+  it('getWorkflowDag with runId uses run execution state', async () => {
+    const dag = await getWorkflowDag('research-analysis-workflow', 'run-002');
     expect(dag).not.toBeNull();
     const failedNode = dag!.nodes.find(n => n.status === 'failed');
     expect(failedNode).toBeDefined();
   });
 
-  it('trace events are sorted by sequence', () => {
-    const detail = getRunDetail('run-002');
+  it('trace events are sorted by sequence', async () => {
+    const detail = await getRunDetail('run-002');
     const sequences = detail!.traceEvents.map(e => e.sequence);
     expect(sequences).toEqual([...sequences].sort((a, b) => a - b));
   });

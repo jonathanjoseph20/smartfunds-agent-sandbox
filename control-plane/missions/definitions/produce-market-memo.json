@@ -1,9 +1,25 @@
 {
+  "missionId": "produce-market-memo",
   "missionType": "produce-market-memo",
+  "projectId": "smartfunds-core",
+  "teamId": "core-engineering",
+  "workflowId": "research-analysis-workflow",
   "displayName": "Produce Market Memo",
   "enabled": true,
   "description": "Produce a bounded market memo from linked evidence and syntheses.",
+  "objective": "Summarize current market posture and key opportunities/risks for founder review.",
   "defaultObjective": "Summarize current market posture and key opportunities/risks for founder review.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "market_summary"
+    },
+    {
+      "deliverableId": "risk_opportunity_brief"
+    },
+    {
+      "deliverableId": "linked_source_digest"
+    }
+  ],
   "defaultDeliverables": [
     "market_summary",
     "risk_opportunity_brief",
@@ -15,6 +31,9 @@
     "synthesis",
     "signal"
   ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
   "defaultPriority": "normal",
   "defaultLifecycleState": "draft",
   "tags": [

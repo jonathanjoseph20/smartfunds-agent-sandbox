@@ -1,9 +1,28 @@
 {
+  "missionId": "evaluate-startup-opportunity",
   "missionType": "evaluate-startup-opportunity",
+  "projectId": "smartfunds-core",
+  "teamId": "core-engineering",
+  "workflowId": "research-analysis-workflow",
   "displayName": "Evaluate Startup Opportunity",
   "enabled": true,
   "description": "Assess an early-stage startup opportunity using available market and execution signals.",
+  "objective": "Determine whether the startup opportunity should proceed to structured diligence.",
   "defaultObjective": "Determine whether the startup opportunity should proceed to structured diligence.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "executive_summary"
+    },
+    {
+      "deliverableId": "opportunity_matrix"
+    },
+    {
+      "deliverableId": "market_map"
+    },
+    {
+      "deliverableId": "recommendation_memo"
+    }
+  ],
   "defaultDeliverables": [
     "executive_summary",
     "opportunity_matrix",
@@ -16,6 +35,9 @@
     "research",
     "synthesis"
   ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
   "defaultPriority": "normal",
   "defaultLifecycleState": "draft",
   "tags": [

@@ -15,7 +15,7 @@ describe('patchPlanner', () => {
     expect(plan.ops).toEqual([{ op: 'noop', reason: 'max_retries_exhausted' }]);
   });
 
-  it('legacy tier remediation codes are inert', () => {
+  it('missing tier label produces deterministic add_label op', () => {
     const plan = buildPatchPlan({
       retryAttempt: 0,
       governanceErrorCode: 'MISSING_TIER_LABEL',
@@ -23,7 +23,7 @@ describe('patchPlanner', () => {
       requiredTier: 3
     });
 
-    expect(plan.ops).toEqual([{ op: 'noop', reason: 'legacy_governance_error_not_actionable:MISSING_TIER_LABEL' }]);
+    expect(plan.ops).toEqual([{ op: 'add_label', label: 'tier-3' }]);
   });
 
   it('legacy approval remediation codes are inert', () => {
@@ -58,7 +58,7 @@ describe('patchPlanner', () => {
     expect(plan.ops).toEqual([{ op: 'noop', reason: 'legacy_governance_error_not_actionable:SOME_NEW_ERROR' }]);
   });
 
-  it('label ops sorted, refresh last, no duplicates', () => {
+  it('missing tier label uses provided label deterministically with no duplicates', () => {
     const plan = buildPatchPlan({
       retryAttempt: 0,
       governanceErrorCode: 'MISSING_TIER_LABEL',
@@ -66,9 +66,9 @@ describe('patchPlanner', () => {
       requiredTierLabel: 'tier-2'
     });
 
-    expect(plan.ops).toEqual([{ op: 'noop', reason: 'legacy_governance_error_not_actionable:MISSING_TIER_LABEL' }]);
+    expect(plan.ops).toEqual([{ op: 'add_label', label: 'tier-2' }]);
     expect(new Set(plan.ops.map((entry) => canonicalStringify(entry))).size).toBe(plan.ops.length);
-    expect(plan.ops[plan.ops.length - 1]).toEqual({ op: 'noop', reason: 'legacy_governance_error_not_actionable:MISSING_TIER_LABEL' });
+    expect(plan.ops[0]).toEqual({ op: 'add_label', label: 'tier-2' });
   });
 
   it('planner output is deterministic for identical input', () => {
@@ -85,5 +85,4 @@ describe('patchPlanner', () => {
     expect(first.patchId).toBe(second.patchId);
     expect(typeof first.patchId).toBe('string');
   });
-
 });

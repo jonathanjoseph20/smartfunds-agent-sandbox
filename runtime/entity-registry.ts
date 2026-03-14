@@ -101,14 +101,13 @@ function ensurePodMode(value: unknown, label: string): PodMode {
 }
 
 function ensureOwnedPaths(value: unknown, label: string): string[] {
-  const ownedFiles = Array.isArray(project.ownedFiles) ? project.ownedFiles : [];
-const ownedPaths = ensureStringArray(value, label);
+  const ownedPaths = ensureStringArray(value, label);
   for (const ownedPath of ownedPaths) {
     if (!ownedPath.endsWith('/')) {
-      throw new Error(`${label} must contain paths ending with '/'.`);
+      throw new Error(`${label} entries must end with '/': ${ownedPath}`);
     }
   }
-  return ownedPaths;
+ return ownedPaths;
 }
 
 function ensureRails(value: unknown, label: string): string[] {

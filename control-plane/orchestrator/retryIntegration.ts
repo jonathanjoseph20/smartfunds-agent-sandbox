@@ -4,7 +4,7 @@ import { evaluateRetryEligibilityForNormalizedCi } from './ci/retry-eligibility.
 import { normalizeCi } from './ci/normalize.ts';
 import type { NormalizedCiSummary, RawCheck } from './ci/types.ts';
 import { applyPatchPlan } from './retry/patchApplier.ts';
-import { buildPatchPlan, stableSortLabels } from './retry/patchPlanner.ts';
+import { buildPatchPlan, stablePlanOps, stableSortLabels } from './retry/patchPlanner.ts';
 import type { PatchOp, PatchPlan } from './retry/patchTypes.ts';
 
 type CommandRunner = (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
@@ -179,7 +179,11 @@ function evaluateEligibility(args: {
   }
 
   const governanceErrorCode = normalizedCi.governingFailure?.extracted.governanceErrorCode ?? null;
-  if (!isStrictRetryableGovernanceCode(governanceErrorCode)) {
+  if (!governanceErrorCode) {
+    return { eligible: false, reason: 'missing_governance_error_code', normalizedCi, governanceErrorCode: null };
+  }
+
+  if (governanceErrorCode !== 'MISSING_TIER_LABEL') {
     return { eligible: false, reason: 'error_code_not_retry_eligible', normalizedCi, governanceErrorCode };
   }
 
@@ -272,10 +276,15 @@ export async function runRetryIntegration(args: RetryIntegrationArgs): Promise<R
     allowedLabelMutations
   });
 
+    const bodyPlanOps: PatchOp[] = [
+    ...patchPlan.ops.filter((entry) => entry.op !== 'noop'),
+    ...(mutation.bodyChanged ? [{ op: 'set_pr_body', body: mutation.newBody } satisfies PatchOp] : [])
+  ];
+
   const bodyPlan: PatchPlan = {
     ...patchPlan,
-    ops: mutation.bodyChanged
-      ? [{ op: 'set_pr_body', body: mutation.newBody }]
+    ops: bodyPlanOps.length > 0
+      ? stablePlanOps(bodyPlanOps)
       : [{ op: 'noop', reason: 'body_already_canonical' }]
   };
 

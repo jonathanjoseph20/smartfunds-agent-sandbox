@@ -1,9 +1,28 @@
 {
+  "missionId": "structure-tokenized-offering",
   "missionType": "structure-tokenized-offering",
+  "projectId": "smartfunds-core",
+  "teamId": "core-engineering",
+  "workflowId": "research-analysis-workflow",
   "displayName": "Structure Tokenized Offering",
   "enabled": true,
   "description": "Assemble a deterministic structuring packet for a tokenized offering initiative.",
+  "objective": "Prepare legal/process structuring recommendations for founder checkpoint review.",
   "defaultObjective": "Prepare legal/process structuring recommendations for founder checkpoint review.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "structuring_memo"
+    },
+    {
+      "deliverableId": "legal_issue_list"
+    },
+    {
+      "deliverableId": "process_roadmap"
+    },
+    {
+      "deliverableId": "payment_rail_requirements"
+    }
+  ],
   "defaultDeliverables": [
     "structuring_memo",
     "legal_issue_list",
@@ -16,6 +35,9 @@
     "policy",
     "research"
   ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
   "defaultPriority": "high",
   "defaultLifecycleState": "draft",
   "tags": [

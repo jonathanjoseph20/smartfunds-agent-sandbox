@@ -116,9 +116,10 @@ export function resolveOwnership(params: {
 
   const projectMatchers = orderedProjects.map((project) => ({
     project,
-    rules: project.ownedPaths
+    pathRules: project.ownedPaths
       .map((pattern) => ({ pattern, regex: globToRegExp(pattern) }))
-      .sort((a, b) => a.pattern.localeCompare(b.pattern))
+      .sort((a, b) => a.pattern.localeCompare(b.pattern)),
+    exactFiles: sortedUnique(project.ownedFilePaths ?? [])
   }));
 
   const projectsTouched = new Set<string>();
@@ -135,12 +136,18 @@ export function resolveOwnership(params: {
     hasNonAllowlistedFile = true;
 
     const matchedProjects = projectMatchers
-      .map((matcher) => ({
-        projectId: matcher.project.projectId,
-        patterns: matcher.rules
+      .map((matcher) => {
+        const matchedPatterns = matcher.pathRules
           .filter((rule) => rule.regex.test(file))
-          .map((rule) => rule.pattern)
-      }))
+          .map((rule) => rule.pattern);
+
+        const matchedExactFiles = matcher.exactFiles.filter((ownedFile) => ownedFile === file);
+
+        return {
+          projectId: matcher.project.projectId,
+          patterns: [...matchedPatterns, ...matchedExactFiles].sort((a, b) => a.localeCompare(b))
+        };
+      })
       .filter((match) => match.patterns.length > 0)
       .sort((a, b) => a.projectId.localeCompare(b.projectId));
 

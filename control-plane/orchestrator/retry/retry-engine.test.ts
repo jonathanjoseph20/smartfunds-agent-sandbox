@@ -99,7 +99,7 @@ describe('retry engine', () => {
     expect(extractGovernanceReportJson(raw)).toBe('{"errors":[]}');
   });
 
-  it('does not classify legacy governance errors as retriable', () => {
+  it('classifies unowned paths governance errors as retriable', () => {
     const report = baseReport({
       errors: [{
         code: 'UNOWNED_PATHS',
@@ -111,7 +111,7 @@ describe('retry engine', () => {
       }]
     });
 
-    expect(classifyRetriableGovernanceError(report)).toBeNull();
+    expect(classifyRetriableGovernanceError(report)).toBe('UNOWNED_PATHS');
   });
 
   it('enforces mode restriction for structured mode', () => {

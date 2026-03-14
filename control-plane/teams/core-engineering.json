@@ -3,8 +3,10 @@
   "projectId": "core-app",
   "executionMode": "structured",
   "ownedPaths": [
-    "package.json",
     "control-plane/**"
+  ],
+  "ownedFiles": [
+    "package.json"
   ],
   "notes": "Core engineering owns the repo root package.json and control-plane."
 }

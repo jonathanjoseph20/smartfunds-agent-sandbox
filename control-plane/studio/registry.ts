@@ -23,6 +23,7 @@ export type Team = {
   teamId: string;
   projectId: string;
   ownedPaths: string[];
+  ownedFilePaths?: string[];
   parentTeamId?: string;
   roles?: string[];
   capabilities?: string[];
@@ -275,7 +276,7 @@ function loadEntityProjectsFromDir(dir: string, options: {
   const knownEntityIds = loadKnownEntityIds(entityRegistryPath);
   const knownPodIds = loadKnownPodIds(podsDir);
 
-  const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
+  const loaded = loadJsonFiles<Record<string, unknown>>(dir).filter(({ file }) => file !== 'registry.json').map(({ file, data }) => {
     if (!isNonEmptyString(data.id)) {
       throw new Error(`Entity project ${file} must include non-empty id.`);
     }
@@ -352,7 +353,7 @@ function loadEntityProjectsFromDir(dir: string, options: {
 }
 
 export function loadProjectsFromDir(dir: string): Project[] {
-  const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
+  const loaded = loadJsonFiles<Record<string, unknown>>(dir).filter(({ file }) => file !== 'registry.json').map(({ file, data }) => {
     if (!isNonEmptyString((data as any).projectId)) {
       throw new Error(`Project ${file} must include non-empty projectId.`);
     }
@@ -360,18 +361,16 @@ export function loadProjectsFromDir(dir: string): Project[] {
     const ownedPaths = ensureNonEmptyArray((data as any).ownedPaths, `Project ${(data as any).projectId} ownedPaths`);
     const ownedFiles = ensureStringArrayOrEmpty((data as any).ownedFiles);
 
-    const expandedOwnedPaths = [
-      ...ownedPaths,
-      ...ownedFiles
-    ];
+    const expandedOwnedPaths = [...ownedPaths];
 
     const project: Project = {
       projectId: (data as any).projectId,
       ownedPaths: expandedOwnedPaths,
       description: isNonEmptyString((data as any).description) ? (data as any).description : undefined,
       tags: isStringArray((data as any).tags) ? (data as any).tags : undefined,
+      entityId: isNonEmptyString((data as any).entityId) ? (data as any).entityId : undefined,
       ownedPathPrefixes: undefined,
-      ownedFilePaths: undefined,
+      ownedFilePaths: ownedFiles,
       sourceFile: path.join(dir, file)
     };
 
@@ -423,33 +422,33 @@ export function loadOwnershipProjects(options: {
 export function loadTeamsFromDir(dir: string, projects: Project[]): Team[] {
   const projectMap = new Map(projects.map((project) => [project.projectId, project]));
 
-  const loaded = loadJsonFiles<Record<string, unknown>>(dir).map(({ file, data }) => {
-    if (!isNonEmptyString((data as any).teamId)) {
-      throw new Error(`Team ${file} must include non-empty teamId.`);
-    }
-    if (!isNonEmptyString((data as any).projectId)) {
-      throw new Error(`Team ${(data as any).teamId} must include non-empty projectId.`);
-    }
-    if (!projectMap.has((data as any).projectId)) {
-      throw new Error(`Team ${(data as any).teamId} references unknown projectId ${(data as any).projectId}.`);
-    }
+    const loaded = loadJsonFiles<Record<string, unknown>>(dir)
+      .filter(({ file }) => file !== 'registry.json')
+      .map(({ file, data }) => {
+        if (!isNonEmptyString((data as any).teamId)) {
+        throw new Error(`Team ${file} must include non-empty teamId.`);
+      }
+      if (!isNonEmptyString((data as any).projectId)) {
+        throw new Error(`Team ${(data as any).teamId} must include non-empty projectId.`);
+      }
+      if (!projectMap.has((data as any).projectId)) {
+        throw new Error(`Team ${(data as any).teamId} references unknown projectId ${(data as any).projectId}.`);
+      }
 
-    const ownedPaths = ensureNonEmptyArray((data as any).ownedPaths, `Team ${(data as any).teamId} ownedPaths`);
-    const ownedFiles = ensureStringArrayOrEmpty((data as any).ownedFiles);
+      const ownedPaths = ensureNonEmptyArray((data as any).ownedPaths, `Team ${(data as any).teamId} ownedPaths`);
+      const ownedFiles = ensureStringArrayOrEmpty((data as any).ownedFiles);
 
-    const expandedOwnedPaths = [
-      ...ownedPaths,
-      ...ownedFiles
-    ];
+      const expandedOwnedPaths = [...ownedPaths];      
 
-    const team: Team = {
-      teamId: (data as any).teamId,
-      projectId: (data as any).projectId,
-      ownedPaths: expandedOwnedPaths,
-      parentTeamId: isNonEmptyString((data as any).parentTeamId) ? (data as any).parentTeamId : undefined,
-      roles: isStringArray((data as any).roles) ? (data as any).roles : undefined,
-      capabilities: isStringArray((data as any).capabilities) ? (data as any).capabilities : undefined
-    };
+      const team: Team = {
+        teamId: (data as any).teamId,
+        projectId: (data as any).projectId,
+        ownedPaths: expandedOwnedPaths,
+        ownedFilePaths: ownedFiles,
+        parentTeamId: isNonEmptyString((data as any).parentTeamId) ? (data as any).parentTeamId : undefined,
+        roles: isStringArray((data as any).roles) ? (data as any).roles : undefined,
+        capabilities: isStringArray((data as any).capabilities) ? (data as any).capabilities : undefined
+     };
 
     return team;
   });

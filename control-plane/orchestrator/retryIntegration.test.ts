@@ -119,7 +119,7 @@ describe('retryIntegration', () => {
     expect(canonicalStringify(first)).toBe(canonicalStringify(second));
   });
 
-  it('does not auto-remediate legacy tier failures', async () => {
+  it('auto-remediates missing tier label failures', async () => {
     const calls: RunnerCall[] = [];
 
     const result = await runRetryIntegration({
@@ -135,10 +135,31 @@ describe('retryIntegration', () => {
       git: runner(calls, 'git')
     });
 
-    expect(result.retryAttempted).toBe(false);
-    expect(result.retryEligible).toBe(false);
-    expect(result.retryReason).toBe('error_code_not_retry_eligible');
-    expect(calls).toEqual([]);
+    expect(result.retryAttempted).toBe(true);
+    expect(result.retryEligible).toBe(true);
+    expect(result.retryReason).toBe('retry_applied');
+    expect(calls).toEqual([
+      {
+        runner: 'gh',
+        args: ['pr', 'edit', '41', '--add-label', 'tier-3']
+      },
+      {
+        runner: 'gh',
+        args: ['pr', 'edit', '41', '--body-file', './.tmp/pr-body.md']
+      },
+      {
+        runner: 'gh',
+        args: ['pr', 'edit', '41', '--add-label', 'tier-3']
+      },
+      {
+        runner: 'git',
+        args: ['commit', '--allow-empty', '-m', 'chore: refresh retry metadata']
+      },
+      {
+        runner: 'git',
+        args: ['push']
+      }
+    ]);
   });
 
   it('does not retry governance schema failures', async () => {

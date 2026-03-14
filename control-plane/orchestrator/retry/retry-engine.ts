@@ -1,6 +1,7 @@
 import type { GovernanceError, GovernanceReport } from '../../governance/diagnostics.ts';
 
 export const RETRYABLE_ERROR_CODES = [
+  'MISSING_TIER_LABEL',
   'UNOWNED_PATHS'
 ] as const;
 
@@ -36,6 +37,7 @@ export type GovernanceRetryContext = {
 };
 
 export type RetryAppliedFix =
+  | 'ADD_TIER_LABEL'
   | 'ASSIGN_PROJECT_MAPPING';
 
 export type DeterministicFixPlan = {
@@ -69,6 +71,16 @@ function hasBlockingError(errors: GovernanceError[]): boolean {
 }
 
 function mapGovernanceErrorToRetriableCode(error: GovernanceError): RetriableErrorCode | null {
+  const normalized = error.code.trim().toUpperCase();
+
+  if (normalized === 'MISSING_TIER_LABEL') {
+    return 'MISSING_TIER_LABEL';
+  }
+
+  if (normalized === 'UNOWNED_PATHS') {
+    return 'UNOWNED_PATHS';
+  }
+
   return null;
 }
 
@@ -203,8 +215,9 @@ export function evaluateRetryEligibility(params: {
 
 export function buildDeterministicFixPlan(code: RetriableErrorCode): DeterministicFixPlan {
   const fixByCode: Record<RetriableErrorCode, RetryAppliedFix> = {
+    MISSING_TIER_LABEL: 'ADD_TIER_LABEL',
     UNOWNED_PATHS: 'ASSIGN_PROJECT_MAPPING'
-  };
+  };  
 
   return {
     errorCode: code,

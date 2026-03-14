@@ -218,11 +218,11 @@ describe('slack mission integration', () => {
     });
 
     expect(artifactResponses).toHaveLength(1);
-    expect(artifactResponses[0]?.text).toBe(['Artifacts', '', 'dataset.csv', 'report.md', 'research-pages.json', 'search-results.json'].join('\n'));
+    expect(artifactResponses[0]?.text).toBe(['Artifacts', '', 'dataset.csv', 'report.md', 'research-pages.json', 'run-metadata.json', 'search-results.json'].join('\n'));
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
     const completionText = String(sendMessage.mock.calls[0]?.[0]?.text);
-    expect(completionText).toBe(['Mission completed', '', `mission: ${missionId}`, `runId: ${runId}`, '', 'Artifacts available', 'dataset.csv', 'report.md', 'research-pages.json', 'search-results.json'].join('\n'));
+    expect(completionText).toBe(['Mission completed', '', `mission: ${missionId}`, `runId: ${runId}`, '', 'Artifacts available', 'dataset.csv', 'report.md', 'research-pages.json', 'run-metadata.json', 'search-results.json'].join('\n'));
 
     const artifactDir = path.join('artifacts', missionId, runId);
     expect(fs.existsSync(path.join(artifactDir, 'report.md'))).toBe(true);

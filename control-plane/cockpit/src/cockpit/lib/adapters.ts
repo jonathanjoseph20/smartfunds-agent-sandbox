@@ -5,7 +5,15 @@ const DEFAULT_RUNTIME_BASE_URL = 'http://127.0.0.1:3100';
 const DEFAULT_CODE_SPACES_RUNTIME_PORT = '3100';
 
 function isDemoMode(): boolean {
-  return import.meta.env.VITE_COCKPIT_DEMO_MODE === '1';
+  const explicit = import.meta.env.VITE_COCKPIT_DEMO_MODE;
+  if (explicit === '1') {
+    return true;
+  }
+  if (explicit === '0') {
+    return false;
+  }
+
+  return typeof import.meta.env.MODE === 'string' && import.meta.env.MODE === 'test';
 }
 
 function runtimeBaseUrl(): string {

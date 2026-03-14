@@ -1,9 +1,13 @@
 {
   "projectId": "core-app",
+  "entityId": "core-entity",
   "ownedPaths": [
     "apps/**",
     "control-plane/**",
     "docs/**",
     "packages/**"
+  ],
+  "ownedFiles": [
+    "package.json"
   ]
-}
+} 

@@ -91,10 +91,27 @@ export function buildPatchPlan(params: BuildPatchPlanParams): PatchPlan {
     return noopPlan(governanceCode, params.retryAttempt, 'non_governance_failure');
   }
 
-  if (!code) {
+   if (!code) {
     return noopPlan(governanceCode, params.retryAttempt, 'missing_governance_error_code');
   }
 
+    if (code === 'MISSING_TIER_LABEL') {
+    const tierLabel =
+      params.requiredTierLabel ??
+      (typeof params.requiredTier === 'number' ? `tier-${params.requiredTier}` : 'tier-3');
+
+    const ops: PatchOp[] = [
+      { op: 'add_label', label: tierLabel }
+    ];
+
+    return {
+      version: 'v1',
+      patchId: createPatchId(code, params.retryAttempt, ops),
+      governanceErrorCode: code,
+      retryAttempt: params.retryAttempt,
+      ops: stablePlanOps(ops)
+    };
+  }
   return noopPlan(code, params.retryAttempt, `legacy_governance_error_not_actionable:${code}`);
 }
 

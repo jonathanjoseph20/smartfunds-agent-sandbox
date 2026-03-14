@@ -445,7 +445,11 @@
     "mission-dags:materialize": "node --experimental-strip-types control-plane/cli/mission-dags-materialize.ts",
     "mission-templates:list": "node --experimental-strip-types control-plane/cli/mission-templates-list.ts",
     "mission-templates:inspect": "node --experimental-strip-types control-plane/cli/mission-templates-inspect.ts",
-    "mission-templates:instantiate": "node --experimental-strip-types control-plane/cli/mission-templates-instantiate.ts"
+    "mission-templates:instantiate": "node --experimental-strip-types control-plane/cli/mission-templates-instantiate.ts",
+    "tasks:graph-create": "node --experimental-strip-types control-plane/cli/implementation-task-graph-create.ts",
+    "tasks:graph-list": "node --experimental-strip-types control-plane/cli/implementation-task-graph-list.ts",
+    "tasks:graph-inspect": "node --experimental-strip-types control-plane/cli/implementation-task-graph-inspect.ts",
+    "tasks:graph-materialize": "node --experimental-strip-types control-plane/cli/implementation-task-graph-materialize.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

@@ -1,0 +1,49 @@
+{
+  "missionId": "rwa-market-analysis",
+  "missionType": "rwa-market-analysis",
+  "projectId": "smartfunds-core",
+  "teamId": "smartfunds-research-team",
+  "workflowId": "research-analysis-workflow",
+  "displayName": "RWA Market Analysis",
+  "enabled": true,
+  "description": "Analyze near-term tokenized RWA opportunities and produce a structured internal memo.",
+  "objective": "Analyze near-term tokenized RWA opportunities and produce a structured internal memo.",
+  "defaultObjective": "Analyze near-term tokenized RWA opportunities and produce a structured internal memo.",
+  "requestedDeliverables": [
+    {
+      "deliverableId": "final-memo"
+    },
+    {
+      "deliverableId": "market-summary"
+    },
+    {
+      "deliverableId": "opportunity-list"
+    },
+    {
+      "deliverableId": "regulatory-notes"
+    }
+  ],
+  "defaultDeliverables": [
+    "final-memo",
+    "market-summary",
+    "opportunity-list",
+    "regulatory-notes"
+  ],
+  "allowedSourceKinds": [
+    "memo",
+    "research",
+    "synthesis",
+    "signal"
+  ],
+  "sourceReferences": [],
+  "founderInstructions": "",
+  "linkedActionPlanIds": [],
+  "defaultPriority": "normal",
+  "defaultLifecycleState": "draft",
+  "tags": [
+    "market-intel",
+    "phase-1",
+    "rwa",
+    "pre_execution"
+  ]
+}
